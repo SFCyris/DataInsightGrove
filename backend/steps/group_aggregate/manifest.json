@@ -1,0 +1,37 @@
+{
+  "id": "group_aggregate",
+  "version": "1.0.0",
+  "label": "📊 Group & aggregate",
+  "description": "Group rows by one or more columns and compute aggregate metrics.",
+  "category": "aggregate",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "groupBy": {
+      "type": "column_refs",
+      "label": "Group by",
+      "columnFrom": "in",
+      "required": true
+    },
+    "aggregates": {
+      "type": "array",
+      "label": "Aggregates",
+      "items": {
+        "type": "object",
+        "label": "Agg",
+        "properties": {
+          "column": { "type": "column_ref", "label": "Column", "columnFrom": "in" },
+          "fn":     { "type": "enum", "label": "Function",
+                      "enumValues": ["sum","mean","min","max","count","count_distinct","std"],
+                      "default": "sum", "required": true },
+          "as":     { "type": "string", "label": "Output name" }
+        }
+      }
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["aggregate", "group", "rollup"]
+}

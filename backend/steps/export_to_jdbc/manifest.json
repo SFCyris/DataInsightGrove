@@ -1,0 +1,63 @@
+{
+  "id": "export_to_jdbc",
+  "version": "1.0.0",
+  "label": "🔌 Export to JDBC",
+  "description": "Write rows to any JDBC-accessible database — Oracle, DB2, MS SQL Server, Snowflake, Teradata, Vertica, etc. Requires a Java runtime on the host and a path to the driver JAR. Use the standard 'Export to database' step for Postgres / MySQL / SQLite via native Python drivers.",
+  "category": "output",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "url": {
+      "type": "string",
+      "label": "JDBC URL",
+      "required": true,
+      "help": "Full JDBC URL — e.g. jdbc:oracle:thin:@//host:1521/ORCL · jdbc:sqlserver://host:1433;database=mydb"
+    },
+    "driverClass": {
+      "type": "string",
+      "label": "JDBC driver class",
+      "required": true,
+      "help": "Fully-qualified Java class — oracle.jdbc.OracleDriver · com.microsoft.sqlserver.jdbc.SQLServerDriver · etc."
+    },
+    "jarPath": {
+      "type": "string",
+      "label": "Driver JAR path",
+      "required": true,
+      "help": "Absolute path to the .jar file (or a directory of jars)."
+    },
+    "username": { "type": "string", "label": "Username" },
+    "password": {
+      "type": "string",
+      "label": "Password",
+      "widget": "password",
+      "help": "Supports ${ENV_VAR} interpolation."
+    },
+    "table": {
+      "type": "string",
+      "label": "Target table",
+      "required": true,
+      "help": "Schema-qualify if needed (e.g. analytics.orders)."
+    },
+    "mode": {
+      "type": "enum",
+      "label": "Write mode",
+      "enumValues": ["append", "truncate_then_append", "drop_and_create"],
+      "default": "append",
+      "required": true,
+      "help": "append = INSERT only · truncate_then_append = TRUNCATE then INSERT · drop_and_create = DROP then CREATE TABLE then INSERT"
+    },
+    "batchSize": {
+      "type": "integer",
+      "label": "Batch size",
+      "default": 1000,
+      "min": 1,
+      "max": 100000,
+      "help": "Rows per JDBC executemany() call. Higher = faster but more memory."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["export", "sink", "database", "jdbc", "java"]
+}

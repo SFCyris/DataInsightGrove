@@ -1,0 +1,81 @@
+{
+  "id": "dbscan",
+  "version": "1.0.0",
+  "label": "\ud83c\udf0c DBSCAN clustering",
+  "description": "Density-based clustering \u2014 finds clusters of arbitrary shape and labels low-density points as noise (cluster id = -1). Adds a 'cluster' column and renders a scatter.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Feature columns",
+      "columnFrom": "in"
+    },
+    "eps": {
+      "type": "number",
+      "label": "\u03b5 (eps) \u2014 neighborhood radius",
+      "default": 0.5,
+      "min": 0.0001,
+      "max": 100,
+      "help": "Two points are neighbors if their distance is below \u03b5. Run on standardized data: 0.3\u20130.8 is a typical starting range."
+    },
+    "min_samples": {
+      "type": "integer",
+      "label": "Min samples",
+      "default": 5,
+      "min": 2,
+      "help": "Minimum points within \u03b5 for a point to be considered a core point. Heuristic: dim\u00d72."
+    },
+    "scale": {
+      "type": "boolean",
+      "label": "Standardize features",
+      "default": true
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "cluster"
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render scatter plot",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "DBSCAN clusters"
+    }
+  },
+  "preview": {
+    "rowImpact": "preserves",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "clustering",
+    "dbscan",
+    "density"
+  ]
+}

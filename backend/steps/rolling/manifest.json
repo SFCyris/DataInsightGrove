@@ -1,0 +1,35 @@
+{
+  "id": "rolling",
+  "version": "1.0.0",
+  "label": "🌊 Rolling window",
+  "description": "Add rolling-window aggregations (moving average, rolling sum, etc.) over a sorted time series. Common for smoothing noisy metrics or computing cumulative trends.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "time_column": {
+      "type": "column_ref",
+      "label": "Time column",
+      "columnFrom": "in",
+      "help": "Sort by this before rolling. Optional — if blank, rolls over the existing row order."
+    },
+    "windows": {
+      "type": "array",
+      "label": "Windows",
+      "required": true,
+      "help": "List of {column, fn, window, as} where fn ∈ mean|sum|min|max|std|count and window is e.g. 7 (rows) or '7d' (time-based, requires time_column)."
+    },
+    "min_periods": {
+      "type": "integer",
+      "label": "Minimum periods",
+      "default": 1,
+      "min": 1,
+      "help": "Smallest number of observations needed to emit a value; below this, the rolling output is null."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["time-series", "rolling", "moving-average", "smoothing"]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "extract_pattern",
+  "version": "1.0.0",
+  "label": "🎯 Extract pattern",
+  "description": "Extract a regex group from a string column into a new column. Group 0 = whole match.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": { "type": "column_ref", "label": "Source column", "columnFrom": "in", "required": true },
+    "pattern":{ "type": "regex", "label": "Regex", "required": true,
+                "help": "e.g. ([A-Z]{2}) — group 1 captures two uppercase letters" },
+    "group":  { "type": "integer", "label": "Capture group", "default": 1, "min": 0, "max": 9 },
+    "as":     { "type": "string", "label": "New column name", "required": true }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["string", "regex", "extract"]
+}

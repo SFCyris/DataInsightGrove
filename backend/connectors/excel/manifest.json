@@ -1,0 +1,22 @@
+{
+  "id": "excel",
+  "version": "1.0.0",
+  "label": "📑 Excel",
+  "description": "Read and write Microsoft Excel workbooks (.xlsx).",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["xlsx"],
+  "options": {
+    "sheet": {
+      "type": "string",
+      "label": "Sheet name",
+      "help": "Defaults to the first sheet."
+    },
+    "header": {
+      "type": "boolean",
+      "label": "First row is header",
+      "default": true
+    }
+  },
+  "tags": ["spreadsheet"]
+}

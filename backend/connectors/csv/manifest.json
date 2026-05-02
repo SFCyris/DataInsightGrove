@@ -1,0 +1,34 @@
+{
+  "id": "csv",
+  "version": "1.0.0",
+  "label": "📄 CSV",
+  "description": "Read and write delimited text files (CSV, TSV).",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["csv", "tsv", "txt"],
+  "options": {
+    "delimiter": {
+      "type": "string",
+      "label": "Delimiter",
+      "default": ",",
+      "help": "Single character separating fields. Use \\t for tab."
+    },
+    "header": {
+      "type": "boolean",
+      "label": "First row is header",
+      "default": true
+    },
+    "encoding": {
+      "type": "enum",
+      "label": "Encoding",
+      "enumValues": ["utf-8", "utf-8-sig", "latin-1", "windows-1252"],
+      "default": "utf-8"
+    },
+    "nullValues": {
+      "type": "array",
+      "label": "Treat as null",
+      "items": { "type": "string", "label": "value" }
+    }
+  },
+  "tags": ["text", "tabular"]
+}

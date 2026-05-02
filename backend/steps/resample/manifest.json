@@ -1,0 +1,47 @@
+{
+  "id": "resample",
+  "version": "1.0.0",
+  "label": "⏱ Resample (time bucket aggregate)",
+  "description": "Bucket rows into fixed time intervals (e.g. 1d, 1h, 15m) and aggregate. Equivalent to a SQL date_trunc + group by, but with explicit interval semantics and gap-filling.",
+  "category": "aggregate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "time_column": {
+      "type": "column_ref",
+      "label": "Time column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "interval": {
+      "type": "string",
+      "label": "Interval",
+      "default": "1d",
+      "required": true,
+      "help": "Polars-style: 1d (daily), 1h (hourly), 15m, 1mo, 1y, 30s, etc."
+    },
+    "aggregations": {
+      "type": "array",
+      "label": "Aggregations",
+      "required": true,
+      "help": "List of {column, fn, as} where fn ∈ sum|mean|median|min|max|count|std|first|last."
+    },
+    "fill_gaps": {
+      "type": "boolean",
+      "label": "Fill empty buckets",
+      "default": true,
+      "help": "Insert empty rows for time intervals where no data exists (preferred for charting)."
+    },
+    "fill_value": {
+      "type": "string",
+      "label": "Fill value for empty buckets",
+      "default": "null",
+      "help": "Use 'null' or '0'. Numeric agg columns get this; non-numeric stay null."
+    }
+  },
+  "preview": { "rowImpact": "unknown", "schemaImpact": "rebuilds" },
+  "tags": ["time-series", "aggregate", "resample", "bucketize"]
+}

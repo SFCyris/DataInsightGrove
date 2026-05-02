@@ -1,0 +1,28 @@
+{
+  "id": "expectations",
+  "version": "1.0.0",
+  "label": "✅ Data quality expectations",
+  "description": "Assert data quality rules (column.unique, column.in [...], column.between, row_count.between, etc). Each violation surfaces in the run's artifacts panel; failures can optionally fail the run.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "rules": {
+      "type": "array",
+      "label": "Rules",
+      "required": true,
+      "help": "List of objects: {kind, column?, args} where kind ∈ unique | not_null | between | in | regex_match | row_count_between."
+    },
+    "fail_on_violation": {
+      "type": "boolean",
+      "label": "Fail run on any violation",
+      "default": false,
+      "help": "If true, the step raises an error and the run is marked failed when any rule reports a violation."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["dq", "data-quality", "expectations", "validation"]
+}

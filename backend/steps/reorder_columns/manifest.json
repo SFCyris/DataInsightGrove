@@ -1,0 +1,22 @@
+{
+  "id": "reorder_columns",
+  "version": "1.0.0",
+  "label": "↔️ Reorder columns",
+  "description": "Reorder the columns of the input. The 'order' list is the explicit final left-to-right column order. Columns that exist in the input but aren't listed are appended at the end (preserving their input order); listed columns that don't exist in the input are skipped — so the step stays robust when upstream schemas change.",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "order": {
+      "type": "column_refs",
+      "label": "Column order (left to right)",
+      "columnFrom": "in",
+      "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["reorder", "rearrange", "move", "order"]
+}

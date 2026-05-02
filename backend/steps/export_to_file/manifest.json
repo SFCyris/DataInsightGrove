@@ -1,0 +1,35 @@
+{
+  "id": "export_to_file",
+  "version": "1.0.0",
+  "label": "💾 Export to file",
+  "description": "Write the data to disk in CSV, Parquet, Excel, JSON, or NDJSON. The file lands at data/outputs/<run>/<name> by default.",
+  "category": "output",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "format": {
+      "type": "enum",
+      "label": "Format",
+      "enumValues": ["parquet", "csv", "tsv", "excel", "json", "ndjson"],
+      "default": "parquet",
+      "required": true
+    },
+    "path": {
+      "type": "string",
+      "label": "Path",
+      "help": "Absolute path, or just a filename (writes under data/outputs/<run>/). Leave blank to auto-name."
+    },
+    "compression": {
+      "type": "enum",
+      "label": "Compression",
+      "enumValues": ["zstd", "snappy", "gzip", "uncompressed"],
+      "default": "zstd",
+      "visibleWhen": { "format": "parquet" }
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["export", "sink", "file"]
+}

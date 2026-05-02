@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 680" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <style>
+    .title { font-weight: 700; font-size: 16px; fill: #0f172a; }
+    .json  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; fill: #0f172a; }
+    .key   { fill: #2563eb; font-weight: 600; }
+    .str   { fill: #16a34a; }
+    .num   { fill: #d97706; }
+    .bool  { fill: #db2777; font-weight: 600; }
+    .com   { fill: #475569; font-style: italic; }
+    .arrow { stroke: #2563eb; stroke-width: 1.4; fill: none; marker-end: url(#a5); }
+    .panel { fill: #fffbeb; stroke: #d97706; stroke-width: 1; rx: 6; ry: 6; }
+    .panel2{ fill: #ecfdf5; stroke: #16a34a; stroke-width: 1; rx: 6; ry: 6; }
+    .lbl   { font-size: 11px; fill: #475569; }
+    .h     { font-weight: 600; font-size: 12px; fill: #0f172a; }
+  </style>
+  <defs>
+    <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+    </marker>
+  </defs>
+
+  <text x="20" y="28" class="title">Anatomy of a step manifest.json (annotated)</text>
+
+  <!-- Manifest text on the left -->
+  <g class="json" transform="translate(20, 60)">
+    <text x="0" y="14" class="com">{</text>
+    <text x="20" y="32"><tspan class="key">"id"</tspan>: <tspan class="str">"round_to_n"</tspan>,</text>
+    <text x="20" y="50"><tspan class="key">"version"</tspan>: <tspan class="str">"1.0.0"</tspan>,</text>
+    <text x="20" y="68"><tspan class="key">"label"</tspan>: <tspan class="str">"🎯 Round numeric"</tspan>,</text>
+    <text x="20" y="86"><tspan class="key">"description"</tspan>: <tspan class="str">"Round a numeric column to N decimal places."</tspan>,</text>
+    <text x="20" y="104"><tspan class="key">"category"</tspan>: <tspan class="str">"clean"</tspan>,</text>
+    <text x="20" y="126"><tspan class="key">"engine"</tspan>: {</text>
+    <text x="40" y="144"><tspan class="key">"primary"</tspan>: <tspan class="str">"sql"</tspan>,</text>
+    <text x="40" y="162"><tspan class="key">"browser"</tspan>: <tspan class="str">"sql"</tspan>,</text>
+    <text x="40" y="180"><tspan class="key">"deterministic"</tspan>: <tspan class="bool">true</tspan></text>
+    <text x="20" y="198">},</text>
+    <text x="20" y="220"><tspan class="key">"io"</tspan>: {</text>
+    <text x="40" y="238"><tspan class="key">"inputs"</tspan>:  { <tspan class="key">"min"</tspan>: <tspan class="num">1</tspan>, <tspan class="key">"max"</tspan>: <tspan class="num">1</tspan> },</text>
+    <text x="40" y="256"><tspan class="key">"outputs"</tspan>: { <tspan class="key">"min"</tspan>: <tspan class="num">1</tspan>, <tspan class="key">"max"</tspan>: <tspan class="num">1</tspan> }</text>
+    <text x="20" y="274">},</text>
+    <text x="20" y="296"><tspan class="key">"params"</tspan>: {</text>
+    <text x="40" y="314"><tspan class="key">"column"</tspan>: {</text>
+    <text x="60" y="332"><tspan class="key">"type"</tspan>: <tspan class="str">"column_ref"</tspan>,</text>
+    <text x="60" y="350"><tspan class="key">"label"</tspan>: <tspan class="str">"Column"</tspan>,</text>
+    <text x="60" y="368"><tspan class="key">"columnTypes"</tspan>: [<tspan class="str">"double"</tspan>, <tspan class="str">"float"</tspan>],</text>
+    <text x="60" y="386"><tspan class="key">"required"</tspan>: <tspan class="bool">true</tspan></text>
+    <text x="40" y="404">},</text>
+    <text x="40" y="422"><tspan class="key">"decimals"</tspan>: {</text>
+    <text x="60" y="440"><tspan class="key">"type"</tspan>: <tspan class="str">"integer"</tspan>,</text>
+    <text x="60" y="458"><tspan class="key">"label"</tspan>: <tspan class="str">"Decimal places"</tspan>,</text>
+    <text x="60" y="476"><tspan class="key">"default"</tspan>: <tspan class="num">2</tspan>,</text>
+    <text x="60" y="494"><tspan class="key">"min"</tspan>: <tspan class="num">0</tspan>, <tspan class="key">"max"</tspan>: <tspan class="num">10</tspan></text>
+    <text x="40" y="512">}</text>
+    <text x="20" y="530">},</text>
+    <text x="20" y="552"><tspan class="key">"preview"</tspan>: {</text>
+    <text x="40" y="570"><tspan class="key">"rowImpact"</tspan>: <tspan class="str">"preserves"</tspan>,</text>
+    <text x="40" y="588"><tspan class="key">"schemaImpact"</tspan>: <tspan class="str">"preserves"</tspan></text>
+    <text x="20" y="606">},</text>
+    <text x="20" y="624"><tspan class="key">"tags"</tspan>: [<tspan class="str">"numeric"</tspan>, <tspan class="str">"clean"</tspan>]</text>
+    <text x="0" y="642">}</text>
+  </g>
+
+  <!-- Annotations on the right -->
+  <line class="arrow" x1="370" y1="32" x2="490" y2="80" />
+  <rect class="panel" x="490" y="60" width="410" height="44" />
+  <text x="500" y="78" class="h">id</text>
+  <text x="500" y="94" class="lbl">snake_case, unique. Used as the `step` field in pipeline nodes.</text>
+
+  <line class="arrow" x1="370" y1="68" x2="490" y2="120" />
+  <rect class="panel" x="490" y="110" width="410" height="44" />
+  <text x="500" y="128" class="h">label · description · category</text>
+  <text x="500" y="144" class="lbl">Drive how the step appears in the UI library + tooltips. Convention: emoji-prefix.</text>
+
+  <line class="arrow" x1="370" y1="155" x2="490" y2="180" />
+  <rect class="panel" x="490" y="170" width="410" height="68" />
+  <text x="500" y="188" class="h">engine</text>
+  <text x="500" y="204" class="lbl">primary = sql / polars / python (pick one)</text>
+  <text x="500" y="220" class="lbl">browser = sql / js / none — set to "sql" for free DuckDB-WASM preview</text>
+  <text x="500" y="236" class="lbl">deterministic = true means same input + params → same output</text>
+
+  <line class="arrow" x1="370" y1="247" x2="490" y2="270" />
+  <rect class="panel" x="490" y="252" width="410" height="44" />
+  <text x="500" y="270" class="h">io</text>
+  <text x="500" y="286" class="lbl">How many ports? Default is 1 in / 1 out. Use `ports: ["left","right"]` for joins.</text>
+
+  <line class="arrow" x1="370" y1="350" x2="490" y2="340" />
+  <rect class="panel2" x="490" y="305" width="410" height="115" />
+  <text x="500" y="324" class="h">params · column_ref</text>
+  <text x="500" y="340" class="lbl">Tells the UI: "render a column picker, populated from input port `in`,</text>
+  <text x="500" y="356" class="lbl">filtered to numeric columns only."</text>
+  <text x="500" y="376" class="lbl">type can be: string, number, integer, boolean, enum,</text>
+  <text x="500" y="392" class="lbl">column_ref, column_refs, expression, regex, object, array.</text>
+  <text x="500" y="412" class="lbl">columnTypes filters by logical type (string, integer, double, date, …).</text>
+
+  <line class="arrow" x1="370" y1="455" x2="490" y2="445" />
+  <rect class="panel2" x="490" y="430" width="410" height="60" />
+  <text x="500" y="448" class="h">params · integer with min/max + default</text>
+  <text x="500" y="464" class="lbl">UI renders a number input with the bounds; defaults pre-fill on add.</text>
+  <text x="500" y="480" class="lbl">Use `visibleWhen: { other: value }` to hide a param conditionally.</text>
+
+  <line class="arrow" x1="370" y1="570" x2="490" y2="540" />
+  <rect class="panel" x="490" y="510" width="410" height="60" />
+  <text x="500" y="528" class="h">preview</text>
+  <text x="500" y="544" class="lbl">UI hint: rowImpact = preserves|may_reduce|may_grow|unknown</text>
+  <text x="500" y="560" class="lbl">           schemaImpact = preserves|modifies|rebuilds|unknown</text>
+
+  <line class="arrow" x1="370" y1="624" x2="490" y2="600" />
+  <rect class="panel" x="490" y="580" width="410" height="38" />
+  <text x="500" y="598" class="h">tags</text>
+  <text x="500" y="612" class="lbl">Free-form. Used by the step library's search box.</text>
+</svg>

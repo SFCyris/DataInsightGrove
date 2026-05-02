@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DataInsightGrove
+GenericName=Data Preparation
+Comment=Self-hosted data preparation — DIG
+Exec=__DIG_LAUNCHER__ %u
+Icon=__DIG_ICON__
+Terminal=false
+Categories=Science;DataVisualization;Database;
+Keywords=data;preparation;wrangling;ETL;CSV;parquet;analysis;
+StartupNotify=true
+StartupWMClass=DataInsightGrove

@@ -1,0 +1,22 @@
+{
+  "id": "extract_date_parts",
+  "version": "1.0.0",
+  "label": "📅 Extract date parts",
+  "description": "Pull year, month, day, day-of-week (etc.) out of a date or timestamp into new columns.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": { "type": "column_ref", "label": "Date column", "columnFrom": "in", "required": true,
+                "columnTypes": ["date", "datetime"] },
+    "parts":  { "type": "array", "label": "Parts to extract",
+                "items": { "type": "enum", "label": "Part",
+                           "enumValues": ["year","quarter","month","week","day","dayofweek","hour","minute","second"] } },
+    "prefix": { "type": "string", "label": "Output column prefix", "default": "" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["date", "time", "extract"]
+}

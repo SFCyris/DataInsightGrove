@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datainsightgrove.local/schemas/pipeline.v1.json",
+  "title": "DIG Pipeline",
+  "description": "A DIG Pipeline is a directed acyclic graph (DAG) of transform steps over one or more datasets, plus zero or more named outputs. The DAG is implicit: every node declares its inputs as references to dataset ids or upstream node ids; the reference list is the edge list. Pipelines are portable across the in-browser executor (DuckDB-WASM) and the backend executor (DuckDB / Polars).",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "datasets", "nodes", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Pipeline format version. Bumped on breaking changes; readers should refuse unknown versions."
+    },
+    "id": {
+      "type": "string",
+      "description": "ULID of the pipeline."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "description": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "datasets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/datasetSpec" },
+      "description": "Source datasets. Referenced by node inputs."
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" },
+      "description": "Steps in the pipeline. Order is irrelevant for execution (DAG is topologically sorted) but UI implementations may persist edit order."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/outputSpec" },
+      "description": "Named outputs of the pipeline. Each output references a node port and optionally a sink connector for materialization."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form metadata. Common keys: engineHints, annotations."
+    },
+    "webhooks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/webhook" },
+      "description": "Outbound webhooks fired when a run reaches a terminal status (succeeded/failed). DIG POSTs a JSON payload describing the run; the receiver can chain external workflows (Slack, n8n, GitHub Actions, etc.) off of pipeline completion."
+    }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "required": ["ref"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Id of a dataset or upstream node."
+        },
+        "port": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Output port name on the referenced node. Defaults to the first declared output port."
+        }
+      }
+    },
+    "datasetSpec": {
+      "type": "object",
+      "required": ["id", "connector", "uri"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable identifier within this pipeline. Referenced by node inputs."
+        },
+        "connector": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "connectorVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "uri": { "type": "string" },
+        "options": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Connector-specific options validated against the connector manifest's options spec."
+        },
+        "label": { "type": "string" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "step", "stepVersion", "inputs", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable identifier within the pipeline. Referenced by downstream nodes and outputs."
+        },
+        "step": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Step type identifier matching a registered manifest's id."
+        },
+        "stepVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Pinned step version for reproducibility."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Map of input port name -> reference. Single-input steps conventionally use port 'in'.",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": { "$ref": "#/$defs/reference" }
+          },
+          "additionalProperties": false
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "minItems": 1,
+          "description": "Declared output port names. Conventionally ['out'] for single-output steps."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Step parameters validated against the step manifest's params spec."
+        },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "label": { "type": "string" }
+          },
+          "description": "Layout/visual hints. Stored in the pipeline so layout is portable, but kept separate from semantics."
+        }
+      }
+    },
+    "outputSpec": {
+      "type": "object",
+      "required": ["id", "name", "from"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "from": { "$ref": "#/$defs/reference" },
+        "sink": {
+          "type": "object",
+          "required": ["connector", "uri"],
+          "additionalProperties": false,
+          "properties": {
+            "connector": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+            "connectorVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+            "uri": { "type": "string" },
+            "options": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "description": "Optional materialization target. Without a sink the output is yielded in-memory only."
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Endpoint to POST the run-completion payload to. https:// recommended; http:// allowed for loopback / LAN integrations."
+        },
+        "on": {
+          "type": "string",
+          "enum": ["always", "succeeded", "failed", "triggered"],
+          "default": "always",
+          "description": "When this webhook fires. 'always' covers both succeeded and failed terminal status; 'triggered' never auto-fires — it only fires when an in-pipeline `webhook_trigger` step invokes it explicitly."
+        },
+        "secret": {
+          "type": "string",
+          "description": "Optional shared secret. When set, DIG sends an X-DIG-Signature: sha256=... header with HMAC-SHA256 of the request body so the receiver can verify authenticity."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Extra HTTP headers to send (e.g. Authorization tokens for the receiver)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label for UI display."
+        }
+      },
+      "description": "Outbound notification fired on run completion. The POST body is a JSON object: { runId, pipelineId, pipelineName, status, startedAt, finishedAt, elapsedMs, error?, outputs?, artifacts? }."
+    }
+  }
+}

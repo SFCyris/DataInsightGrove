@@ -1,0 +1,110 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+build/
+dist/
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Data and runtime artifacts
+data/
+*.parquet
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+generated/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------------
+# Internal-only docs and notes — kept locally, NOT pushed to GitHub.
+#
+# Single directory boundary makes "is this public or private?" trivial to
+# audit: anything under internal/ is private; everything else is public.
+# See internal/README.md for the convention. Public docs MUST NOT link
+# into internal/ paths.
+# ---------------------------------------------------------------------------
+internal/
+
+# Legacy docs/ paths — kept as a safety net in case an old branch / clone
+# still has the files in their previous location. Once everyone has moved
+# to internal/ these can be deleted.
+docs/DECISIONS/
+docs/TERMINOLOGY_AND_IP.md
+docs/PROVENANCE.md
+docs/REVIEW_FINDINGS.md
+
+# Original placeholder note (personal scratch)
+idea.txt
+
+# Local-only Claude / Cursor / Continue working files
+.claude/
+.cursor/
+.continue/
+CLAUDE.md
+AGENTS.md
+frontend/CLAUDE.md
+frontend/AGENTS.md
+backend/CLAUDE.md
+backend/AGENTS.md
+
+# Local PID / config files written by start.sh / stop.sh / restart.sh
+# (these live in $XDG_CONFIG_HOME/dig/ on the developer's machine, but if
+#  someone symlinks them in the repo for testing, don't push them)
+pid.json
+
+# Local-run artifacts
+e2e_results.json
+scripts/e2e_results.json
+.next/dev/
+
+# Local memory / planning files
+memory/
+plans/
+
+# DuckDB-WASM bundles are copied from node_modules at install/build time
+# by scripts/copy-duckdb-wasm.mjs — they don't belong in git.
+frontend/public/duckdb-wasm/
+
+# macOS resource forks + extended attribute dumps
+._*

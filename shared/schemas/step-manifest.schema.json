@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datainsightgrove.local/schemas/step-manifest.v1.json",
+  "title": "DIG Step Manifest",
+  "description": "Manifest for a step plugin. Each step is a folder under backend/steps/<id>/ containing manifest.json plus a Python implementation. The manifest drives plugin registration and UI form generation; param specs are read by the frontend to render parameter editors.",
+  "type": "object",
+  "required": ["id", "version", "label", "category", "engine", "io", "params"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable, unique identifier. snake_case. Used in pipeline node 'step' field."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this step's behavior. Pipelines pin a stepVersion for reproducibility."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60,
+      "description": "Human-readable display name shown in the step library and on canvas nodes."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "One-paragraph description. Surfaced as tooltip and step-library detail."
+    },
+    "category": {
+      "enum": ["ingest", "shape", "clean", "derive", "combine", "aggregate", "model", "output", "custom"],
+      "description": "Coarse grouping for the step library. `model` covers statistical / ML / forecasting steps."
+    },
+    "engine": {
+      "type": "object",
+      "required": ["primary"],
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "enum": ["sql", "polars", "python"],
+          "description": "Backend execution mode. 'sql' compiles to a DuckDB SQL fragment; 'polars' calls a Polars Python implementation; 'python' is a generic Python implementation."
+        },
+        "browser": {
+          "enum": ["sql", "js", "none"],
+          "default": "none",
+          "description": "Browser execution mode. 'sql' runs the same SQL fragment under DuckDB-WASM; 'js' runs a JavaScript mirror implementation; 'none' forces backend execution. See docs/PIPELINE_FORMAT.md for the parity contract."
+        },
+        "deterministic": {
+          "type": "boolean",
+          "default": true,
+          "description": "True if the step always produces the same output for the same input + params. False steps cannot be browser-runnable."
+        }
+      }
+    },
+    "io": {
+      "type": "object",
+      "required": ["inputs", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": ["integer", "null"] },
+            "ports": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "description": "Named input ports (e.g. ['left','right'] for a join). Optional; defaults to ['in'] for single-input steps."
+            }
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "integer", "minimum": 1 },
+            "max": { "type": ["integer", "null"] },
+            "ports": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "description": "Named output ports. Defaults to ['out'] for single-output steps."
+            }
+          }
+        }
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "Parameter spec map. Keys are param names; values are paramSpec entries that drive UI form generation.",
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9_]*$": { "$ref": "#/$defs/paramSpec" }
+      },
+      "additionalProperties": false
+    },
+    "preview": {
+      "type": "object",
+      "description": "Hints used by the UI to render row/schema-impact badges before execution.",
+      "additionalProperties": false,
+      "properties": {
+        "rowImpact": {
+          "enum": ["preserves", "may_reduce", "may_grow", "unknown"]
+        },
+        "schemaImpact": {
+          "enum": ["preserves", "modifies", "rebuilds", "unknown"]
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Free-form tags for search."
+    }
+  },
+  "$defs": {
+    "paramSpec": {
+      "type": "object",
+      "required": ["type", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "string", "number", "integer", "boolean", "enum",
+            "column_ref", "column_refs", "expression", "regex",
+            "object", "array"
+          ],
+          "description": "Logical parameter type. column_ref/column_refs are first-class — the UI populates a picker from the upstream node's inferred output schema."
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "help": { "type": "string" },
+        "required": { "type": "boolean", "default": false },
+        "default": {},
+        "enumValues": {
+          "type": "array",
+          "items": { "type": ["string", "number"] },
+          "description": "For type=='enum': allowed values."
+        },
+        "columnFrom": {
+          "type": "string",
+          "description": "For column_ref/column_refs: input port id whose schema feeds this picker. Defaults to 'in'."
+        },
+        "columnTypes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "For column_ref/column_refs: filter the picker to columns of these logical types (e.g. ['integer','double'])."
+        },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern (validation) for type=='string'."
+        },
+        "items": { "$ref": "#/$defs/paramSpec" },
+        "properties": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/paramSpec" }
+        },
+        "visibleWhen": {
+          "type": "object",
+          "description": "Show this param only when sibling params equal the given values. Equality only — no expressions.",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        "widget": {
+          "type": "string",
+          "description": "Optional UI hint requesting a richer editor than the default for this paramSpec.type. Frontend may ignore unknown values. Examples: 'filter_builder', 'expression_builder', 'list_input'."
+        }
+      }
+    }
+  }
+}

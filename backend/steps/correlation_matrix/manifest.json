@@ -1,0 +1,67 @@
+{
+  "id": "correlation_matrix",
+  "version": "1.0.0",
+  "label": "\ud83d\udcca Correlation matrix",
+  "description": "Pairwise correlation between numeric columns. Outputs a long-form table (col_a, col_b, r) and renders a heatmap as a side-effect artifact.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Columns",
+      "columnFrom": "in",
+      "help": "Numeric columns to correlate. Empty = all numeric columns."
+    },
+    "method": {
+      "type": "enum",
+      "label": "Method",
+      "enumValues": [
+        "pearson",
+        "spearman",
+        "kendall"
+      ],
+      "default": "pearson",
+      "required": true
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render heatmap",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "Correlation matrix"
+    }
+  },
+  "preview": {
+    "rowImpact": "may_reduce",
+    "schemaImpact": "rebuilds"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "correlation",
+    "exploratory"
+  ]
+}

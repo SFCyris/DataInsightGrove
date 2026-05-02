@@ -1,0 +1,87 @@
+{
+  "id": "tsne",
+  "version": "1.0.0",
+  "label": "\ud83c\udf20 t-SNE (2-D embedding)",
+  "description": "t-distributed Stochastic Neighbor Embedding \u2014 non-linear dimensionality reduction great for visualizing high-dimensional clusters. Adds tSNE_1 / tSNE_2 columns and renders a scatter.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Feature columns",
+      "columnFrom": "in"
+    },
+    "perplexity": {
+      "type": "number",
+      "label": "Perplexity",
+      "default": 30,
+      "min": 5,
+      "max": 100,
+      "help": "Roughly: number of nearest neighbors per point. 5\u201350 is common; higher for larger datasets."
+    },
+    "max_rows": {
+      "type": "integer",
+      "label": "Max rows (sampled)",
+      "default": 5000,
+      "min": 100,
+      "max": 50000,
+      "help": "t-SNE is O(n\u00b2); above ~10k points is impractical. Larger samples are downsampled."
+    },
+    "scale": {
+      "type": "boolean",
+      "label": "Standardize features",
+      "default": true
+    },
+    "seed": {
+      "type": "integer",
+      "label": "Random seed",
+      "default": 42
+    },
+    "color_by": {
+      "type": "column_ref",
+      "label": "Color points by",
+      "columnFrom": "in"
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render scatter",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "t-SNE"
+    }
+  },
+  "preview": {
+    "rowImpact": "may_reduce",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "embedding",
+    "dimensionality-reduction",
+    "tsne"
+  ]
+}

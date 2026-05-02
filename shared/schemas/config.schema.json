@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datainsightgrove.local/schemas/config.v1.json",
+  "title": "DIG Configuration",
+  "description": "Persistent configuration for a local DIG install. Lives at $DIG_CONFIG, ~/.config/dig/config.json (Linux + macOS), or <repo>/dig.config.json (dev fallback). All fields optional; missing fields fall back to defaults.",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string", "default": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8080 }
+      }
+    },
+    "web": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string", "default": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3000 }
+      }
+    },
+    "dataDir": {
+      "type": ["string", "null"],
+      "description": "Where uploads, cached parquet, run outputs, and the metadata SQLite live. Null = <repo>/data/."
+    },
+    "logDir": {
+      "type": ["string", "null"],
+      "description": "Where dig-start.sh writes API + web logs. Null = system tmp dir."
+    },
+    "browserPreviewSampleRows": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Default sample size for in-browser preview when no per-pipeline override is set."
+    }
+  }
+}

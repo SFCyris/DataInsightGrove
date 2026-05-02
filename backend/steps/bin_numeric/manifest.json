@@ -1,0 +1,24 @@
+{
+  "id": "bin_numeric",
+  "version": "1.0.0",
+  "label": "📦 Bin numeric",
+  "description": "Bucket a numeric column into N equal-width bins, or into custom breakpoints.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": { "type": "column_ref", "label": "Numeric column", "columnFrom": "in", "required": true,
+                "columnTypes": ["integer", "double"] },
+    "mode":   { "type": "enum", "label": "Mode", "enumValues": ["equal_width", "custom_breaks"], "default": "equal_width" },
+    "bins":   { "type": "integer", "label": "Number of bins", "default": 5, "min": 2, "max": 100,
+                "visibleWhen": { "mode": "equal_width" } },
+    "breaks": { "type": "string", "label": "Breakpoints (comma-separated)", "help": "e.g. 0,100,500,1000",
+                "visibleWhen": { "mode": "custom_breaks" } },
+    "as":     { "type": "string", "label": "New column name", "default": "bin" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["bucket", "discretize", "histogram"]
+}

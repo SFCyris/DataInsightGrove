@@ -1,0 +1,75 @@
+{
+  "id": "pca",
+  "version": "1.0.0",
+  "label": "\ud83e\uddec PCA (dimensionality reduction)",
+  "description": "Principal Component Analysis \u2014 reduces N numeric columns to K orthogonal components ordered by variance explained. Adds PC1..PCK columns to the data and renders a 2-D scatter of the first two components.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Input columns",
+      "columnFrom": "in",
+      "help": "Numeric columns to project. Empty = all numeric columns."
+    },
+    "n_components": {
+      "type": "integer",
+      "label": "Number of components",
+      "default": 2,
+      "min": 2,
+      "max": 50
+    },
+    "scale": {
+      "type": "boolean",
+      "label": "Standardize (zero-mean, unit-variance)",
+      "default": true,
+      "help": "Strongly recommended unless your columns are already on the same scale."
+    },
+    "color_by": {
+      "type": "column_ref",
+      "label": "Color points by (in plot)",
+      "columnFrom": "in",
+      "help": "Optional categorical or numeric column used to color points in the rendered scatter."
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render 2-D scatter (PC1 \u00d7 PC2)",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "PCA"
+    }
+  },
+  "preview": {
+    "rowImpact": "preserves",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "dimensionality-reduction",
+    "pca"
+  ]
+}

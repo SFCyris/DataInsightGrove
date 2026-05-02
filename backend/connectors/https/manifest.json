@@ -1,0 +1,19 @@
+{
+  "id": "https",
+  "version": "1.0.0",
+  "label": "🌐 HTTPS",
+  "description": "Read CSV / Parquet / JSON from a public HTTPS URL. The file is downloaded once and cached locally.",
+  "kind": "source",
+  "uriSchemes": ["http", "https"],
+  "fileExtensions": ["csv", "parquet", "json", "jsonl"],
+  "options": {
+    "format": {
+      "type": "enum",
+      "label": "Format",
+      "enumValues": ["auto", "csv", "parquet", "json", "ndjson"],
+      "default": "auto",
+      "help": "Auto-detects from the URL extension."
+    }
+  },
+  "tags": ["http", "remote", "url"]
+}

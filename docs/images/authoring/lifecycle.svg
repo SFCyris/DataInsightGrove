@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 460" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <style>
+    .title { font-weight: 700; font-size: 16px; fill: #0f172a; }
+    .h     { font-weight: 600; fill: #ffffff; font-size: 13px; }
+    .code  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; fill: #ffffff; }
+    .lbl   { font-size: 11px; fill: #475569; }
+    .arrow { stroke: #0f172a; stroke-width: 2; fill: none; marker-end: url(#a4); }
+  </style>
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a" />
+    </marker>
+  </defs>
+
+  <text x="20" y="28" class="title">Plugin lifecycle — from "drop a folder" to "use it in a run"</text>
+
+  <!-- Step 1 -->
+  <rect x="20" y="60" width="200" height="100" rx="8" ry="8" fill="#0ea5e9" />
+  <text x="34" y="86" class="h">1️⃣ You: drop folder</text>
+  <text x="34" y="106" class="code">plugins/steps/my_step/</text>
+  <text x="34" y="124" class="code">  manifest.json</text>
+  <text x="34" y="142" class="code">  step.py</text>
+
+  <line class="arrow" x1="220" y1="110" x2="260" y2="110" />
+
+  <!-- Step 2 -->
+  <rect x="260" y="60" width="200" height="100" rx="8" ry="8" fill="#16a34a" />
+  <text x="274" y="86" class="h">2️⃣ Restart backend</text>
+  <text x="274" y="106" class="code">make restart</text>
+  <text x="274" y="124" class="code"># or DIG_RELOAD=1</text>
+  <text x="274" y="142" class="code"># auto-restarts on save</text>
+
+  <line class="arrow" x1="460" y1="110" x2="500" y2="110" />
+
+  <!-- Step 3 -->
+  <rect x="500" y="60" width="200" height="100" rx="8" ry="8" fill="#2563eb" />
+  <text x="514" y="86" class="h">3️⃣ DIG scans + validates</text>
+  <text x="514" y="106" class="code">StepRegistry.scan()</text>
+  <text x="514" y="124" class="code">→ JSON-schema check</text>
+  <text x="514" y="142" class="code">→ import step.py</text>
+
+  <line class="arrow" x1="700" y1="110" x2="740" y2="110" />
+
+  <!-- Step 4 -->
+  <rect x="740" y="60" width="160" height="100" rx="8" ry="8" fill="#7c3aed" />
+  <text x="754" y="86" class="h">4️⃣ Registered</text>
+  <text x="754" y="106" class="code">log: loaded step</text>
+  <text x="754" y="124" class="code">    my_step v1.0.0</text>
+  <text x="754" y="142" class="code">    (clean)</text>
+
+  <!-- Down -->
+  <line class="arrow" x1="820" y1="160" x2="820" y2="200" />
+
+  <!-- Step 5 -->
+  <rect x="700" y="200" width="200" height="100" rx="8" ry="8" fill="#db2777" />
+  <text x="714" y="226" class="h">5️⃣ Visible to UI</text>
+  <text x="714" y="246" class="code">GET /steps</text>
+  <text x="714" y="264" class="code">  ↳ shows your step</text>
+  <text x="714" y="282" class="code">      in step library</text>
+
+  <line class="arrow" x1="700" y1="250" x2="660" y2="250" />
+
+  <!-- Step 6 -->
+  <rect x="460" y="200" width="200" height="100" rx="8" ry="8" fill="#d97706" />
+  <text x="474" y="226" class="h">6️⃣ User adds to pipeline</text>
+  <text x="474" y="246" class="code">drag onto canvas</text>
+  <text x="474" y="264" class="code">→ params auto-rendered</text>
+  <text x="474" y="282" class="code">     from manifest</text>
+
+  <line class="arrow" x1="460" y1="250" x2="420" y2="250" />
+
+  <!-- Step 7 -->
+  <rect x="220" y="200" width="200" height="100" rx="8" ry="8" fill="#0891b2" />
+  <text x="234" y="226" class="h">7️⃣ User clicks ▶ Run</text>
+  <text x="234" y="246" class="code">JobManager.submit()</text>
+  <text x="234" y="264" class="code">→ schedules executor</text>
+  <text x="234" y="282" class="code">     in async task</text>
+
+  <line class="arrow" x1="220" y1="250" x2="180" y2="250" />
+
+  <!-- Step 8 -->
+  <rect x="20" y="200" width="160" height="100" rx="8" ry="8" fill="#16a34a" />
+  <text x="34" y="226" class="h">8️⃣ Your code runs</text>
+  <text x="34" y="246" class="code">step.to_sql(...)</text>
+  <text x="34" y="264" class="code">  OR</text>
+  <text x="34" y="282" class="code">step.execute_polars(...)</text>
+
+  <!-- Down -->
+  <line class="arrow" x1="100" y1="300" x2="100" y2="340" />
+
+  <!-- Final -->
+  <rect x="20" y="340" width="880" height="100" rx="8" ry="8" fill="#475569" />
+  <text x="34" y="366" class="h">9️⃣ Output lands in run record</text>
+  <text x="34" y="388" class="code">data/outputs/&lt;run_id&gt;/&lt;output_name&gt;.parquet</text>
+  <text x="34" y="406" class="code">runs.artifacts JSON column gets your side-effect artifacts (charts, CSVs, …)</text>
+  <text x="34" y="424" class="code">UI fetches via GET /runs/&lt;id&gt; and renders the artifact panel + grid below the canvas</text>
+</svg>

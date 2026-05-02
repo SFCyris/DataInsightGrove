@@ -1,0 +1,276 @@
+"""Render a Polars DataFrame as a static image (PNG / SVG).
+
+Uses matplotlib + seaborn — both stable, widely-installed, and produce
+publication-quality output without the bundle weight of plotly/bokeh.
+
+Chart picking ('auto' kind) is deliberately simple and explicit:
+  - 1 numeric column   → histogram
+  - 1 categorical col  → bar chart of value counts (top N)
+  - 2 num × num        → scatter
+  - 2 cat × num        → bar (mean per category)
+  - 3 num × num × num  → 3D scatter
+  - 3 with one cat key → heatmap (pivot)
+
+The `kind` param overrides this. Frontends can read step.params.kind == 'auto'
+and offer the explicit alternatives, or expose a dropdown.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import polars as pl
+
+from dig.engine.step import PolarsContext, PolarsResult, Step
+
+
+def _is_numeric(dtype: pl.DataType) -> bool:
+    name = str(dtype).lower()
+    return any(t in name for t in ("int", "float", "double", "decimal"))
+
+
+def _is_temporal(dtype: pl.DataType) -> bool:
+    name = str(dtype).lower()
+    return "date" in name or "time" in name
+
+
+def _pick_kind(df: pl.DataFrame, x: str | None, y: str | None, z: str | None, value: str | None) -> str:
+    """Heuristic chart picker for kind='auto'.
+
+    Looks at how many of (x, y, z, value) the user actually filled in plus the
+    column types to pick a sensible default.
+    """
+    cols = [c for c in (x, y, z, value) if c]
+    schema = df.schema
+
+    # 0 axes filled but data is 1-col → distribution of that col
+    if not cols and df.width >= 1:
+        only = df.columns[0]
+        return "histogram" if _is_numeric(schema[only]) else "bar_counts"
+
+    if len(cols) == 1:
+        c = cols[0]
+        return "histogram" if _is_numeric(schema[c]) else "bar_counts"
+
+    if len(cols) == 2:
+        a, b = cols
+        a_num = _is_numeric(schema[a])
+        b_num = _is_numeric(schema[b])
+        if a_num and b_num:
+            return "scatter"
+        if (a_num and not b_num) or (not a_num and b_num):
+            return "bar_counts"  # treat as cat × num — bar of agg
+        return "bar_counts"
+
+    if len(cols) >= 3:
+        if x and y and z and all(_is_numeric(schema[c]) for c in (x, y, z)):
+            return "scatter3d"
+        if x and y and value:
+            return "heatmap"
+        return "scatter"
+
+    return "histogram"
+
+
+class ExportToImageStep(Step):
+    def execute_polars(
+        self,
+        inputs: dict[str, pl.DataFrame],
+        params: dict[str, Any],
+        ctx: PolarsContext | None = None,
+    ) -> PolarsResult:
+        # Lazy imports so the rest of the engine doesn't need matplotlib at startup.
+        import matplotlib
+        matplotlib.use("Agg")  # no display server
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3d projection)
+
+        df = inputs["in"]
+        kind = (params.get("kind") or "auto").lower()
+
+        # Multi-y aliases in the manifest (visibleWhen-gated) all map to the
+        # same logical 'y' axis — collapse to one for the rendering code.
+        y = params.get("y") or params.get("y2") or params.get("y3") or params.get("y4") or params.get("y5")
+        x = params.get("x")
+        z = params.get("z")
+        value = params.get("value")
+
+        if kind == "auto":
+            kind = _pick_kind(df, x, y, z, value)
+
+        # Sample if needed — matplotlib chokes well below a million points.
+        max_points = int(params.get("max_points") or 50_000)
+        if df.height > max_points:
+            df = df.sample(n=max_points, seed=42)
+
+        title = params.get("title") or self.id
+
+        # Output path
+        path_param = (params.get("path") or "").strip()
+        fmt = (params.get("format") or "png").lower()
+        if path_param:
+            out_path = Path(path_param).expanduser()
+            if not out_path.is_absolute() and ctx is not None:
+                out_path = ctx.out_dir / out_path
+        else:
+            base = ctx.out_dir if ctx is not None else Path.cwd()
+            out_path = base / f"{self.id}.{fmt}"
+        if out_path.suffix == "":
+            out_path = out_path.with_suffix(f".{fmt}")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Figure setup
+        width = int(params.get("width") or 900)
+        height = int(params.get("height") or 600)
+        dpi = int(params.get("dpi") or 144)
+        fig_w = width / dpi
+        fig_h = height / dpi
+
+        sns.set_theme(style="whitegrid", context="notebook")
+
+        if kind == "scatter3d":
+            fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
+            ax = fig.add_subplot(111, projection="3d")
+            self._render_scatter3d(ax, df, x, y, z, value)
+        else:
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
+            renderer = {
+                "histogram":  self._render_histogram,
+                "bar_counts": self._render_bar_counts,
+                "scatter":    self._render_scatter,
+                "line":       self._render_line,
+                "hexbin":     self._render_hexbin,
+                "heatmap":    self._render_heatmap,
+            }.get(kind)
+            if renderer is None:
+                plt.close(fig)
+                raise ValueError(f"export_to_image: unknown kind '{kind}'")
+            renderer(ax, df, x, y, value)
+
+        ax.set_title(title)
+        fig.tight_layout()
+
+        if fmt == "svg":
+            fig.savefig(out_path, format="svg", bbox_inches="tight")
+        else:
+            fig.savefig(out_path, format="png", dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+
+        return PolarsResult(
+            output=df,
+            artifacts=[{
+                "kind": "image",
+                "format": fmt,
+                "path": str(out_path),
+                "width": width,
+                "height": height,
+                "chart": kind,
+                "rows_plotted": df.height,
+                "title": title,
+            }],
+        )
+
+    # ---- renderers ----
+
+    def _render_histogram(self, ax, df, x, y, value):
+        col = x or value or y or df.columns[0]
+        import seaborn as sns
+        sns.histplot(df.get_column(col).to_numpy(), kde=True, ax=ax)
+        ax.set_xlabel(col)
+        ax.set_ylabel("count")
+
+    def _render_bar_counts(self, ax, df, x, y, value):
+        col = x or y or value or df.columns[0]
+        counts = (
+            df.group_by(col).len()
+              .sort("len", descending=True)
+              .head(20)
+        )
+        labels = counts.get_column(col).cast(pl.Utf8).to_list()
+        vals = counts.get_column("len").to_list()
+        ax.barh(labels[::-1], vals[::-1])
+        ax.set_xlabel("count")
+        ax.set_ylabel(col)
+
+    def _render_scatter(self, ax, df, x, y, value):
+        if not x or not y:
+            raise ValueError("scatter needs both x and y")
+        xs = df.get_column(x).to_numpy()
+        ys = df.get_column(y).to_numpy()
+        kw = {}
+        if value and value in df.columns:
+            sizes = df.get_column(value).to_numpy()
+            kw["s"] = _normalise_sizes(sizes)
+            kw["c"] = sizes
+            kw["cmap"] = "viridis"
+            kw["alpha"] = 0.7
+        else:
+            kw["alpha"] = 0.6
+        sc = ax.scatter(xs, ys, **kw)
+        ax.set_xlabel(x); ax.set_ylabel(y)
+        if "c" in kw:
+            cb = ax.figure.colorbar(sc, ax=ax)
+            cb.set_label(value)
+
+    def _render_line(self, ax, df, x, y, value):
+        if not x or not y:
+            raise ValueError("line needs both x and y")
+        sub = df.sort(x)
+        ax.plot(sub.get_column(x).to_numpy(), sub.get_column(y).to_numpy())
+        ax.set_xlabel(x); ax.set_ylabel(y)
+
+    def _render_hexbin(self, ax, df, x, y, value):
+        if not x or not y:
+            raise ValueError("hexbin needs both x and y")
+        ax.hexbin(df.get_column(x).to_numpy(), df.get_column(y).to_numpy(), gridsize=40, cmap="Greens")
+        ax.set_xlabel(x); ax.set_ylabel(y)
+
+    def _render_heatmap(self, ax, df, x, y, value):
+        if not (x and y and value):
+            raise ValueError("heatmap needs x, y and value")
+        import numpy as np
+        import seaborn as sns
+        pivot = df.pivot(values=value, index=y, on=x, aggregate_function="mean").fill_null(0)
+        # Convert to a NumPy array + extract row/col labels for seaborn.
+        labels_y = pivot.get_column(y).cast(pl.Utf8).to_list()
+        cols_x = [c for c in pivot.columns if c != y]
+        mat = np.asarray(pivot.drop(y).to_numpy(), dtype=float)
+        sns.heatmap(mat, ax=ax, cmap="viridis",
+                    xticklabels=cols_x, yticklabels=labels_y, cbar_kws={"label": value})
+        ax.set_xlabel(x); ax.set_ylabel(y)
+
+    def _render_scatter3d(self, ax, df, x, y, z, value):
+        if not (x and y and z):
+            raise ValueError("scatter3d needs x, y and z")
+        xs = df.get_column(x).to_numpy()
+        ys = df.get_column(y).to_numpy()
+        zs = df.get_column(z).to_numpy()
+        kw = {"alpha": 0.7}
+        if value and value in df.columns:
+            cs = df.get_column(value).to_numpy()
+            kw["c"] = cs
+            kw["cmap"] = "viridis"
+        sc = ax.scatter(xs, ys, zs, **kw)
+        ax.set_xlabel(x); ax.set_ylabel(y); ax.set_zlabel(z)
+        if "c" in kw:
+            cb = ax.figure.colorbar(sc, ax=ax, shrink=0.7)
+            cb.set_label(value)
+
+
+def _normalise_sizes(arr):
+    """Map a numeric array to matplotlib marker sizes (10..200) for scatter."""
+    import numpy as np
+    a = np.asarray(arr, dtype=float)
+    a = a[~np.isnan(a)] if a.dtype.kind == "f" else a
+    if a.size == 0:
+        return 30
+    lo, hi = float(a.min()), float(a.max())
+    if hi == lo:
+        return 30
+    return 10 + (np.asarray(arr, dtype=float) - lo) / (hi - lo) * 190
+
+
+step = ExportToImageStep(json.loads((Path(__file__).parent / "manifest.json").read_text()))

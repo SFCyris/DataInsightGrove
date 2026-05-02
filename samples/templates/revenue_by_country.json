@@ -1,0 +1,44 @@
+{
+  "slug": "revenue_by_country",
+  "title": "📈 Revenue by country",
+  "summary": "Rollup of monthly revenue grouped by country, sorted high-to-low. The classic 'one number per category' question.",
+  "tags": ["aggregate", "rollup", "beginner"],
+  "needsSampleDataset": true,
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "📈 Revenue by country (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · customers" }
+    ],
+    "nodes": [
+      {
+        "id": "n_active", "step": "filter_rows", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } }, "outputs": ["out"],
+        "params": { "predicate": "\"status\" = 'active'" },
+        "ui": { "x": 280, "y": 100, "label": "🔍 Active customers" }
+      },
+      {
+        "id": "n_agg", "step": "group_aggregate", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_active" } }, "outputs": ["out"],
+        "params": {
+          "groupBy": ["country"],
+          "aggregates": [
+            { "fn": "sum", "column": "monthly_revenue", "as": "revenue" },
+            { "fn": "count", "as": "customers" }
+          ]
+        },
+        "ui": { "x": 540, "y": 100 }
+      },
+      {
+        "id": "n_sort", "step": "sort_rows", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_agg" } }, "outputs": ["out"],
+        "params": { "by": [{ "column": "revenue", "direction": "desc" }] },
+        "ui": { "x": 800, "y": 100 }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "revenue_by_country", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

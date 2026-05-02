@@ -1,0 +1,22 @@
+{
+  "id": "sqlite",
+  "version": "1.0.0",
+  "label": "🪶 SQLite",
+  "description": "Read a table or custom query from a local SQLite database file.",
+  "kind": "source",
+  "uriSchemes": ["file", "sqlite"],
+  "fileExtensions": ["sqlite", "db", "sqlite3"],
+  "options": {
+    "table": {
+      "type": "string",
+      "label": "Table name",
+      "help": "Reads SELECT * FROM <table>. Leave blank to use the custom query below."
+    },
+    "query": {
+      "type": "expression",
+      "label": "Custom SQL query",
+      "help": "Used when 'Table name' is empty. Executed verbatim against SQLite."
+    }
+  },
+  "tags": ["database", "sql"]
+}
