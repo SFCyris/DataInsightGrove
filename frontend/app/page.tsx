@@ -55,6 +55,18 @@ export default function Home() {
 
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const pipelines = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines });
+  const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
+
+  // Derive the displayed ports from the actual API base + the page's own
+  // origin. No hardcoded defaults — if the user reconfigures via
+  // `start.sh --api-port N --save` everything just reflects it.
+  const apiPort = (() => {
+    try { return new URL(API_BASE).port || (new URL(API_BASE).protocol === "https:" ? "443" : "80"); }
+    catch { return "?"; }
+  })();
+  const webPort = typeof window !== "undefined"
+    ? (window.location.port || (window.location.protocol === "https:" ? "443" : "80"))
+    : "?";
 
   // Suggest the tour for first-time visitors.
   useEffect(() => {
@@ -304,11 +316,11 @@ export default function Home() {
             transition={{ ...("transition" in fadeUp ? fadeUp.transition : {}), delay: 0.4 }}
             className="text-xs text-zinc-400/70 pt-6 border-t border-emerald-300/10 flex flex-wrap items-center gap-x-4 gap-y-1"
           >
-            <span>v0.0.1</span>
+            <span>v{health.data?.version ?? "—"}</span>
             <span>·</span>
-            <span>backend on :8080</span>
+            <span>backend on :{apiPort}</span>
             <span>·</span>
-            <span>web on :3000</span>
+            <span>web on :{webPort}</span>
             <span className="flex-1" />
             <ThemeToggle compact />
             {/* Tell first-time users the command palette exists. ⌘K is the

@@ -17,7 +17,7 @@ plugins/steps/upper_string/
 To verify it loaded:
 
 ```bash
-curl -s http://127.0.0.1:8080/steps | jq '.[] | select(.id=="upper_string")'
+curl -s http://127.0.0.1:8090/steps | jq '.[] | select(.id=="upper_string")'
 ```
 
 To use it in a pipeline, add a node like:

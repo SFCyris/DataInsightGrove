@@ -36,7 +36,7 @@ done
 # Resolve effective config to know which ports to scan as a fallback.
 EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export 2>/dev/null || true)"
 [[ -n "$EXPORT" ]] && eval "$EXPORT"
-API_PORT="${DIG_API_PORT:-8080}"
+API_PORT="${DIG_API_PORT:-8090}"
 WEB_PORT="${DIG_WEB_PORT:-3000}"
 
 # Read recorded PIDs from the PID file (if present).

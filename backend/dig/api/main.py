@@ -163,8 +163,12 @@ def run() -> None:
     """Entry point for `dig-api` console script and `python -m dig.api.main`."""
     import uvicorn
 
-    host = os.environ.get("DIG_HOST", "127.0.0.1")
-    port = int(os.environ.get("DIG_PORT", "8080"))
+    # Resolve host + port from the canonical chain (env → ~/.config/dig/config.json
+    # → built-in defaults). Single source of truth lives in dig._settings —
+    # do NOT inline a hardcoded fallback here.
+    from dig import _settings
+    host = _settings.api_host()
+    port = _settings.api_port()
     reload = os.environ.get("DIG_RELOAD", "0") == "1"
     token = os.environ.get("DIG_AUTH_TOKEN") or None
 

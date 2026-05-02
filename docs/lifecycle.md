@@ -58,7 +58,7 @@ After install, "DataInsightGrove" appears in your GNOME / KDE / XFCE application
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--api-port N` | `8080` | Backend port. Falls back to `DIG_API_PORT` env then config. |
+| `--api-port N` | `8090` | Backend port. Falls back to `DIG_API_PORT` env then config. |
 | `--web-port N` | `3000` | Frontend port. |
 | `--api-host H` | `127.0.0.1` | Bind address for the API (use `0.0.0.0` to expose on LAN). |
 | `--web-host H` | `127.0.0.1` | Bind address for the web. |
@@ -81,7 +81,7 @@ Schema: [`shared/schemas/config.schema.json`](../shared/schemas/config.schema.js
 ```json
 {
   "version": 1,
-  "api":  { "host": "127.0.0.1", "port": 8080 },
+  "api":  { "host": "127.0.0.1", "port": 8090 },
   "web":  { "host": "127.0.0.1", "port": 3000 },
   "dataDir": null,
   "logDir": null,
@@ -164,7 +164,7 @@ The Mac app **only** wraps the same shell scripts. No Mac-specific config, no Ma
 
 ## 🔐 Authentication + threat model
 
-DIG defaults to a **single-user, loopback-only** posture: `127.0.0.1:8080` for the API and `127.0.0.1:3000` for the web UI. In that mode no authentication is required because nothing reaches DIG except your own browser.
+DIG defaults to a **single-user, loopback-only** posture: `127.0.0.1:8090` for the API and `127.0.0.1:3000` for the web UI. In that mode no authentication is required because nothing reaches DIG except your own browser.
 
 If you want to expose DIG beyond loopback — running it on a remote dev box, a LAN-shared workstation, a VPN — you **must** set a bearer token first:
 

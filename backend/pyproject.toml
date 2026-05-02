@@ -10,13 +10,11 @@ keywords = [
   "data-preparation", "etl", "elt", "duckdb", "polars",
   "self-hosted", "plugin", "datainsightgrove", "dig",
 ]
-
-[project.urls]
-Homepage      = "https://github.com/SFCyris/DataInsightGrove"
-Repository    = "https://github.com/SFCyris/DataInsightGrove"
-Documentation = "https://github.com/SFCyris/DataInsightGrove/tree/main/docs"
-Issues        = "https://github.com/SFCyris/DataInsightGrove/issues"
-
+# `dependencies` MUST stay under [project] — TOML section headers are
+# sticky until the next [section]. Putting [project.urls] before this
+# would silently re-target it as project.urls.dependencies (a list under
+# URLs), which Hatchling rejects with "URL `dependencies` of field
+# `project.urls` must be a string". URLs section lives at the bottom now.
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
@@ -73,6 +71,12 @@ dev = [
 
 [project.scripts]
 dig-api = "dig.api.main:run"
+
+[project.urls]
+Homepage      = "https://github.com/SFCyris/DataInsightGrove"
+Repository    = "https://github.com/SFCyris/DataInsightGrove"
+Documentation = "https://github.com/SFCyris/DataInsightGrove/tree/main/docs"
+Issues        = "https://github.com/SFCyris/DataInsightGrove/issues"
 
 [build-system]
 requires = ["hatchling"]

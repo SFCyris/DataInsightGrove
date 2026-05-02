@@ -22,7 +22,7 @@ PY="$(command -v python3 || command -v python || true)"
 
 EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export 2>/dev/null || true)"
 [[ -n "$EXPORT" ]] && eval "$EXPORT"
-API="http://${DIG_API_HOST:-127.0.0.1}:${DIG_API_PORT:-8080}"
+API="http://${DIG_API_HOST:-127.0.0.1}:${DIG_API_PORT:-8090}"
 
 QUERY="${1:-}"
 SAMPLE=""

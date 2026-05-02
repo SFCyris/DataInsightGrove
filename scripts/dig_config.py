@@ -35,7 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULTS: dict[str, Any] = {
     "version": 1,
-    "api": {"host": "127.0.0.1", "port": 8080},
+    "api": {"host": "127.0.0.1", "port": 8090},
     "web": {"host": "127.0.0.1", "port": 3000},
     "dataDir": None,
     "logDir": None,

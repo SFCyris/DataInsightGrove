@@ -7,7 +7,7 @@ Python execution engine + FastAPI surface.
 ```bash
 # from repo root
 make backend-setup    # creates .venv and installs the dev extras
-make backend-dev      # runs uvicorn with reload at http://127.0.0.1:8080
+make backend-dev      # runs uvicorn with reload at http://127.0.0.1:8090
 ```
 
 Or manually:

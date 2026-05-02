@@ -19,14 +19,30 @@ make dev       # alternate: foreground mode (Ctrl-C to stop)
 
 Open [http://localhost:3000](http://localhost:3000).
 
-**Custom ports** (e.g. when 8080 is already in use):
+### Port configuration
+
+DIG defaults to **API on `127.0.0.1:8090`** and **web UI on `127.0.0.1:3000`**. If either port is taken (another project, an existing dev server, etc.), use any of these — they're all equivalent ways to override the same setting:
 
 ```bash
-./scripts/dig-start.sh --api-port 9000 --web-port 4000          # one shot
-./scripts/dig-start.sh --api-port 9000 --save                   # remember it
+# At install time — persisted to ~/.config/dig/config.json
+./install.sh --api-port 8090 --web-port 4000
+
+# At every start — persisted with --save
+./start.sh --api-port 8090 --save
+
+# One launch only (not persisted)
+./start.sh --api-port 8090
+
+# Via env var (highest priority — overrides config + defaults)
+DIG_API_PORT=8090 ./start.sh
+
+# Manual edit
+$EDITOR ~/.config/dig/config.json
 ```
 
-All settings persist in `~/.config/dig/config.json`. Full lifecycle reference: [`docs/lifecycle.md`](lifecycle.md).
+**One source of truth**: every script (`start`, `stop`, `restart`, `restart_all`, `restart-web`, `status`), the backend's own `dig-api` launcher, the Mac `.app`, and the frontend's API client all read from the same chain — env > `~/.config/dig/config.json` > built-in defaults. There is **no** scattered hardcoded port anywhere; if you find one, that's a bug — please open an issue.
+
+Full lifecycle reference: [`docs/lifecycle.md`](lifecycle.md).
 
 **Mac app** (optional native wrapper that runs the same scripts and opens a window):
 

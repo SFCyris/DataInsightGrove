@@ -27,7 +27,29 @@ import sys
 import urllib.error
 import urllib.request
 
-API_DEFAULT = os.environ.get("DIG_API", "http://127.0.0.1:8080")
+def _default_api_url() -> str:
+    """Resolve the API URL from env > persisted config > built-in default.
+
+    Single source of truth for the canonical default lives in
+    `scripts/dig_config.py:DEFAULT` and `backend/dig/_settings.py:DEFAULTS`
+    (the two intentionally agree). Don't hardcode another fallback here.
+    """
+    if v := os.environ.get("DIG_API"):
+        return v
+    try:
+        # Use the canonical resolver — same code path as start.sh / stop.sh.
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from dig_config import resolve  # type: ignore[import-not-found]
+        cfg = resolve()
+        return f"http://{cfg['api']['host']}:{cfg['api']['port']}"
+    except Exception:
+        # Belt-and-suspenders fallback if dig_config can't be imported (e.g.
+        # script invoked from outside the repo). Matches DEFAULTS in both
+        # backend/dig/_settings.py and scripts/dig_config.py.
+        return "http://127.0.0.1:8090"
+
+
+API_DEFAULT = _default_api_url()
 
 
 def req(api: str, method: str, path: str, body=None, token: str | None = None):

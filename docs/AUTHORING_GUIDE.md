@@ -256,7 +256,7 @@ INFO:dig.engine.registry:loaded step round_to_n v1.0.0 (clean)
 Verify via the API:
 
 ```bash
-curl -s http://127.0.0.1:8080/steps | jq '.[] | select(.id=="round_to_n")'
+curl -s http://127.0.0.1:8090/steps | jq '.[] | select(.id=="round_to_n")'
 ```
 
 Open the editor at `http://localhost:3000`, drag your new step out of the library, point it at a numeric column, run the pipeline. You should see the rounded values in the live grid.
@@ -538,7 +538,7 @@ The whole thing is two methods — `read` and `write` — plus a path helper.
 
 ```bash
 make restart
-curl -s http://127.0.0.1:8080/connectors | jq '.[] | select(.id=="tsv")'
+curl -s http://127.0.0.1:8090/connectors | jq '.[] | select(.id=="tsv")'
 ```
 
 The connector is now usable in a pipeline document:
@@ -928,6 +928,6 @@ connector = MyConnector(json.loads((Path(__file__).parent / "manifest.json").rea
 
 ```bash
 make restart
-curl -s http://127.0.0.1:8080/steps      | jq '.[] | select(.id=="<id>")'
-curl -s http://127.0.0.1:8080/connectors | jq '.[] | select(.id=="<id>")'
+curl -s http://127.0.0.1:8090/steps      | jq '.[] | select(.id=="<id>")'
+curl -s http://127.0.0.1:8090/connectors | jq '.[] | select(.id=="<id>")'
 ```

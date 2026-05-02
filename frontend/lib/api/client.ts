@@ -9,7 +9,7 @@ import type { components, paths } from "./types";
 export const API_BASE =
   (typeof window !== "undefined" && (window as { __DIG_API__?: string }).__DIG_API__) ||
   process.env.NEXT_PUBLIC_DIG_API ||
-  "http://127.0.0.1:8080";
+  "http://127.0.0.1:8090";
 
 /**
  * Bearer token for the DIG API.

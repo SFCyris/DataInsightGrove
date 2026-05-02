@@ -129,6 +129,73 @@ final class SplashWindow: NSWindow {
 
 // MARK: - Main browser window
 
+/// NSWindow subclass that intercepts left mouse-down events in the top
+/// `dragHeight` points of the window and converts them into a window drag
+/// (or zoom on double-click).
+///
+/// Why a `sendEvent` override and not the usual `mouseDownCanMoveWindow`
+/// trick on a transparent overlay view: WKWebView is a layer-hosting view
+/// with its own NSTrackingAreas + an internal child view that handles
+/// text selection. In practice those win the hit-test race against any
+/// sibling NSView we add on top — left-click in the top strip falls
+/// through to WKWebView and gets interpreted as text selection (the
+/// "first word highlights on double-click" symptom). Intercepting at
+/// `sendEvent(_:)` runs BEFORE view-tree dispatch, so WKWebView never
+/// sees the event and the drag is reliable.
+///
+/// Traffic-light buttons (close / minimize / zoom) live in the window's
+/// chrome view hierarchy and are processed before `sendEvent` is called,
+/// so they remain clickable normally.
+final class DraggableTopWindow: NSWindow {
+    /// Height of the top strip that triggers a window drag. ~28pt matches
+    /// the standard macOS title-bar height.
+    static let dragHeight: CGFloat = 28
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown {
+            // `locationInWindow` origin = bottom-left of the content area.
+            // With .fullSizeContentView the content area == the whole window,
+            // so frame.height is the right reference for the top edge.
+            let pt = event.locationInWindow
+            if pt.y >= frame.height - Self.dragHeight,
+               !isPointOnStandardWindowButton(pt) {
+                // Above the strip AND not on a traffic-light button.
+                if event.clickCount == 2 {
+                    // Double-click on the title bar = zoom (matches the
+                    // System Settings "Double-click a window's title bar
+                    // to: Zoom" default).
+                    performZoom(nil)
+                } else {
+                    performDrag(with: event)
+                }
+                return
+            }
+        }
+        super.sendEvent(event)
+    }
+
+    /// Returns true if `pt` (in window coordinates) lies inside one of the
+    /// standard window buttons (close / minimize / zoom). Those need to
+    /// fall through to AppKit's normal dispatch so clicking them actually
+    /// closes / minimizes / zooms the window — without this guard our
+    /// `performDrag` swallows the click and the traffic lights look broken.
+    private func isPointOnStandardWindowButton(_ pt: NSPoint) -> Bool {
+        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let btn = standardWindowButton(kind) else { continue }
+            // Convert the button's local bounds into window coordinates so
+            // we can compare with `event.locationInWindow`.
+            let frameInWindow = btn.convert(btn.bounds, to: nil)
+            // Inflate the hit area slightly (4pt) so the edges of the
+            // buttons feel right under the cursor — matches what AppKit
+            // does internally.
+            if frameInWindow.insetBy(dx: -4, dy: -4).contains(pt) {
+                return true
+            }
+        }
+        return false
+    }
+}
+
 final class BrowserWindowController: NSWindowController {
     let webView: WKWebView
 
@@ -138,13 +205,14 @@ final class BrowserWindowController: NSWindowController {
         let web = WKWebView(frame: .zero, configuration: cfg)
         self.webView = web
 
-        let win = NSWindow(
+        let win = DraggableTopWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
             styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
         win.title = "DataInsightGrove"
-        win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden                  // hide the centered title text
+        win.titlebarAppearsTransparent = true          // modern chrome-less look
         win.center()
         win.contentView = web
         super.init(window: win)

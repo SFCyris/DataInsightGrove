@@ -18,7 +18,7 @@
     "start": "next start",
     "postinstall": "node scripts/copy-duckdb-wasm.mjs || true",
     "typecheck": "tsc --noEmit",
-    "gen:api": "openapi-typescript http://127.0.0.1:8080/openapi.json -o lib/api/types.ts"
+    "gen:api": "openapi-typescript http://127.0.0.1:8090/openapi.json -o lib/api/types.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

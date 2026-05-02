@@ -23,7 +23,7 @@ pnpm dev --port 3000 --hostname 127.0.0.1
 ```
 
 The dev server expects an API at `NEXT_PUBLIC_DIG_API` (default
-`http://127.0.0.1:8080`).
+`http://127.0.0.1:8090`).
 
 ## Layout
 

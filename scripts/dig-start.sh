@@ -10,7 +10,7 @@
 #   ./scripts/dig-start.sh --data-dir /var/dig  # override data directory
 #   ./scripts/dig-start.sh --save               # persist any --*-port / --data-dir flags to config
 #
-# Defaults: api 127.0.0.1:8080  · web 127.0.0.1:3000  · data <repo>/data
+# Defaults: api 127.0.0.1:8090  · web 127.0.0.1:3000  · data <repo>/data
 # Persistent overrides live at ~/.config/dig/config.json — see scripts/dig_config.py.
 
 set -u
@@ -76,7 +76,7 @@ EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export)" || { err "config resolve fa
 eval "$EXPORT"
 
 API_HOST="${DIG_API_HOST:-127.0.0.1}"
-API_PORT="${DIG_API_PORT:-8080}"
+API_PORT="${DIG_API_PORT:-8090}"
 WEB_HOST="${DIG_WEB_HOST:-127.0.0.1}"
 WEB_PORT="${DIG_WEB_PORT:-3000}"
 

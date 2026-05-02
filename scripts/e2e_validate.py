@@ -8,7 +8,7 @@ What this does:
   3. Records pass/fail per step + a one-line reason on failure.
   4. Cleans up.
 
-Run while the DIG backend is up (default :8080):
+Run while the DIG backend is up (default :8090):
     python3 scripts/e2e_validate.py
 
 Exit code 0 if all steps pass, 1 otherwise. Prints a final summary table.
@@ -17,6 +17,7 @@ Exit code 0 if all steps pass, 1 otherwise. Prints a final summary table.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -26,7 +27,23 @@ from typing import Any
 from urllib.parse import urlencode
 
 REPO = Path(__file__).resolve().parents[1]
-API = "http://127.0.0.1:8080"
+
+
+def _resolve_api_url() -> str:
+    """Resolve the API URL from env > persisted config > built-in default.
+    Single source of truth lives in scripts/dig_config.py + backend/dig/_settings.py."""
+    if v := os.environ.get("DIG_API"):
+        return v
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from dig_config import resolve  # type: ignore[import-not-found]
+        cfg = resolve()
+        return f"http://{cfg['api']['host']}:{cfg['api']['port']}"
+    except Exception:
+        return "http://127.0.0.1:8090"
+
+
+API = _resolve_api_url()
 
 
 # ---- HTTP helpers ----------------------------------------------------------
