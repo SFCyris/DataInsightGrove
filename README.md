@@ -13,7 +13,9 @@
 
 Drop in a CSV. Build a transform pipeline visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
 
-![DIG editor — live grid on top, step strip on bottom, params/hints/lineage on the right](docs/images/06-pipeline-editor.png)
+![DIG running as a native Mac app — “Self-hosted. Plugin-first. Yours. / Data preparation for the rest of us.”](docs/images/01-mac-app-hero.png)
+
+![DIG pipeline editor — live grid on top, step strip on bottom, params/hints/lineage on the right](docs/images/02-pipeline-flow.png)
 
 ---
 
