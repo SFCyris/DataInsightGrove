@@ -1,8 +1,10 @@
 # 🧪 End-to-end validation — every step, every connector
 
-This document is **both** the validation report and a worked example: it walks through a real session that ingests three datasets, runs every one of DIG's 40 steps, and exports the results as files, image charts, and a SQLite table. If you want to know "does step X actually work end-to-end?" — the answer is in this report. If you want to learn DIG by example, the same flow is reproducible at the bottom.
+This page is two things at once: a **report** that says "yes, every step in DIG actually works end-to-end" and a **worked example** that walks through how it's tested so you can do the same thing with your own pipelines. Useful whenever you're wondering "is feature X production-ready?" or "what does a real DIG session look like?"
 
-> **Status (last run): 40/40 steps pass.** Run the harness yourself with `python3 scripts/e2e_validate.py` while the backend is up.
+The harness ingests three datasets, runs every step in the catalog, exports the results as files / image charts / a SQLite table, and reports pass-or-fail per step. The same harness runs in CI on every push, so the answer here is also the answer for the latest commit on `main`.
+
+> **Latest result: 40/40 steps pass.** Run it yourself any time with `python3 scripts/e2e_validate.py` while the backend is up — exit code 0 means everything still works.
 
 ---
 

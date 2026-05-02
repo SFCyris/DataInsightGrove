@@ -1,4 +1,10 @@
-# UI guidelines
+# UI guidelines — how DIG looks and behaves
+
+This page is the design contract: the conventions every screen, dialog, and animation in DIG follows so the product feels like one tool instead of a patchwork of components. Read this if you're contributing UI changes, building a plugin whose label appears in the step library, or just curious why DIG uses so many emoji.
+
+The TL;DR: **emojis as icons, motion to confirm causality, dark mode as a first-class citizen, friendly without being cute**. The rest of this doc explains each of those.
+
+---
 
 ## Emojis as graphical elements
 

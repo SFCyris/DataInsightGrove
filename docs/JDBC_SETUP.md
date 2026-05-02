@@ -1,15 +1,15 @@
-# JDBC ingress / egress
+# Reading from and writing to enterprise databases via JDBC
 
-DIG ships with two artifacts that bridge to any JDBC-accessible database:
+If your data lives in Oracle, MS SQL Server, DB2, Snowflake, Teradata, Vertica, SAP HANA, or any other database that ships a Java JDBC driver, this page is how you connect DIG to it.
 
-- **`jdbc` connector** — read tables / queries as a dataset (ingress)
-- **`export_to_jdbc` step** — write rows back to a database (egress)
+You'll get two new pieces in DIG once setup is done:
 
-This covers the long tail of enterprise databases: Oracle, DB2, MS SQL
-Server, Snowflake, Teradata, Vertica, SAP HANA, Hyperion, Informix, etc.
-For Postgres / MySQL / SQLite, prefer the dedicated native-driver
-connectors and the `export_to_db` step — they're lighter (no JVM) and
-faster.
+- **A `jdbc` connector** so you can drop in `jdbc:oracle:thin:@//host:1521/ORCL` (or your driver's equivalent) as a dataset URI and pull rows in as the start of a pipeline.
+- **An `export_to_jdbc` step** so you can write the result of a pipeline back to a table, with an `append` / `truncate-then-append` / `drop-and-create` choice.
+
+> 💡 **Already on Postgres, MySQL, or SQLite?** You don't need this. DIG ships dedicated native-driver connectors for those (no JVM required, faster). Use this page when you need a database that *only* ships a JDBC driver, or when corporate policy mandates JDBC.
+
+The setup involves three pieces: a Java runtime, a Python build tool, and the JDBC `.jar` file from your database vendor. None of them are huge — the longest part is usually finding the right download link for your specific database version.
 
 ## Prerequisites
 

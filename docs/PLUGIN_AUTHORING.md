@@ -1,8 +1,19 @@
-# Plugin authoring
+# Plugin authoring — the short reference
 
-> 📘 **Looking for a step-by-step beginner walkthrough with diagrams?** Start with the [**deep authoring guide**](AUTHORING_GUIDE.md) — it builds a step and a connector from a blank folder, explaining every line. This page is the short reference you come back to once you know the shape.
+If you've ever thought *"I wish DIG had a step that does X"* — this page shows you how to write one. Quick, no-fluff version: drop a folder, restart the backend, your step shows up in the library next to the built-in ones.
 
-DIG transforms are **plugins**. Drop a folder under `plugins/steps/<id>/` (user) or `backend/steps/<id>/` (built-in) and DIG auto-discovers it on backend startup. The same pattern applies to connectors at `plugins/connectors/<id>/` and `backend/connectors/<id>/`.
+> 📘 **First time writing a DIG plugin?** Start with the [**deep authoring guide**](AUTHORING_GUIDE.md) instead — it builds a step *and* a connector from a blank folder and explains every line, with diagrams. This page is the short reference you come back to once you've shipped one or two.
+
+## The shape
+
+Every DIG transform — built-in or yours — follows the same two-file pattern: a `manifest.json` that describes it (so DIG can render a form for it in the UI) and a `step.py` (or `connector.py`) that does the work. Drop the folder somewhere DIG looks, and it shows up.
+
+| If you want… | Drop the folder under | Used for |
+|---|---|---|
+| **Your own** step or connector | `plugins/steps/<id>/` or `plugins/connectors/<id>/` | Local extensions that survive `git pull` and don't touch DIG's source |
+| A **built-in** | `backend/steps/<id>/` or `backend/connectors/<id>/` | Shipped with the repo (read these as reference) |
+
+Both roots get scanned on backend startup. No `setup.py`, no `entry_points`, no manual registration — just the folder.
 
 ## Hello-world example
 

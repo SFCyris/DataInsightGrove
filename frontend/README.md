@@ -1,9 +1,10 @@
 # DIG frontend
 
-The Next.js + React + TypeScript UI for [DataInsightGrove](../README.md).
+The browser half of [DataInsightGrove](../README.md) — the editor, grid, canvas, settings UI, and everything else you see when you open `http://localhost:3000`.
 
-Built with Next.js 16 (App Router), React 19, Tailwind v4, shadcn/ui,
-AG Grid Community, React Flow, and DuckDB-WASM (in-browser preview engine).
+This README is for contributors and curious developers. **End users don't need to read it** — `./install.sh` and `./start.sh` from the repo root take care of everything below.
+
+Built with Next.js 16 (App Router), React 19, TypeScript, Tailwind v4, shadcn/ui, AG Grid Community for the data grid, React Flow for the canvas, and DuckDB-WASM as the in-browser preview engine.
 
 ## Run
 

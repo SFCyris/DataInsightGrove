@@ -1,11 +1,11 @@
 # 🛠 Building your own steps + connectors — the deep guide
 
-A no-skipping, no-handwaving walkthrough for adding new behavior to DataInsightGrove. We'll build a step from a blank folder, then a connector from a blank folder, and explain every line.
+This is the long-form companion to [`PLUGIN_AUTHORING.md`](PLUGIN_AUTHORING.md). We'll build a working step from an empty folder, then a working connector from an empty folder, and explain every line as we go. By the end you'll have two custom plugins running inside your local DIG and a clear mental model of how to write more.
 
 > **Who this is for**
-> Anyone who has ever opened a Python file. You don't need to know FastAPI, DuckDB, Polars internals, JSON Schema, or React. We'll explain each concept the first time it shows up.
+> Anyone who has opened a Python file before. You don't need to know FastAPI, DuckDB, Polars internals, JSON Schema, or React — we'll explain each concept the first time it shows up. If you've used pandas or written a small Flask/Django view, you're more than ready.
 >
-> If you've already authored one or two plugins and just want the cheat sheet, skip to the **[short reference at the end](#-cheat-sheet-skip-the-explanations)** or read [`PLUGIN_AUTHORING.md`](PLUGIN_AUTHORING.md).
+> **Already shipped a plugin or two?** Skip to the [**cheat sheet**](#-cheat-sheet-skip-the-explanations) at the end — or just read [`PLUGIN_AUTHORING.md`](PLUGIN_AUTHORING.md), which is the same material in one short page.
 
 **What you'll learn**
 

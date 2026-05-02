@@ -1,6 +1,14 @@
-# 🎓 First-steps tutorials — DataInsightGrove
+# 🎓 First-steps tutorials
 
-Three short walkthroughs that take you from "ingest a CSV" to "get a chart / Parquet / CSV out". Each tutorial works against a bundled sample dataset under [`samples/`](../samples/) so you can copy-paste and follow along.
+Three short, copy-paste-friendly walkthroughs that take you from *"I have a CSV"* to *"I have an answer"* — a chart, a Parquet file, or a SQL table — without leaving the DIG editor. Each tutorial uses a small sample dataset that ships with the repo, so you don't need to bring your own data.
+
+Pick whichever sounds most useful and dive in. They're independent, so order doesn't matter:
+
+1. **Sales heatmap** — group, pivot, and chart in five steps.
+2. **Customer cleanup** — clean dates, fill missing values, write a tidy Parquet output.
+3. **Stock forecast** — load time-series data, decompose seasonality, run a forecast.
+
+If something doesn't work the way the tutorial describes, please [open an issue](https://github.com/SFCyris/DataInsightGrove/issues) — these tutorials are the canonical "does the demo path still work?" check, and we want them to.
 
 > **What you'll need first**
 > - DIG installed and running ([`docs/getting_started.md`](getting_started.md))

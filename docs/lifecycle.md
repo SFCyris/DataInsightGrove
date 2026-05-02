@@ -1,6 +1,8 @@
-# Lifecycle — start, stop, status, config
+# Running DIG day-to-day — start, stop, status, config
 
-DIG ships three cross-platform shell scripts (Linux + macOS) and an optional Mac `.app` wrapper. All four read the same JSON config so behavior is consistent across them.
+This page covers the operational side of DIG: how to start it, stop it, check whether it's running, change the ports it uses, and (on macOS) launch it as a regular app from the Dock. Useful whenever you're past the "first install" stage and want to know how to *live with* DIG on your machine.
+
+There are three cross-platform shell scripts (Linux + macOS) and an optional macOS `.app` wrapper. All four read the same JSON config, so they behave identically — you can mix and match (start with the `.app`, stop with the script, etc.) without surprise.
 
 ## TL;DR
 
