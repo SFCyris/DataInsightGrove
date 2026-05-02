@@ -49,6 +49,19 @@
 }
 
 :root {
+  /* macOS title-bar zone height. 0 in regular browsers, 28px when the
+     web app is running inside the Mac wrapper (mac/DataInsightGrove.swift
+     injects `data-dig-mac="true"` on <html> at document start). Used by
+     the body padding rule below, the MacTitlebar component, and the
+     ServerStatusOverlay so they all leave room for the traffic-light
+     buttons + drag region. */
+  --dig-titlebar-h: 0px;
+  /* Width carved out of the left edge of the title bar so content
+     (centered title text) doesn't slide UNDER the traffic lights.
+     ~80px is the standard close+min+zoom triplet width plus a little
+     margin. */
+  --dig-titlebar-traffic-light-w: 80px;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -127,4 +140,38 @@
   html {
     @apply font-sans;
   }
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Mac wrapper mode — when the page runs inside DataInsightGrove.app,
+   the macOS traffic-light buttons (close / minimize / zoom) sit at the
+   top-left of the window. We reserve the top 28pt as a designed band:
+   - body content shifts down so it never sits under the lights
+   - --dig-titlebar-h flips from 0px to 28px; fixed-position elements
+     read this var so they anchor below the band, not on top of it
+   - the MacTitlebar component renders the brand text in this band
+
+   The mac/DataInsightGrove.swift wrapper sets data-dig-mac="true" on
+   <html> at document start via WKUserScript, so the styles apply on
+   the very first paint with no client-JS dependency.
+   ────────────────────────────────────────────────────────────────────── */
+
+html[data-dig-mac="true"] {
+  --dig-titlebar-h: 28px;
+}
+
+html[data-dig-mac="true"] body {
+  padding-top: var(--dig-titlebar-h);
+}
+
+/* MacTitlebar visibility — hidden in regular browsers, shown only when
+   the Swift wrapper has flagged the page. The component itself ships
+   with class="dig-mac-titlebar" so it can be styled here without
+   needing client-side JS to toggle anything. */
+.dig-mac-titlebar {
+  display: none;
+  height: var(--dig-titlebar-h);
+}
+html[data-dig-mac="true"] .dig-mac-titlebar {
+  display: flex;
 }

@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import * as Plot from "@observablehq/plot";
+import { fmtInt } from "@/lib/format-number";
+
+// Locale-pinned float formatter. Same reasoning as fmtInt — `.toLocaleString(undefined, …)`
+// uses the user's browser locale and disagrees with the SSR output. Pinning
+// to en-US keeps the formatted text deterministic across server + client.
+const _fmt4 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 
 interface ColumnLite {
   name: string;
@@ -40,7 +46,7 @@ function logical(t: string): string {
 
 function fmt(v: unknown): string {
   if (v === null || v === undefined) return "—";
-  if (typeof v === "number") return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  if (typeof v === "number") return Number.isInteger(v) ? fmtInt(v) : _fmt4.format(v);
   if (typeof v === "string") return v;
   if (typeof v === "boolean") return String(v);
   return JSON.stringify(v);
@@ -218,11 +224,11 @@ export function ProfileDrawer({
 
               {/* Stats grid */}
               <section className="grid grid-cols-2 gap-2 text-xs tabular-nums">
-                <Stat label="Rows in sample" value={profile.total.toLocaleString()} />
-                <Stat label="Distinct" value={profile.distinct.toLocaleString()} />
+                <Stat label="Rows in sample" value={fmtInt(profile.total)} />
+                <Stat label="Distinct" value={fmtInt(profile.distinct)} />
                 <Stat
                   label="Nulls"
-                  value={`${profile.nullCount.toLocaleString()} (${(profile.nullPct * 100).toFixed(profile.nullPct < 0.01 ? 2 : 1)}%)`}
+                  value={`${fmtInt(profile.nullCount)} (${(profile.nullPct * 100).toFixed(profile.nullPct < 0.01 ? 2 : 1)}%)`}
                   warn={profile.nullPct >= 0.05}
                 />
                 {profile.mean != null && (
@@ -257,7 +263,7 @@ export function ProfileDrawer({
                     {profile.topValues.map((v) => (
                       <li key={v.key} className="flex items-center gap-2">
                         <span className="truncate flex-1" title={v.key}>{v.key || "—"}</span>
-                        <span className="text-muted-foreground">{v.count.toLocaleString()}</span>
+                        <span className="text-muted-foreground">{fmtInt(v.count)}</span>
                         <span className="text-[10px] text-muted-foreground/70 w-10 text-right">
                           {((v.count / profile.total) * 100).toFixed(1)}%
                         </span>

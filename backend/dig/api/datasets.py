@@ -25,6 +25,15 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
+class TypeCandidate(BaseModel):
+    """One detected possibility for a column's type. Profiling attaches a
+    list of these per column, sorted by score descending — element [0] is
+    DIG's pick, the rest are alternates surfaced in the Cast UI."""
+    type: str
+    score: float
+    reason: str
+
+
 class ColumnInfo(BaseModel):
     name: str
     type: str
@@ -39,6 +48,10 @@ class ColumnInfo(BaseModel):
     sampledRows: int | None = None
     topValues: list[dict[str, Any]] = Field(default_factory=list)
     histogram: list[dict[str, Any]] | None = None
+    # Type candidates produced by the meta-type detector pass. The first
+    # entry is the same as `type`; remaining entries are alternates with
+    # score >= ALTERNATE_MIN_SCORE that the Cast UI surfaces as smart picks.
+    candidates: list[TypeCandidate] = Field(default_factory=list)
 
 
 class DatasetOut(BaseModel):

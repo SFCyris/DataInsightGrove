@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import { api } from "@/lib/api/client";
+import { fmtInt } from "@/lib/format-number";
 
 // The artifacts payload comes through as a free-form JSON dict from the
 // backend (OpenAPI types it as `{ [k: string]: unknown }`). We narrow at
@@ -62,7 +63,7 @@ export function ArtifactsPanel({ runId, artifacts }: Props) {
                   <p className="text-muted-foreground text-[10px] tabular-nums">
                     {(a as { chart?: string }).chart}
                     {(a as { rows_plotted?: number }).rows_plotted != null &&
-                      ` · ${(a as { rows_plotted: number }).rows_plotted.toLocaleString()} pts`}
+                      ` · ${fmtInt((a as { rows_plotted: number }).rows_plotted)} pts`}
                   </p>
                 </div>
               </a>
@@ -85,7 +86,7 @@ export function ArtifactsPanel({ runId, artifacts }: Props) {
                     {String(a.path).split("/").slice(-1)[0]}
                   </p>
                   <p className="text-muted-foreground text-[10px] tabular-nums">
-                    {(a as { rows?: number }).rows?.toLocaleString() ?? "?"} rows
+                    {fmtInt((a as { rows?: number }).rows)} rows
                     {(a as { size?: number }).size != null && ` · ${fmtBytes((a as { size: number }).size)}`}
                   </p>
                 </div>
@@ -103,7 +104,7 @@ export function ArtifactsPanel({ runId, artifacts }: Props) {
                     {(a as { uri?: string }).uri}
                   </p>
                   <p className="text-muted-foreground text-[10px] tabular-nums">
-                    {(a as { rows?: number }).rows?.toLocaleString() ?? "?"} rows ·{" "}
+                    {fmtInt((a as { rows?: number }).rows)} rows ·{" "}
                     {(a as { if_exists?: string }).if_exists}
                   </p>
                 </div>
@@ -186,7 +187,7 @@ export function ArtifactsPanel({ runId, artifacts }: Props) {
                     {(a as { pipeline_id?: string }).pipeline_id}
                   </p>
                   <p className="text-muted-foreground text-[10px] tabular-nums">
-                    {(a as { rows?: number }).rows?.toLocaleString() ?? "?"} rows
+                    {fmtInt((a as { rows?: number }).rows)} rows
                   </p>
                 </div>
               </div>

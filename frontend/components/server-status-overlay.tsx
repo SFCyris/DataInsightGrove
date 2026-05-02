@@ -105,7 +105,13 @@ export function ServerStatusOverlay() {
         animate={animate}
         exit={exit}
         transition={transition}
-        className={`fixed top-0 inset-x-0 z-[60] ${spec.band} shadow-md`}
+        // Anchor below the Mac title-bar band when one exists. In a
+        // regular browser --dig-titlebar-h is 0 and the banner sits
+        // flush against the top edge as before; in the Mac wrapper it's
+        // 28px, so the banner sits below the brand strip instead of
+        // covering the traffic lights.
+        className={`fixed inset-x-0 z-[60] ${spec.band} shadow-md`}
+        style={{ top: "var(--dig-titlebar-h)" }}
       >
         <div className="max-w-screen-xl mx-auto px-4 py-2 flex items-center justify-center gap-3 text-sm">
           {/* Pulse ring around the emoji for the persistent states. */}

@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { setSettings, useSettings } from "@/lib/settings";
+import { fmtInt } from "@/lib/format-number";
 
 interface Action {
   id: string;
@@ -89,7 +90,7 @@ export function CommandPalette() {
       },
       {
         id: "act:samplesize", group: "Actions",
-        label: `Sample size: ${settings.sampleRows.toLocaleString()} (cycle)`,
+        label: `Sample size: ${fmtInt(settings.sampleRows)} (cycle)`,
         emoji: "🎲",
         hint: "10k → 50k → 100k → 500k",
         run: () => {
@@ -97,7 +98,7 @@ export function CommandPalette() {
           const idx = order.indexOf(settings.sampleRows);
           const next = order[(idx + 1) % order.length];
           setSettings({ sampleRows: next });
-          toast.success(`Sample size: ${next.toLocaleString()}`);
+          toast.success(`Sample size: ${fmtInt(next)}`);
         },
       },
       {
@@ -126,7 +127,7 @@ export function CommandPalette() {
         group: "Datasets",
         label: d.name,
         emoji: "📊",
-        hint: `${d.rowCount?.toLocaleString() ?? "?"} rows · ${d.connector}`,
+        hint: `${fmtInt(d.rowCount)} rows · ${d.connector}`,
         run: () => router.push(`/datasets/${d.id}`),
       });
     }

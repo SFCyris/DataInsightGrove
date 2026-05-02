@@ -11,6 +11,21 @@
  * Pinning to "en-US" everywhere makes the output deterministic and
  * SSR-stable. If you need a different display locale, do it inside an
  * `Intl.NumberFormat` instance built in a `useEffect`, not in render.
+ *
+ * ────────────────────────────────────────────────────────────────────
+ * RULE for anyone touching this codebase:
+ *
+ *   ✗ {n.toLocaleString()}                            // user's locale → SSR mismatch
+ *   ✗ {n.toLocaleString(undefined, {...})}            // same trap, just explicit
+ *   ✗ new Intl.NumberFormat().format(n)               // same trap (no locale arg)
+ *
+ *   ✓ {fmtInt(n)}                                     // en-US, integer
+ *   ✓ {fmtFloat(n)}                                   // en-US, 2dp
+ *   ✓ new Intl.NumberFormat("en-US").format(n)        // explicit locale
+ *
+ * Full rationale + the other three SSR-hydration traps are documented
+ * in docs/UI_GUIDELINES.md → "SSR + hydration safety — the rules".
+ * ────────────────────────────────────────────────────────────────────
  */
 
 const LOCALE = "en-US";

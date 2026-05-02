@@ -5,19 +5,35 @@ import { motion, AnimatePresence } from "motion/react";
 import { ColumnMenu, type ColumnAction } from "@/components/canvas/column-menu";
 import { ProfileDrawer } from "@/components/grid/profile-drawer";
 import { fmtInt } from "@/lib/format-number";
-import { findIndexDuplicates, isValidTimezone } from "@/lib/meta-types";
+import { findIndexDuplicates, isValidForType } from "@/lib/meta-types";
 
 const TYPE_EMOJI: Record<string, string> = {
   integer: "🔢", double: "🔢", string: "🅰️", date: "📅",
   datetime: "📅", boolean: "☑️", nested: "🧱",
   // Meta-types — same base storage but distinct visual identity so the
   // user can see at a glance that these are constraint-bearing columns.
-  index: "🔑", timezone: "🌍",
+  index: "🔑", timezone: "🌍", scientific: "🔬",
+  percentage: "📊", currency: "💵", hex: "#️⃣",
+  uuid: "🆔", url: "🔗", email: "📧",
+  ip: "🌐", phone: "📞", country: "🌐", color: "🎨",
 };
+
+// Logical types that should right-align (numeric in nature).
+const NUMERIC_TYPES = new Set([
+  "integer", "double", "index", "scientific", "percentage", "currency",
+]);
+// Logical types that carry a per-cell shape validator.
+const VALIDATED_TYPES = new Set([
+  "url", "email", "uuid", "ip", "country", "color", "phone", "hex", "timezone",
+]);
 
 interface Column {
   name: string;
   type: string;
+  /** Optional ranked type candidates from the profile (see backend
+   *  meta_types.detect_candidates). When present, the Cast UI shows them
+   *  as smart picks before the full type catalog. */
+  candidates?: Array<{ type: string; score: number; reason: string }>;
 }
 
 interface Highlights {
@@ -47,17 +63,44 @@ interface Props {
   onSaveAnnotation?: (column: string, text: string) => Promise<void> | void;
 }
 
-function fmt(v: unknown): string {
+// Default float formatter — locale-pinned to en-US to keep SSR + client
+// output identical (see lib/format-number.ts for the full rationale).
+const _floatFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+// Scientific (IEEE 754) formatter — produces "1.2345e+10" / "4.5e-7".
+const _sciFmt = new Intl.NumberFormat("en-US", {
+  notation: "scientific",
+  maximumFractionDigits: 4,
+});
+// Percentage formatter — values stored as 0..1 fractions render as "12.3%".
+// We choose 0..1 (not 0..100) as the canonical storage because that's how the
+// detector classifies columns (see backend meta_types.py).
+const _pctFmt = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  maximumFractionDigits: 2,
+});
+// Currency — defaults to USD. Multi-currency columns are out of scope; if a
+// dataset needs EUR/GBP/etc the user casts to plain double instead.
+const _curFmt = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+function fmt(v: unknown, type?: string): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? "true" : "false";
   if (typeof v === "number") {
     if (!isFinite(v)) return "—";
+    if (type === "scientific") return _sciFmt.format(v);
+    if (type === "percentage") return _pctFmt.format(v);
+    if (type === "currency") return _curFmt.format(v);
     if (Number.isInteger(v)) return fmtInt(v);
-    // Locale-stable float formatting (was toLocaleString(undefined, ...) which
-    // changed grouping separator between SSR and client locales).
-    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(v);
+    return _floatFmt.format(v);
   }
-  if (typeof v === "string") return v;
+  if (typeof v === "string") {
+    // Country codes display uppercase regardless of how the source had them.
+    if (type === "country") return v.trim().toUpperCase();
+    return v;
+  }
   return JSON.stringify(v);
 }
 
@@ -73,11 +116,17 @@ function shortType(t: string): string {
   return m.split("(")[0];
 }
 
+// All meta-type ids that the backend may attach. Returned as-is so the grid
+// can branch on them in fmt(), validators, and emoji lookup.
+const META_TYPE_IDS = new Set([
+  "index", "timezone", "scientific",
+  "percentage", "currency", "hex",
+  "uuid", "url", "email", "ip", "phone", "country", "color",
+]);
+
 function logicalType(t: string): string {
   const m = t.toLowerCase();
-  // Meta-types are exposed as-is so the grid can branch on them.
-  if (m === "index") return "index";
-  if (m === "timezone") return "timezone";
+  if (META_TYPE_IDS.has(m)) return m;
   if (m.startsWith("int") || m === "bigint") return "integer";
   if (m === "double" || m === "float" || m === "float32" || m === "float64" || m.includes("decimal")) return "double";
   if (m.startsWith("bool")) return "boolean";
@@ -116,7 +165,7 @@ export function LiveGrid({
       /* ignore */
     }
   }, []);
-  const [menu, setMenu] = useState<{ x: number; y: number; col: Column } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; col: Column; initialOpen?: "cast" } | null>(null);
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
   const [profileFor, setProfileFor] = useState<Column | null>(null);
   // Drag-to-reorder state. dragCol = column being dragged; dragOver = column
@@ -136,11 +185,11 @@ export function LiveGrid({
   // handler to construct the reorder action.
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
 
-  // Per-column "invalid value" predicate, computed once per render. Two
-  // meta-types contribute:
-  //   - index:    duplicate values are invalid (precompute the dup set)
-  //   - timezone: non-IANA strings are invalid (per-cell membership check)
-  // For all other types the predicate is a constant `false` — zero cost.
+  // Per-column "invalid value" predicate, computed once per render.
+  //   - index: duplicates are invalid (precompute the dup set, O(n))
+  //   - all VALIDATED_TYPES (url/email/uuid/ip/country/color/phone/hex/timezone):
+  //     per-cell shape check via isValidForType
+  //   - everything else: constant false — zero cost.
   const cellInvalidByCol = useMemo(() => {
     const out: Record<string, (v: unknown) => boolean> = {};
     for (const c of columns) {
@@ -148,8 +197,9 @@ export function LiveGrid({
       if (t === "index") {
         const dupes = findIndexDuplicates(rows.map((r) => r[c.name]));
         out[c.name] = (v: unknown) => v !== null && v !== undefined && dupes.has(v);
-      } else if (t === "timezone") {
-        out[c.name] = (v: unknown) => v !== null && v !== undefined && !isValidTimezone(v);
+      } else if (VALIDATED_TYPES.has(t)) {
+        out[c.name] = (v: unknown) =>
+          v !== null && v !== undefined && !isValidForType(v, t);
       } else {
         out[c.name] = () => false;
       }
@@ -349,22 +399,56 @@ export function LiveGrid({
                           // memo the cell renderer uses so it stays in
                           // perfect lockstep.
                           const t = logicalType(c.type);
-                          if (t !== "index" && t !== "timezone") return null;
+                          if (t !== "index" && !VALIDATED_TYPES.has(t)) return null;
                           const predicate = cellInvalidByCol[c.name];
                           let bad = 0;
                           for (const r of renderedRows) {
                             if (predicate(r[c.name])) bad++;
                           }
                           if (bad === 0) return null;
+                          const reason =
+                            t === "index"
+                              ? `${bad} duplicate value(s) in this index column`
+                              : `${bad} cell(s) don't match the ${t} format`;
                           return (
                             <span
                               className="ml-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-300/60"
-                              title={t === "index"
-                                ? `${bad} duplicate value(s) in this index column`
-                                : `${bad} cell(s) are not valid IANA timezones`}
+                              title={reason}
                             >
                               ⚠ {bad}
                             </span>
+                          );
+                        })()}
+                        {(() => {
+                          // Alternates badge: when profiling found >1
+                          // candidate types for this column, surface a
+                          // subtle ✨ chip that deep-links into Cast → smart
+                          // picks. Excludes the column's current type from
+                          // the count so the badge only appears when there
+                          // are *other* viable types to consider.
+                          const cands = c.candidates ?? [];
+                          const cur = logicalType(c.type);
+                          const others = cands.filter((x) => x.type !== cur);
+                          if (others.length === 0) return null;
+                          const top = others.slice(0, 3).map((x) => x.type).join(", ");
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setMenu({
+                                  x: rect.left,
+                                  y: rect.bottom + 4,
+                                  col: c,
+                                  initialOpen: "cast",
+                                });
+                              }}
+                              title={`Also detected: ${top}${others.length > 3 ? "…" : ""} — click to cast`}
+                              className="ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border border-violet-300/60 hover:bg-violet-200 dark:hover:bg-violet-900/60 transition-colors"
+                            >
+                              ✨ +{others.length}
+                            </button>
                           );
                         })()}
                         <span className="text-[10px] text-muted-foreground/70 ml-0.5">
@@ -433,16 +517,16 @@ export function LiveGrid({
                             isCellInvalid
                               ? colLogicalType === "index"
                                 ? `Duplicate value: ${String(v)} appears more than once in this index column`
-                                : `Invalid IANA timezone: "${String(v)}" — try America/New_York, Europe/Berlin, UTC, …`
+                                : colLogicalType === "timezone"
+                                  ? `Invalid IANA timezone — try America/New_York, Europe/Berlin, UTC, …`
+                                  : `Doesn't look like a valid ${colLogicalType}`
                               : onCellQuickFilter
                                 ? "⌘+click to filter to this value · ⌘+alt+click to exclude"
                                 : undefined
                           }
                           className={[
                             "px-2 py-1 border-b border-border/30 whitespace-nowrap max-w-[260px] truncate transition-colors",
-                            colLogicalType === "integer" || colLogicalType === "double" || colLogicalType === "index"
-                              ? "text-right"
-                              : "",
+                            NUMERIC_TYPES.has(colLogicalType) ? "text-right" : "",
                             v === null || v === undefined ? "text-muted-foreground/40 italic" : "",
                             // Invalid wins over EVERY other tint — it's a
                             // hard data-quality signal, not a transient
@@ -463,7 +547,7 @@ export function LiveGrid({
                                       : "",
                           ].join(" ")}
                         >
-                          {fmt(v)}
+                          {fmt(v, colLogicalType)}
                         </td>
                       );
                     })}
@@ -478,7 +562,10 @@ export function LiveGrid({
         <ColumnMenu
           columnName={menu.col.name}
           columnType={shortType(menu.col.type)}
+          columnLogicalType={logicalType(menu.col.type)}
+          castCandidates={menu.col.candidates}
           allColumns={columnNames}
+          initialOpen={menu.initialOpen}
           position={{ x: menu.x, y: menu.y }}
           onClose={() => setMenu(null)}
           onAction={onColumnAction}

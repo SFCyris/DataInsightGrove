@@ -137,6 +137,49 @@ def create_app() -> FastAPI:
     async def list_connectors() -> list[dict]:
         return [c.manifest for c in connectors().all()]
 
+    # Base physical types — these are first-class targets for `cast_type` but
+    # don't have detectors (their identity comes from the polars dtype, not
+    # from value-shape inference). Listed here so the /types endpoint can
+    # surface the *complete* catalog the UI's "Show all types" view needs.
+    # Keep IDs in sync with backend/steps/cast_type/manifest.json:targetType.
+    _BASE_TYPE_DESCRIPTORS: list[dict] = [
+        {"id": "string",   "label": "🅰️ string",   "base": "string",
+         "description": "Text. The catch-all when nothing more specific fits."},
+        {"id": "integer",  "label": "🔢 integer",  "base": "integer",
+         "description": "Whole numbers (int8/16/32/64)."},
+        {"id": "double",   "label": "🔢 double",   "base": "double",
+         "description": "Floating-point numbers (float32/64)."},
+        {"id": "boolean",  "label": "☑️ boolean",  "base": "boolean",
+         "description": "True / false."},
+        {"id": "date",     "label": "📅 date",     "base": "date",
+         "description": "Calendar date — no time component."},
+        {"id": "datetime", "label": "📅 datetime", "base": "datetime",
+         "description": "Timestamp — date + time of day."},
+    ]
+
+    @app.get("/types", tags=["meta"])
+    async def list_types() -> list[dict]:
+        """The complete catalog of logical types DIG knows about.
+
+        Returns base physical types first (string, integer, double, boolean,
+        date, datetime) followed by every meta-type from the detector
+        registry (index, percentage, currency, scientific, hex, uuid, email,
+        url, ip, phone, country, color, timezone). Each entry carries an
+        id, a UI label (with emoji), the base physical storage type, and a
+        one-line dropdown description.
+
+        This endpoint is the single source of truth for the cast UI's
+        "Show all types" view. The smart-picks list comes from per-column
+        profile candidates (see profile.py + meta_types.detect_candidates),
+        which reference the IDs returned here.
+        """
+        from dig.engine.meta_types import TYPES
+        meta = [
+            {"id": t.id, "label": t.label, "base": t.base, "description": t.description}
+            for t in TYPES
+        ]
+        return _BASE_TYPE_DESCRIPTORS + meta
+
     app.include_router(datasets_api.router)
     app.include_router(pipelines_api.router)
     app.include_router(pipelines_api.runs_router)

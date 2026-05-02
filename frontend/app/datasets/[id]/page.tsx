@@ -10,6 +10,7 @@ import { api } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DatasetGrid } from "@/components/grid/dataset-grid";
 import { ProfileCard } from "@/components/profile/profile-card";
+import { fmtInt } from "@/lib/format-number";
 
 function _datasetRefId(id: string): string {
   return `ds_${id.toLowerCase()}`;
@@ -106,7 +107,7 @@ export default function DatasetDetailPage({ params }: PageProps) {
                 <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Rows
                 </dt>
-                <dd className="font-medium">{dataset.data.rowCount?.toLocaleString() ?? "—"}</dd>
+                <dd className="font-medium">{fmtInt(dataset.data.rowCount)}</dd>
               </div>
               <div className="text-right">
                 <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">

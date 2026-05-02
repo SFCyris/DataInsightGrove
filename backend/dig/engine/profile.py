@@ -16,7 +16,7 @@ from typing import Any
 
 import polars as pl
 
-from dig.engine.meta_types import detect_index, detect_timezone_from_top
+from dig.engine.meta_types import ALTERNATE_MIN_SCORE, detect_candidates, descriptor
 
 NUMERIC_DTYPES = (
     pl.Int8, pl.Int16, pl.Int32, pl.Int64,
@@ -163,23 +163,38 @@ def profile_dataframe(
 
         columns_out.append(col_info)
 
-    # Meta-type post-pass — promote integer columns with all-unique values
-    # to 'index' and string columns whose top values are valid IANA zones to
-    # 'timezone'. Done after the main loop so the detection has full
-    # access to nullCount/distinctCount/topValues. Cheap (O(columns))
-    # because the underlying stats are already computed.
+    # Meta-type post-pass — every detector in the type registry runs
+    # against every column's profile and returns a TypeCandidate or None.
+    # The highest-scoring candidate becomes the column's primary `type`;
+    # remaining candidates with score ≥ ALTERNATE_MIN_SCORE are attached
+    # as `candidates` so the UI can show "DIG picked X but it could also
+    # be Y or Z" with a smart-picks-first cast dropdown.
+    #
+    # The base physical type (string/integer/double/…) is always part of
+    # the candidate list as a fallback so the user can explicitly cast
+    # back. It's added with score=1.0 only when no detector wins, otherwise
+    # with a low score so it ranks below detected meta-types.
     for ci in columns_out:
         base = ci["type"]
-        nulls = ci.get("nullCount") or 0
-        non_null = (sampled_rows or 0) - nulls
-        if base == "integer" and detect_index(
-            distinct=ci.get("distinctCount"),
-            non_null=non_null,
-            sampled=sampled_rows,
-        ):
-            ci["type"] = "index"
-        elif base == "string" and detect_timezone_from_top(ci.get("topValues") or []):
-            ci["type"] = "timezone"
+        candidates = detect_candidates(ci)
+        # Primary = top scorer (if any) or fall back to the base physical type.
+        if candidates:
+            ci["type"] = candidates[0].type_id
+        # Build a UI-facing list: detected candidates above ALTERNATE_MIN_SCORE,
+        # plus the base type as the universal fallback at the bottom.
+        ui_candidates = [
+            {"type": c.type_id, "score": round(c.score, 3), "reason": c.reason}
+            for c in candidates if c.score >= ALTERNATE_MIN_SCORE
+        ]
+        # Always include the base physical type — it's the "give me back the
+        # raw, unconstrained representation" option in the cast dropdown.
+        if not any(c["type"] == base for c in ui_candidates):
+            ui_candidates.append({
+                "type": base,
+                "score": 0.50 if candidates else 1.0,
+                "reason": "base physical type",
+            })
+        ci["candidates"] = ui_candidates
 
     return {
         "rowCountSampled": sampled_rows,

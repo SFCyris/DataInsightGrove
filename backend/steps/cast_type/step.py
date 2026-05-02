@@ -15,9 +15,22 @@ _TYPE_TO_SQL = {
     "datetime": "TIMESTAMP",
     # Meta-types — physical storage is the same as their base type, but the
     # logical-type label travels through the schema and lights up special
-    # rendering in the grid (duplicate highlighting, invalid-zone highlight).
-    "index": "BIGINT",
-    "timezone": "VARCHAR",
+    # rendering / validation in the grid. The full registry of meta-types
+    # (with detectors + descriptions) lives in dig.engine.meta_types:TYPES.
+    # Any new entry there should be mirrored here.
+    "index":       "BIGINT",
+    "percentage":  "DOUBLE",
+    "currency":    "DOUBLE",
+    "scientific":  "DOUBLE",
+    "hex":         "VARCHAR",
+    "uuid":        "VARCHAR",
+    "email":       "VARCHAR",
+    "url":         "VARCHAR",
+    "ip":          "VARCHAR",
+    "phone":       "VARCHAR",
+    "country":     "VARCHAR",
+    "color":       "VARCHAR",
+    "timezone":    "VARCHAR",
 }
 
 

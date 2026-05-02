@@ -10,6 +10,7 @@ import { api, API_BASE } from "@/lib/api/client";
 import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord } from "@/lib/api/client";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { DirectoryPickerModal } from "@/components/directory-picker-modal";
+import { fmtInt } from "@/lib/format-number";
 
 const THEMES: { id: Theme; emoji: string; label: string }[] = [
   { id: "system", emoji: "🖥️", label: "System" },
@@ -175,7 +176,7 @@ function PreviewSection() {
                     : "border-border hover:border-foreground/30",
                 ].join(" ")}
               >
-                {n.toLocaleString()}
+                {fmtInt(n)}
               </button>
             ))}
           </div>

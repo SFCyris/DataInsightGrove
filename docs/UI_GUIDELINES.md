@@ -95,3 +95,116 @@ DIG aims for **modern, animated, fluid** UI throughout. Motion is meaningful, no
 ### When in doubt
 
 If shipping a placeholder, label it as such in the UI itself ("placeholder — wire up later") rather than leaving a screen visually unfinished. Polish first — DIG isn't allowed to look unfinished even when it's incomplete.
+
+---
+
+## SSR + hydration safety — the rules
+
+DIG runs the same React tree two places: **on the server (Node)** during SSR, and **in your browser** when the page hydrates. They have to produce byte-identical HTML on first render or React throws a "hydration mismatch" warning and re-renders the entire subtree on the client (visible flicker, wasted CPU, the user briefly seeing wrong text). On Mac the WKWebView surfaces these as red error overlays.
+
+There are exactly four ways code can produce different output on server vs first client render. **Memorize them.**
+
+### The four traps
+
+| Trap | What goes wrong | Where it can sneak in |
+|---|---|---|
+| **`window` / `document` / `localStorage` / `navigator` in render** | Server: `window` is `undefined`. Client: it exists. Anything reading it during render is `undefined` on server and a real value on client. | `<span>{window.location.port}</span>`, `useState(localStorage.getItem(...))`, `useState(window.matchMedia(...).matches)` |
+| **`Date.now()` / `Math.random()` / `new Date()` in render** | Server and client run at different moments → different values. | `<span>{Date.now()}</span>`, ids generated inline, "X seconds ago" formatters that read `Date.now()` synchronously |
+| **`.toLocaleString()` without an explicit locale** | Server defaults to Node's locale (usually `en-US`); client uses the user's browser locale. Result: `"1,234"` vs `"1.234"` vs `"1 234"`. Mismatch on every numeric cell. | `{n.toLocaleString()}`, `n.toLocaleString(undefined, {...})` (the `undefined` is the trap — it means "user's locale") |
+| **Browser-extension or wrapper-injected attributes on `<html>` or `<body>`** | The wrapper sets attributes after the server-rendered HTML lands, before React hydrates. The DOM React inherits no longer matches what it rendered. | Mac wrapper injects `data-dig-mac="true"`. Some extensions add `bis_register`, `data-darkreader`, etc. |
+
+### The four fixes
+
+For each trap, exactly one fix is correct. Use it.
+
+#### Trap 1 — runtime values from `window` / `document`
+
+```tsx
+// ❌ Broken
+const port = typeof window !== "undefined" ? window.location.port : "?";
+return <span>:{port}</span>;
+// Server renders ":?"; client renders ":3000". Mismatch on hydrate.
+
+// ✅ Correct
+const [port, setPort] = useState<string>("…");   // server-safe placeholder
+useEffect(() => {
+  setPort(window.location.port || "80");
+}, []);
+return <span>:{port}</span>;
+// Server: ":…". First client render: ":…" (same as server, hydration agrees).
+// One tick later: useEffect runs, span becomes ":3000".
+```
+
+#### Trap 2 — time / randomness in render
+
+```tsx
+// ❌ Broken
+return <span>updated {Math.round((Date.now() - run.startedMs) / 1000)}s ago</span>;
+
+// ✅ Correct — clock state in a useEffect
+const [now, setNow] = useState(0);             // 0 means "pre-mount"
+useEffect(() => {
+  setNow(Date.now());
+  const t = setInterval(() => setNow(Date.now()), 30_000);
+  return () => clearInterval(t);
+}, []);
+return <span>updated {now === 0 ? "…" : Math.round((now - run.startedMs) / 1000) + "s"} ago</span>;
+```
+
+See [`components/canvas/run-history.tsx`](../frontend/components/canvas/run-history.tsx) for the canonical implementation (`useNowMs`).
+
+#### Trap 3 — locale-dependent number formatting
+
+**Use the locale-pinned helpers — never `.toLocaleString()` without an explicit locale.**
+
+```tsx
+import { fmtInt, fmtFloat } from "@/lib/format-number";
+
+// ❌ Broken
+{rowCount.toLocaleString()}                     // user's locale
+{(value).toLocaleString(undefined, {...})}       // explicit "use user's locale" — same trap
+
+// ✅ Correct
+{fmtInt(rowCount)}                               // pinned to en-US
+{fmtFloat(value)}                                // pinned to en-US, 2dp
+```
+
+If you need a non-en-US locale for display, build the formatter inside a `useEffect`-backed state:
+
+```tsx
+const [fmt, setFmt] = useState<Intl.NumberFormat>(() => new Intl.NumberFormat("en-US"));
+useEffect(() => {
+  setFmt(new Intl.NumberFormat(navigator.language));
+}, []);
+```
+
+#### Trap 4 — wrapper / extension attributes
+
+When a wrapper script (the Mac `.app`'s WKUserScript injects `data-dig-mac="true"` on `<html>`) or a browser extension sets attributes on `<html>` or `<body>` before React hydrates, React's hydration check would scream. The fix is **`suppressHydrationWarning` scoped to that one element only**:
+
+```tsx
+<html lang="en" suppressHydrationWarning>
+  ...
+</html>
+```
+
+`suppressHydrationWarning` is React's official, documented escape hatch for "I know this attribute legitimately differs, and the difference is intentional." It does **not** propagate to children — anything inside `<body>` or any component still gets a full hydration check, so genuine bugs aren't masked.
+
+### When in doubt
+
+- If the value is **constant from the bundle** (env vars, schema-derived data) → safe to use in render directly.
+- If the value comes from **the browser** (`window`, `localStorage`, `Date.now`, the user's locale) → put it behind `useEffect`.
+- If the value comes from **the user's interaction** (right-click menu coordinates, keystroke state) → already safe; the component isn't mounted on first render.
+- If the value comes from **a network fetch** (TanStack Query) → already safe; queries return `undefined` initially on both server and client and update via React's normal commit cycle.
+
+### How to verify locally
+
+```bash
+./start.sh
+# Open http://localhost:3000 in a regular browser. Open DevTools console.
+# Hydration mismatches show as a "Hydration failed" error with a diff
+# of the server vs client output. CI also runs the full SSR pass; PRs
+# that introduce a mismatch will be flagged.
+```
+
+If you find a hydration error in existing code that one of the four fixes above doesn't cover, please [open an issue](https://github.com/SFCyris/DataInsightGrove/issues) — there may be a fifth trap we haven't documented yet.

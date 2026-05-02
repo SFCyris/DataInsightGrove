@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { useQuery } from "@tanstack/react-query";
+import { api, type TypeDescriptor } from "@/lib/api/client";
 
 export type ColumnAction =
   | { kind: "filter_eq"; column: string; value: unknown }
@@ -23,28 +25,63 @@ export type ColumnAction =
   // user fine-tunes via the step's param form afterwards.
   | { kind: "insert_column"; position: "before" | "after"; reference: string };
 
-const TYPES = ["string", "integer", "double", "boolean", "date", "datetime"] as const;
+// Conservative fallback when the /types endpoint hasn't loaded (or the user
+// is offline). These mirror the IDs in backend/dig/engine/meta_types.py.
+const FALLBACK_TYPES: TypeDescriptor[] = [
+  { id: "string",      label: "🅰️ string",      base: "string",  description: "Text" },
+  { id: "integer",     label: "🔢 integer",     base: "integer", description: "Whole numbers" },
+  { id: "double",      label: "🔢 double",      base: "double",  description: "Decimal numbers" },
+  { id: "boolean",     label: "☑️ boolean",     base: "boolean", description: "True / false" },
+  { id: "date",        label: "📅 date",        base: "date",    description: "Calendar date" },
+  { id: "datetime",    label: "📅 datetime",    base: "datetime",description: "Date + time" },
+];
 
 interface Props {
   columnName: string;
   columnType?: string;
+  /** Resolved logical type id (e.g. "url", "integer"). Used to mark the
+   *  current type in the Cast list with a checkmark. */
+  columnLogicalType?: string;
+  /** Sorted candidate list from the column profile. Element [0] is the
+   *  current pick — we surface elements [1..] as the smart-picks row at
+   *  the top of the Cast section. */
+  castCandidates?: Array<{ type: string; score: number; reason: string }>;
   /** Full column list for the focused step (left-to-right). Required to
    * build a complete `reorder` action — the move-column menu items here
    * compute the new order from this list. */
   allColumns?: string[];
+  /** Auto-expand a section on mount. Used by the alternates badge to
+   *  deep-link straight to the Cast pane. */
+  initialOpen?: "cast";
   position: { x: number; y: number };
   onClose: () => void;
   onAction: (action: ColumnAction) => void;
 }
 
-export function ColumnMenu({ columnName, columnType, allColumns, position, onClose, onAction }: Props) {
+export function ColumnMenu({
+  columnName, columnType, columnLogicalType, castCandidates,
+  allColumns, initialOpen, position, onClose, onAction,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [castOpen, setCastOpen] = useState(false);
+  const [castOpen, setCastOpen] = useState(initialOpen === "cast");
+  // "Show all types" expansion inside the Cast pane. Default closed —
+  // smart picks first; the full catalog is one click away.
+  const [castShowAll, setCastShowAll] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(columnName);
   const [sortOpen, setSortOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveMode, setMoveMode] = useState<"before" | "after" | null>(null);
+
+  // Lazy-load the type catalog only when the Cast section opens. Keeps the
+  // menu's first-paint instant and avoids a 304 round-trip per right-click.
+  const typesQ = useQuery({
+    queryKey: ["dig", "types"],
+    queryFn: () => api.listTypes(),
+    enabled: castOpen,
+    staleTime: 5 * 60_000,
+  });
+  const allTypes: TypeDescriptor[] = typesQ.data ?? FALLBACK_TYPES;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -118,15 +155,14 @@ export function ColumnMenu({ columnName, columnType, allColumns, position, onClo
         <Sep />
         <Toggle label="🔄 Cast to…" open={castOpen} onToggle={() => setCastOpen((v) => !v)} />
         {castOpen && (
-          <div className="px-2 pb-1.5 grid grid-cols-2 gap-0.5">
-            {TYPES.map((t) => (
-              <Sub
-                key={t}
-                label={t}
-                onClick={() => fire({ kind: "cast", column: columnName, targetType: t })}
-              />
-            ))}
-          </div>
+          <CastSection
+            currentType={columnLogicalType}
+            candidates={castCandidates ?? []}
+            allTypes={allTypes}
+            showAll={castShowAll}
+            onToggleShowAll={() => setCastShowAll((v) => !v)}
+            onCast={(t) => fire({ kind: "cast", column: columnName, targetType: t })}
+          />
         )}
 
         <Sep />
@@ -245,6 +281,151 @@ export function ColumnMenu({ columnName, columnType, allColumns, position, onClo
         />
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+/**
+ * Cast section UX: smart picks first, full catalog on demand.
+ *
+ * Layout (top to bottom):
+ *   1. "Smart picks" row — alternate candidates from profiling, sorted by
+ *      score, each with the detector's reason on hover. Skipped entirely
+ *      when there's only the current type's candidate (i.e. nothing
+ *      smarter to suggest).
+ *   2. The current type, marked with a checkmark — explicit so the user
+ *      always sees what they have now.
+ *   3. "Show all types" toggle revealing the full /types catalog grouped
+ *      visually by base physical type.
+ *
+ * Why progressive disclosure: 19+ types overflow the menu and force the
+ * user to scan a wall of options. Surfacing the 1–3 most likely up front
+ * matches the actual workflow ("the detector picked X but I want one of
+ * the alternates it considered").
+ */
+function CastSection({
+  currentType,
+  candidates,
+  allTypes,
+  showAll,
+  onToggleShowAll,
+  onCast,
+}: {
+  currentType?: string;
+  candidates: Array<{ type: string; score: number; reason: string }>;
+  allTypes: TypeDescriptor[];
+  showAll: boolean;
+  onToggleShowAll: () => void;
+  onCast: (typeId: string) => void;
+}) {
+  const byId: Record<string, TypeDescriptor> = {};
+  for (const t of allTypes) byId[t.id] = t;
+
+  // Smart picks = candidates other than the current one, score ≥ 0.50
+  // already filtered server-side by ALTERNATE_MIN_SCORE.
+  const smartPicks = candidates.filter(
+    (c) => c.type !== currentType && c.score >= 0.5,
+  );
+
+  // Group by base physical type so the 19 entries cluster meaningfully
+  // (numeric meta-types beside `double`, string meta-types beside `string`).
+  // Order the bases by the natural reading sequence the cast manifest enum
+  // uses — physical primitives first, meta-types tucked under their base.
+  const BASE_ORDER = ["string", "integer", "double", "boolean", "date", "datetime"];
+  const groupedByBase: Record<string, TypeDescriptor[]> = {};
+  for (const t of allTypes) {
+    (groupedByBase[t.base] ??= []).push(t);
+  }
+  // Sort within each base: the base type itself first (id === base), then
+  // meta-types alphabetically by label.
+  for (const list of Object.values(groupedByBase)) {
+    list.sort((a, b) => {
+      if (a.id === a.base && b.id !== b.base) return -1;
+      if (b.id === b.base && a.id !== a.base) return 1;
+      return a.label.localeCompare(b.label);
+    });
+  }
+  const orderedBases = [
+    ...BASE_ORDER.filter((b) => b in groupedByBase),
+    ...Object.keys(groupedByBase).filter((b) => !BASE_ORDER.includes(b)),
+  ];
+
+  return (
+    <div className="px-2 pb-1.5 space-y-1.5">
+      {smartPicks.length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground px-1 pb-1 flex items-center gap-1">
+            <span aria-hidden>✨</span> Smart picks
+          </p>
+          <div className="space-y-0.5">
+            {smartPicks.map((c) => {
+              const td = byId[c.type];
+              const label = td?.label ?? c.type;
+              const pct = Math.round(c.score * 100);
+              return (
+                <button
+                  key={c.type}
+                  type="button"
+                  onClick={() => onCast(c.type)}
+                  title={c.reason}
+                  className="w-full text-left px-2 py-1 rounded hover:bg-muted text-xs flex items-center gap-2"
+                >
+                  <span className="flex-1 truncate">{label}</span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">{pct}%</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {currentType && byId[currentType] && (
+        <div className="flex items-center gap-2 px-2 py-1 rounded bg-muted/40 text-xs">
+          <span className="text-emerald-600 dark:text-emerald-400" aria-hidden>✓</span>
+          <span className="flex-1 truncate">{byId[currentType].label}</span>
+          <span className="text-[10px] text-muted-foreground">current</span>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onToggleShowAll}
+        aria-expanded={showAll}
+        className="w-full text-left px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors flex items-center justify-between"
+      >
+        <span>{showAll ? "Hide full type list" : "Show all types"}</span>
+        <span aria-hidden>{showAll ? "▴" : "▾"}</span>
+      </button>
+
+      {showAll && (
+        <div className="max-h-[260px] overflow-y-auto border border-border/40 rounded-md p-1 bg-muted/20 space-y-1.5">
+          {orderedBases.map((baseName) => (
+            <div key={baseName}>
+              <p className="text-[9px] uppercase tracking-wider text-muted-foreground/80 px-1 pb-0.5">
+                {baseName}
+              </p>
+              <div className="grid grid-cols-2 gap-0.5">
+                {groupedByBase[baseName].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onCast(t.id)}
+                    title={t.description}
+                    className={[
+                      "text-left px-2 py-1 rounded text-xs truncate transition-colors",
+                      t.id === currentType
+                        ? "bg-emerald-100/60 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-100"
+                        : "hover:bg-muted",
+                    ].join(" ")}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -35,6 +35,7 @@ import { HelpLink } from "@/components/help-link";
 import { ArtifactsPanel } from "@/components/canvas/artifacts-panel";
 import type { ColumnAction } from "@/components/canvas/column-menu";
 import { suggestionsFromProfile, type Suggestion } from "@/lib/suggestions";
+import { fmtInt } from "@/lib/format-number";
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -498,7 +499,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       const cols =
         (datasetProfileQ.data?.columns ?? []).map((c) => ({
           name: c.name,
-          type: c.polarsType ?? c.type ?? "string",
+          // Show the logical type when the profile detector promoted the
+          // column (e.g. "email", "index"). Fall back to the physical
+          // polars dtype only when there's no logical interpretation.
+          type: c.type ?? c.polarsType ?? "string",
+          candidates: c.candidates,
         })) ?? [];
       return {
         columns: cols,
@@ -986,7 +991,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                     <span aria-hidden>📊</span>
                     <span className="truncate">{d.name}</span>
                     <span className="ml-auto text-[10px] text-muted-foreground">
-                      {d.rowCount?.toLocaleString() ?? "—"}r
+                      {fmtInt(d.rowCount)}r
                     </span>
                   </button>
                 ))
@@ -1508,7 +1513,7 @@ function BackendResultPanel({
           Backend run result
         </p>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {page.totalRows.toLocaleString()} rows · {page.columns.length} cols
+          {fmtInt(page.totalRows)} rows · {page.columns.length} cols
         </span>
         <span className="flex-1" />
         <button

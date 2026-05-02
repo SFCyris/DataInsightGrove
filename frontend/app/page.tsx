@@ -60,13 +60,26 @@ export default function Home() {
   // Derive the displayed ports from the actual API base + the page's own
   // origin. No hardcoded defaults — if the user reconfigures via
   // `start.sh --api-port N --save` everything just reflects it.
+  //
+  // apiPort is safe to compute during SSR: API_BASE comes from the
+  // NEXT_PUBLIC_DIG_API env var which Next.js bakes into the bundle at
+  // build time, so the value is identical on server and client.
   const apiPort = (() => {
     try { return new URL(API_BASE).port || (new URL(API_BASE).protocol === "https:" ? "443" : "80"); }
     catch { return "?"; }
   })();
-  const webPort = typeof window !== "undefined"
-    ? (window.location.port || (window.location.protocol === "https:" ? "443" : "80"))
-    : "?";
+  // webPort is not — `window` doesn't exist during SSR. We start with a
+  // placeholder that matches what the server renders, then fill in the
+  // real value after mount. This keeps the first client render byte-
+  // identical to the server output (no hydration mismatch) and updates
+  // a tick later to show the actual port.
+  const [webPort, setWebPort] = useState<string>("…");
+  useEffect(() => {
+    setWebPort(
+      window.location.port ||
+      (window.location.protocol === "https:" ? "443" : "80"),
+    );
+  }, []);
 
   // Suggest the tour for first-time visitors.
   useEffect(() => {
@@ -207,13 +220,9 @@ export default function Home() {
               </p>
             </div>
             <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
-              Self-hosted data preparation.<br />
-              <span className="text-emerald-200/80">Three moves. Press play.</span>
+              Self-hosted. Plugin-first. Yours.<br />
+              <span className="text-emerald-200/80">Data preparation for the rest of us.</span>
             </h1>
-            <p className="text-zinc-300/80 max-w-xl">
-              Ingest a CSV. Build a pipeline. Run it in your browser or on the backend.
-              Plugin-driven, original, and yours.
-            </p>
           </motion.header>
 
           {/* Workflow cards */}

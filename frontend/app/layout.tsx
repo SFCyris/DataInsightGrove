@@ -1,3 +1,20 @@
+// ─────────────────────────────────────────────────────────────────────
+// Root layout for every page. This file's chief responsibility is to
+// stay byte-stable between SSR and the first client render — anything
+// here that produces different output on the two paths becomes a
+// hydration error visible to every user.
+//
+// If you're adding code to this tree, follow the SSR rules:
+//   - No `window` / `document` / `localStorage` / `Date.now()` /
+//     `Math.random()` / locale-dependent formatting in render.
+//   - Put runtime-only values behind `useState` + `useEffect`.
+//   - For attributes legitimately injected by a wrapper or extension
+//     after SSR (the Mac wrapper sets data-dig-mac), use
+//     `suppressHydrationWarning` scoped to the specific element.
+//
+// Full guide: docs/UI_GUIDELINES.md → "SSR + hydration safety — the rules".
+// ─────────────────────────────────────────────────────────────────────
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -47,6 +64,16 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // The Mac wrapper (mac/DataInsightGrove.swift) injects
+      // data-dig-mac="true" on this element via a WKUserScript that
+      // fires at document-start — before React hydrates. The server
+      // doesn't render that attribute, so React would normally flag
+      // the mismatch. This is the canonical React escape hatch for
+      // "we know this attribute is set client-side only, and the
+      // intent is for the difference to exist." It's scoped to <html>
+      // only — does NOT suppress warnings inside <body> or anywhere
+      // deeper.
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {/* Keyboard skip-link: first focusable element on every page,

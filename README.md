@@ -1,5 +1,7 @@
 # 🌳 DataInsightGrove™ (DIG™)
 
+> *Data preparation for the rest of us.*
+
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 [![Version: 0.5.0 beta](https://img.shields.io/badge/version-0.5.0_beta-yellow)](https://github.com/SFCyris/DataInsightGrove/releases)

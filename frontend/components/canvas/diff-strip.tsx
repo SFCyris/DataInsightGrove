@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "motion/react";
+import { fmtInt } from "@/lib/format-number";
 
 export interface DiffSummary {
   /** columns present after this step but not before */
@@ -45,12 +46,12 @@ export function DiffStrip({ diff }: Props) {
         {rowDelta !== null && rowDelta !== 0 && (
           <Chip
             tone={rowDelta < 0 ? "red" : "green"}
-            label={`${rowDelta > 0 ? "+" : ""}${rowDelta.toLocaleString()} rows`}
-            title={`${rowsBefore?.toLocaleString() ?? "?"} → ${rowsAfter?.toLocaleString() ?? "?"}`}
+            label={`${rowDelta > 0 ? "+" : ""}${fmtInt(rowDelta)} rows`}
+            title={`${fmtInt(rowsBefore)} → ${fmtInt(rowsAfter)}`}
           />
         )}
         {rowDelta === 0 && rowsBefore !== null && (
-          <Chip tone="neutral" label={`row count unchanged (${rowsAfter?.toLocaleString()})`} />
+          <Chip tone="neutral" label={`row count unchanged (${fmtInt(rowsAfter)})`} />
         )}
 
         {addedColumns.map((c) => (

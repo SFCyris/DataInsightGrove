@@ -202,6 +202,25 @@ final class BrowserWindowController: NSWindowController {
     init(url: URL) {
         let cfg = WKWebViewConfiguration()
         cfg.preferences.javaScriptCanOpenWindowsAutomatically = false
+
+        // Tell the web app it's running inside the Mac wrapper, BEFORE any
+        // page JS runs. The frontend reads this to:
+        //   - reserve the top 28pt for the title-bar / traffic-light zone
+        //     (CSS variable --dig-titlebar-h flips from 0px to 28px)
+        //   - render the MacTitlebar brand strip on the right of the lights
+        // The dataset attribute on <html> is the workhorse — it lets pure
+        // CSS branch on Mac mode without waiting for client-side JS, so
+        // the layout is correct on the very first paint.
+        let macFlagScript = WKUserScript(
+            source: """
+            window.__DIG_MAC__ = true;
+            document.documentElement.dataset.digMac = 'true';
+            """,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        cfg.userContentController.addUserScript(macFlagScript)
+
         let web = WKWebView(frame: .zero, configuration: cfg)
         self.webView = web
 

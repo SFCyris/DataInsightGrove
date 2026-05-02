@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, type Dataset } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fmtInt } from "@/lib/format-number";
 
 const STATUS_EMOJI: Record<string, string> = {
   ready: "✅",
@@ -77,7 +78,7 @@ export function DatasetCard({ d, index }: { d: Dataset; index: number }) {
           <div>
             <dt className="uppercase tracking-wider opacity-60">Rows</dt>
             <dd className="font-medium text-foreground">
-              {d.rowCount?.toLocaleString() ?? "—"}
+              {fmtInt(d.rowCount)}
             </dd>
           </div>
           <div>

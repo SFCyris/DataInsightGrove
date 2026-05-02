@@ -15,13 +15,21 @@ const TYPE_EMOJI: Record<string, string> = {
   nested: "🧱",
 };
 
+// Locale-pinned (en-US) number formatters. We deliberately don't pass
+// `undefined` for the locale here — that picks up the user's browser
+// locale, which differs from what Node renders during SSR ("1,234" vs
+// "1.234" vs "1 234") and triggers a hydration mismatch on every numeric
+// cell. Pinning to en-US makes the output deterministic across SSR + client.
+const _fmt2 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+const _fmt3 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 });
+
 function fmtNum(v: unknown): string {
   if (v == null) return "—";
   if (typeof v === "number") {
     if (!isFinite(v)) return "—";
-    if (Math.abs(v) >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (Math.abs(v) >= 1000) return _fmt2.format(v);
     if (Number.isInteger(v)) return String(v);
-    return v.toLocaleString(undefined, { maximumFractionDigits: 3 });
+    return _fmt3.format(v);
   }
   return String(v);
 }

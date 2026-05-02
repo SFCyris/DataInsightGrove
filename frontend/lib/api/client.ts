@@ -33,6 +33,26 @@ export const API_TOKEN: string =
 export type Dataset = components["schemas"]["DatasetOut"];
 export type DatasetProfile = components["schemas"]["DatasetProfile"];
 export type ColumnInfo = components["schemas"]["ColumnInfo"];
+
+// Logical-type catalog. Every entry corresponds to a TypeDescriptor in
+// backend/dig/engine/meta_types.py:TYPES. Loaded lazily via api.listTypes()
+// and used by the column-menu Cast submenu to render the "smart picks first
+// then show all" UX.
+export interface TypeDescriptor {
+  id: string;          // "url", "email", "percentage", …
+  label: string;       // "🔗 URL"
+  base: string;        // physical type — "string" | "integer" | "double" | …
+  description: string; // one-line dropdown tooltip
+}
+
+// One detected possibility for a column's type. The profile attaches a
+// list of these per column, sorted by score descending — element [0] is
+// DIG's pick, the rest are alternates surfaced in the Cast UI.
+export interface TypeCandidate {
+  type: string;        // matches a TypeDescriptor.id (or a base physical type)
+  score: number;       // 0..1
+  reason: string;      // one-line human reason ("97% URL-shaped")
+}
 export type RowsPage = components["schemas"]["RowsPage"];
 export type Health = components["schemas"]["Health"];
 export type PipelineSummary = components["schemas"]["PipelineSummary"];
@@ -366,6 +386,9 @@ export const api = {
 
   // ---- Connectors ----
   listConnectorsTyped: () => request<ConnectorManifest[]>("/connectors"),
+
+  // ---- Logical types catalog (powers the Cast smart-picks UI) ----
+  listTypes: () => request<TypeDescriptor[]>("/types"),
 
   // ---- Settings (server-side) ----
   listSettings: () => request<SettingDescriptor[]>("/settings"),

@@ -618,6 +618,14 @@ export interface components {
             histogram?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Candidates — added by the meta-type detector pass; not yet in
+             *  the upstream Pydantic schema regen output. Re-run `pnpm gen:api`
+             *  once the backend is restarted to make this canonical. */
+            candidates?: {
+                type: string;
+                score: number;
+                reason: string;
+            }[];
         };
         /** CreatePipelineRequest */
         CreatePipelineRequest: {

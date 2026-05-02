@@ -1,5 +1,7 @@
 # Getting started with DIG
 
+> *Data preparation for the rest of us.*
+
 This is your first 10 minutes with **DataInsightGrove (DIG)** — from a fresh install to a working pipeline you can poke at. By the end you'll have ingested a CSV, applied a few transforms, run them on the full data, and exported the result. No SQL knowledge needed; every change is reversible with ⌘Z.
 
 The page is friendly to people coming from spreadsheets — *if you've used Excel filters, sort, formulas, and pivot tables, you already know the operations DIG performs*; we just record them as a reusable pipeline rather than as a one-off action. If you're a data engineer, you can skim the pictures and skip to the [tutorials](tutorials.md) for worked end-to-end examples.

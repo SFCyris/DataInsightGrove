@@ -19,10 +19,14 @@
     "targetType": {
       "type": "enum",
       "label": "Target type",
-      "enumValues": ["integer", "double", "string", "boolean", "date", "datetime", "index", "timezone"],
+      "enumValues": [
+        "integer", "double", "string", "boolean", "date", "datetime",
+        "index", "percentage", "currency", "scientific", "hex",
+        "uuid", "email", "url", "ip", "phone", "country", "color", "timezone"
+      ],
       "required": true,
       "default": "string",
-      "help": "Index: integer column where every value should be unique (duplicates are flagged in the grid). Timezone: string column constrained to IANA zone names like America/New_York (invalid entries flagged in red)."
+      "help": "Physical types (integer / double / string / boolean / date / datetime) change how the column is stored. Meta-types (index, percentage, currency, scientific, hex, uuid, email, url, ip, phone, country, color, timezone) keep the same storage but add semantic constraints — duplicates flagged for index, invalid entries highlighted in red, formatted display, etc. The cast UI shows the most likely fits first based on automatic detection."
     },
     "strict": {
       "type": "boolean",
