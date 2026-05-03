@@ -1,6 +1,6 @@
 # 🌳 DataInsightGrove™ (DIG™)
 
-> *Data preparation for the rest of us.*
+> *Self-hosted. Plugin-first. Yours. Data preparation for the rest of us.*
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
@@ -9,9 +9,9 @@
 
 > 🧪 **Beta software (v0.5.0).** DIG works end-to-end and the architecture is stable, but the API surface, plugin contracts, and on-disk format may still shift before v1.0.0. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
-**Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data), with ML, time-series, per-row lineage, and one-click `.py` / `.ipynb` export.**
+**Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
-Drop in a CSV. Build a transform pipeline visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
+Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
 
 ![DIG running as a native Mac app — “Self-hosted. Plugin-first. Yours. / Data preparation for the rest of us.”](docs/images/01-mac-app-hero.png)
 
@@ -35,17 +35,22 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## What ships today
 
-- **46 steps** across 6 categories: shape, clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling · convert_coordinates** for polar↔Cartesian↔geographic), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus a `expectations` step for inline data-quality assertions.
-- **8 connectors**: csv · parquet · excel · json · https · sqlite · postgres · mysql.
-- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts.
-- **Rule-based hints** in a side panel — deterministic data-preparation suggestions surfaced from the column profile (not ML predictions, not selection-driven, not a ranked card stack).
+- **51 steps** across 6 categories: shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
+- **16 connectors**:
+  - *Text*: csv (with delimiter sniffing for `.dat` / `.data` / `.tab` / `.psv`) · excel (multi-sheet + multi-data-island detection) · json · parquet · feather.
+  - *Scientific binary* (under the optional `[science]` extra): NumPy (`.npy` / `.npz`) · HDF5 · MATLAB · NetCDF · FITS.
+  - *Network + database*: https · rest_api (auth + JSONPath + pagination) · sqlite · postgres · mysql · jdbc.
+- **AI assistant** (optional, bring-your-own provider — local Ollama, OpenAI-compatible, or Anthropic): **Explain** the pipeline · **Suggest** the next step from a plain-English goal · **Fix** SQL expressions in filter / derive · **Generate** a connector from a URL (with static-lint safety check before install).
+- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. **Transparent backend fallback** when DuckDB-WASM can't run the SQL (e.g. spatial GEOMETRY) — preview routes to backend, status badge marks it.
+- **Rule-based hints** in a side panel — deterministic data-preparation suggestions surfaced from the column profile (not ML predictions, not selection-driven, not a ranked card stack). One-click composites for common patterns (e.g. *(LATITUDE, LONGITUDE) → pack & cast to geographic*).
+- **Per-row lineage** — opt-in tracing so you can click 🔍 on any output row and jump back to the input row(s) it came from.
+- **Schedules** — cron-driven recurring runs from the Schedules page (or `dig-schedule.sh` from the CLI).
 - **Pipeline export / import** as portable `.dig.json` files; whole-page drop zone on `/pipelines`.
-- **Templates library** — three worked starter pipelines that auto-import the demo dataset.
+- **Templates library** — worked starter pipelines that auto-import the demo dataset (incl. spatial-distance and vector-similarity demos).
 - **Command palette (⌘K)** + keyboard cheatsheet (`?`).
 - **Dark mode**, **settings page** (`/settings`), **column annotations** that travel with the dataset.
 - **Mac `.app` wrapper** (WKWebView, ad-hoc signed) and **Linux `.desktop`** integration that both wrap the same shell scripts.
-- **Cron scheduling** via `dig-schedule.sh` for recurring runs.
-- **31 backend parity tests pass** (every transform step verified byte-identical between backend DuckDB and DuckDB-WASM target).
+- **Backend parity tests** verify byte-identical output between backend DuckDB and DuckDB-WASM target for every transform step.
 
 ## Quickstart
 
@@ -92,7 +97,7 @@ samples/                 Bundled demo CSV + starter pipeline templates
 scripts/                 dig-start.sh · dig-stop.sh · dig-status.sh · dig-config.py · dig-run.sh · dig-schedule.sh · dig-dev.sh
 mac/                     Mac .app source (Swift + WKWebView) + build.sh
 linux/                   .desktop file + dig-launch.sh + install.sh
-docs/                    Architecture, getting started, lifecycle, plugin authoring, IP / terminology
+docs/                    Architecture, getting started, lifecycle, plugin authoring, glossary
 ```
 
 ## Cross-platform discipline
