@@ -20,6 +20,10 @@ interface Props {
   onClose: () => void;
   columnName: string | null;
   columnType?: string;
+  /** Physical SQL storage type (DECIMAL(18,4), HUGEINT, UUID, …). When
+   *  provided, the drawer shows it alongside the logical type so the user
+   *  knows the on-disk representation behind a meta-type. */
+  columnStorage?: string | null;
   /** Rows currently visible in the grid (in-memory sample). */
   rows: Array<Record<string, unknown>>;
   /** All columns in the data (so the drawer can show position info). */
@@ -53,7 +57,7 @@ function fmt(v: unknown): string {
 }
 
 export function ProfileDrawer({
-  open, onClose, columnName, columnType, rows, columns, annotation, onSaveAnnotation,
+  open, onClose, columnName, columnType, columnStorage, rows, columns, annotation, onSaveAnnotation,
 }: Props) {
   const [draftNote, setDraftNote] = useState<string>("");
   const [savingNote, setSavingNote] = useState(false);
@@ -217,6 +221,11 @@ export function ProfileDrawer({
               <section className="text-xs">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Type</p>
                 <p className="font-mono">{columnType}</p>
+                {columnStorage && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Stored as <span className="font-mono text-foreground/80">{columnStorage}</span>
+                  </p>
+                )}
                 <p className="text-muted-foreground mt-1">
                   Position {columns.findIndex((c) => c.name === columnName) + 1} of {columns.length}
                 </p>

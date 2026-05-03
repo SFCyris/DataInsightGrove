@@ -13,14 +13,21 @@ const TYPE_EMOJI: Record<string, string> = {
   // Meta-types — same base storage but distinct visual identity so the
   // user can see at a glance that these are constraint-bearing columns.
   index: "🔑", timezone: "🌍", scientific: "🔬",
-  percentage: "📊", currency: "💵", hex: "#️⃣",
+  percentage: "📊", currency: "💵", hex: "#️⃣", bignum: "🧮",
+  decimal_string: "♾️",
   uuid: "🆔", url: "🔗", email: "📧",
   ip: "🌐", phone: "📞", country: "🌐", color: "🎨",
+  // Composite + spatial
+  json: "📦", array: "📚", vector: "🧭",
+  cartesian2d: "📐", cartesian3d: "📐",
+  polar2d: "🧭", polar3d: "🧭",
+  geographic: "🌍",
 };
 
 // Logical types that should right-align (numeric in nature).
 const NUMERIC_TYPES = new Set([
-  "integer", "double", "index", "scientific", "percentage", "currency",
+  "integer", "double", "index", "scientific", "percentage", "currency", "bignum",
+  "decimal_string",
 ]);
 // Logical types that carry a per-cell shape validator.
 const VALIDATED_TYPES = new Set([
@@ -30,10 +37,14 @@ const VALIDATED_TYPES = new Set([
 interface Column {
   name: string;
   type: string;
+  /** Physical SQL storage type (DECIMAL(18,4), HUGEINT, UUID, VARCHAR, …).
+   *  Carried alongside the logical type so the grid can show it on hover
+   *  and the profile drawer can surface it explicitly. */
+  storage?: string | null;
   /** Optional ranked type candidates from the profile (see backend
    *  meta_types.detect_candidates). When present, the Cast UI shows them
    *  as smart picks before the full type catalog. */
-  candidates?: Array<{ type: string; score: number; reason: string }>;
+  candidates?: Array<{ type: string; score: number; reason: string; storage?: string | null }>;
 }
 
 interface Highlights {
@@ -120,8 +131,10 @@ function shortType(t: string): string {
 // can branch on them in fmt(), validators, and emoji lookup.
 const META_TYPE_IDS = new Set([
   "index", "timezone", "scientific",
-  "percentage", "currency", "hex",
+  "percentage", "currency", "hex", "bignum", "decimal_string",
   "uuid", "url", "email", "ip", "phone", "country", "color",
+  "json", "array", "vector",
+  "cartesian2d", "cartesian3d", "polar2d", "polar3d", "geographic",
 ]);
 
 function logicalType(t: string): string {
@@ -292,7 +305,11 @@ export function LiveGrid({
           </div>
         ) : (
           <table
-            className="w-full text-xs tabular-nums"
+            // Default cell font: Geist Mono (tight column alignment, clear
+            // 0/O and 1/l/I disambiguation for IDs and codes). The <th>
+            // overrides back to font-sans below so column names stay in
+            // Geist Sans, matching the rest of the UI chrome.
+            className="w-full text-xs tabular-nums font-mono"
             role="grid"
             aria-rowcount={totalRows ?? rows.length}
             aria-colcount={columns.length}
@@ -353,7 +370,10 @@ export function LiveGrid({
                         setMenu({ x: e.clientX, y: e.clientY, col: c });
                       }}
                       className={[
-                        "text-left px-2 py-1.5 border-b whitespace-nowrap font-medium relative",
+                        // Font treatment: bold Geist Sans, slightly bigger,
+                        // pure black so the column header pops off the mono
+                        // data rows below it.
+                        "text-left px-2 py-1.5 border-b whitespace-nowrap font-sans font-bold relative",
                         "cursor-grab active:cursor-grabbing select-none transition-colors",
                         isDragging ? "opacity-40" : "",
                         isAdded
@@ -388,8 +408,18 @@ export function LiveGrid({
                             e.stopPropagation();
                             setProfileFor(c);
                           }}
-                          className="truncate hover:underline underline-offset-2 text-left"
-                          title={`Open profile for ${c.name}`}
+                          // Pure black (#000) on light theme; flip to near-white
+                          // for dark theme so the header stays legible. Larger
+                          // (text-sm = 14px) than the body text (text-xs = 12px)
+                          // so the column name reads as a heading, not a row.
+                          // font-sans is explicit (not just inherited) so the
+                          // column name never picks up the table's font-mono.
+                          className="truncate hover:underline underline-offset-2 text-left text-sm text-black dark:text-zinc-100 font-sans"
+                          title={
+                            c.storage
+                              ? `${c.name} · stored as ${c.storage} · click for profile`
+                              : `Open profile for ${c.name}`
+                          }
                         >
                           {c.name}
                         </button>
@@ -585,6 +615,7 @@ export function LiveGrid({
         onClose={() => setProfileFor(null)}
         columnName={profileFor?.name ?? null}
         columnType={profileFor?.type}
+        columnStorage={profileFor?.storage}
         rows={rows}
         columns={columns}
         annotation={profileFor ? annotations?.[profileFor.name] : undefined}

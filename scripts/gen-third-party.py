@@ -584,11 +584,16 @@ DIG distributions because no LGPL-licensed code travels with them.
 
 - DIG ships emoji as Unicode characters rendered by the user's system
   emoji font. No emoji font files are bundled.
-- DIG uses the [Geist Sans](https://vercel.com/font) and Geist Mono
-  webfonts via Next.js's `next/font/google` integration. These are
-  served from Google Fonts at runtime; their copyright belongs to
-  Vercel under the **SIL Open Font License 1.1** — see
-  <https://github.com/vercel/geist-font/blob/main/LICENSE.TXT>.
+- DIG bundles **Geist Sans** and **Geist Mono** via the `geist` npm
+  package (Vercel + basement.studio). The actual `.woff2` files travel
+  with every build artifact (web bundle, Mac `.app`, Linux package),
+  meaning DIG runs offline with no font CDN fetch.
+  - Copyright: © 2023 Vercel, in collaboration with basement.studio.
+  - License: **SIL Open Font License 1.1** (OFL-1.1).
+  - License text shipped with this distribution: [`licenses/Geist-OFL.txt`](licenses/Geist-OFL.txt).
+  - Upstream: <https://github.com/vercel/geist-font>.
+  - Reserved Font Names: "Geist". Per OFL §3, derivatives that use
+    these names are not permitted; DIG uses the fonts as-is.
 """
 
 

@@ -28,15 +28,28 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 class TypeCandidate(BaseModel):
     """One detected possibility for a column's type. Profiling attaches a
     list of these per column, sorted by score descending — element [0] is
-    DIG's pick, the rest are alternates surfaced in the Cast UI."""
+    DIG's pick, the rest are alternates surfaced in the Cast UI.
+
+    `storage` carries the SQL physical type the cast would land in
+    (DECIMAL(18,4), HUGEINT, UUID, VARCHAR, …). It's range-aware: a
+    `scientific` candidate whose values exceed IEEE 754 will report
+    storage=VARCHAR rather than DOUBLE, so the Cast UI can show the
+    user the trade-off before they apply.
+    """
     type: str
     score: float
     reason: str
+    storage: str | None = None
 
 
 class ColumnInfo(BaseModel):
     name: str
     type: str
+    # Physical SQL type the values currently live in (DECIMAL(18,4), UUID,
+    # VARCHAR, …). Mirrors the descriptor's sql_type unless a detector
+    # overrode it for range reasons. Surfaced in the profile drawer + as
+    # a hover tooltip on the column header.
+    storage: str | None = None
     polarsType: str | None = None
     nullCount: int | None = None
     nullFraction: float | None = None

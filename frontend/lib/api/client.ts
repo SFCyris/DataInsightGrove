@@ -52,6 +52,11 @@ export interface TypeCandidate {
   type: string;        // matches a TypeDescriptor.id (or a base physical type)
   score: number;       // 0..1
   reason: string;      // one-line human reason ("97% URL-shaped")
+  /** Physical SQL type the cast would land in. Range-aware — a
+   *  `scientific` candidate with out-of-range values reports VARCHAR
+   *  rather than DOUBLE, so the Cast UI can show the trade-off
+   *  ("scientific → VARCHAR — preserves precision but loses SUM"). */
+  storage?: string;
 }
 export type RowsPage = components["schemas"]["RowsPage"];
 export type Health = components["schemas"]["Health"];

@@ -180,10 +180,28 @@ def profile_dataframe(
         # Primary = top scorer (if any) or fall back to the base physical type.
         if candidates:
             ci["type"] = candidates[0].type_id
+            # Storage choice: detector override wins, otherwise descriptor
+            # default. Phase 1.4 surfaces this in the UI; Phase 1.3 uses it
+            # to drive cast SQL.
+            top = candidates[0]
+            top_descriptor = descriptor(top.type_id)
+            ci["storage"] = top.storage or (top_descriptor.sql_type if top_descriptor else None)
+        else:
+            # No detector won — storage is just the base physical type's
+            # natural SQL form. base is already the logical name (string,
+            # integer, double, …); the cast SQL map handles the mapping.
+            ci["storage"] = None  # populated by /datasets serializer if needed
         # Build a UI-facing list: detected candidates above ALTERNATE_MIN_SCORE,
-        # plus the base type as the universal fallback at the bottom.
+        # plus the base type as the universal fallback at the bottom. Carry
+        # the storage hint per-candidate so the Cast UI can show "currency
+        # → DECIMAL(18,4)" / "scientific → VARCHAR" tooltips.
         ui_candidates = [
-            {"type": c.type_id, "score": round(c.score, 3), "reason": c.reason}
+            {
+                "type": c.type_id,
+                "score": round(c.score, 3),
+                "reason": c.reason,
+                "storage": c.storage or (descriptor(c.type_id).sql_type if descriptor(c.type_id) else None),
+            }
             for c in candidates if c.score >= ALTERNATE_MIN_SCORE
         ]
         # Always include the base physical type — it's the "give me back the
@@ -193,6 +211,7 @@ def profile_dataframe(
                 "type": base,
                 "score": 0.50 if candidates else 1.0,
                 "reason": "base physical type",
+                "storage": None,
             })
         ci["candidates"] = ui_candidates
 

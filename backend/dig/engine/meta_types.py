@@ -55,10 +55,17 @@ SCIENTIFIC_HIGH = 1e6
 
 @dataclass
 class TypeCandidate:
-    """One detected possibility for a column's logical type."""
+    """One detected possibility for a column's logical type.
+
+    `storage` (optional) lets a detector override the descriptor's default
+    `sql_type` based on the data range. Example: a `scientific` column
+    whose max |value| exceeds 1.8e308 reports storage=VARCHAR so the
+    value isn't silently mauled to ±Inf when cast to DOUBLE.
+    """
     type_id: str
     score: float        # 0..1 — how confident the detector is
     reason: str         # one-line, human-readable, e.g. "97% of values match URL pattern"
+    storage: str | None = None  # SQL physical type override; None = use descriptor.sql_type
 
 
 @dataclass
@@ -129,6 +136,7 @@ _ISO_3166_ALPHA2 = frozenset({
 # ── Regex helpers ─────────────────────────────────────────────────
 
 
+_DECIMAL_STRING_RE = re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$")
 _URL_RE   = re.compile(r"^https?://[^\s<>'\"]+$", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 _UUID_RE  = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
@@ -143,6 +151,55 @@ _NAMED_COLORS = frozenset({
     "gray","grey","brown","navy","teal","olive","lime","aqua","silver","gold","maroon","fuchsia",
     "transparent","none",
 })
+
+
+def _is_decimal_string(s: str) -> bool:
+    if not isinstance(s, str):
+        return False
+    return bool(_DECIMAL_STRING_RE.match(s.strip()))
+
+
+def _is_json(s: str) -> bool:
+    """JSON-shape check: starts with {/[, parses as JSON."""
+    if not isinstance(s, str):
+        return False
+    s = s.strip()
+    if not s or s[0] not in "{[":
+        return False
+    try:
+        import json as _json
+        _json.loads(s)
+        return True
+    except Exception:
+        return False
+
+
+def _is_array_string(s: str) -> bool:
+    """Array-shape (string-encoded list): [a, b, c]. Stricter than JSON
+    detection — only accepts top-level bracket arrays, not objects."""
+    if not isinstance(s, str):
+        return False
+    s = s.strip()
+    if not (s.startswith("[") and s.endswith("]")):
+        return False
+    try:
+        import json as _json
+        v = _json.loads(s)
+        return isinstance(v, list)
+    except Exception:
+        return False
+
+
+def _is_numeric_array(s: str) -> bool:
+    """Numeric-only array — every entry is a number. Vector candidate."""
+    if not _is_array_string(s):
+        return False
+    try:
+        import json as _json
+        v = _json.loads(s)
+        return all(isinstance(e, (int, float)) for e in v) and len(v) > 0
+    except Exception:
+        return False
 
 
 def _is_url(s: str) -> bool:        return isinstance(s, str) and bool(_URL_RE.match(s))
@@ -216,7 +273,21 @@ def _detect_index(p: dict[str, Any]) -> TypeCandidate | None:
     return TypeCandidate("index", 0.95, f"{distinct}/{non_null} values are unique")
 
 
+_IEEE_DOUBLE_MAX = 1.7976931348623157e308   # max finite IEEE 754 double
+_IEEE_DOUBLE_MIN_NORMAL = 2.2250738585072014e-308  # smallest positive normal
+
+
 def _detect_scientific(p: dict[str, Any]) -> TypeCandidate | None:
+    """Detect scientific-notation candidates and pick the safest storage.
+
+    DOUBLE works for values whose |x| is in [smallest-normal, max-finite].
+    Once a column escapes that band — astronomical distances, sub-Planck
+    quantities, ultra-high-precision constants — the value can't be
+    represented in IEEE 754 without lossy underflow / overflow / precision
+    truncation, so we promote storage to VARCHAR (lexical decimal). The
+    user trades SQL pushdown for accuracy; downstream operations have to
+    parse on demand, but the value is preserved.
+    """
     if p.get("type") != "double":
         return None
     mn, mx = p.get("min"), p.get("max")
@@ -225,6 +296,22 @@ def _detect_scientific(p: dict[str, Any]) -> TypeCandidate | None:
         abs_max = abs(float(mx)) if isinstance(mx, (int, float)) else None
     except Exception:
         return None
+
+    # Out-of-range for IEEE double → VARCHAR storage, value-preserving.
+    if abs_max is not None and abs_max > _IEEE_DOUBLE_MAX * 0.99:
+        return TypeCandidate(
+            "scientific", 0.85,
+            f"max |value| = {abs_max:.2e} exceeds IEEE 754 range — stored as VARCHAR",
+            storage="VARCHAR",
+        )
+    if (abs_min is not None and 0 < abs_min < _IEEE_DOUBLE_MIN_NORMAL):
+        return TypeCandidate(
+            "scientific", 0.85,
+            f"min |value| = {abs_min:.2e} subnormal — stored as VARCHAR",
+            storage="VARCHAR",
+        )
+
+    # In-range scientific: regular DOUBLE storage with display formatting.
     if abs_max is not None and abs_max >= SCIENTIFIC_HIGH:
         return TypeCandidate("scientific", 0.85, f"max |value| = {abs_max:.2e}")
     if abs_min is not None and 0 < abs_min < SCIENTIFIC_LOW:
@@ -292,6 +379,178 @@ def _detect_hex(p: dict[str, Any]) -> TypeCandidate | None:
     return None
 
 
+# Storage thresholds for promoting integer-shaped columns:
+#   |value| > 2^63 - 1            → HUGEINT (128-bit)
+#   |value| > 2^127 - 1           → VARCHAR (lexical, arbitrary precision)
+_BIGINT_MAX = 2**63 - 1
+_HUGEINT_MAX = 2**127 - 1
+_BIGINT_SAFETY_FACTOR = 0.9
+
+
+def _detect_json(p: dict[str, Any]) -> TypeCandidate | None:
+    """JSON columns: strings starting with `{` or `[` that parse cleanly.
+
+    DuckDB has a native JSON type — much faster path-extraction than parsing
+    on every row. We promote to it when a sample of values shows JSON shape.
+    """
+    if p.get("type") != "string":
+        return None
+    score, _, total = _topvalues_pattern_score(p.get("topValues") or [], _is_json)
+    if score >= 0.85 and total > 0:
+        return TypeCandidate(
+            "json", min(score, 0.95),
+            f"{int(score*100)}% of values parse as JSON",
+        )
+    return None
+
+
+def _detect_array(p: dict[str, Any]) -> TypeCandidate | None:
+    """String-encoded array columns: `[a, b, c]`. Numeric-only arrays are
+    surfaced as `vector` instead — see _detect_vector below."""
+    if p.get("type") != "string":
+        return None
+    score, _, total = _topvalues_pattern_score(p.get("topValues") or [], _is_array_string)
+    if score < 0.85 or total == 0:
+        return None
+    # If every observed array is numeric, prefer the more specific `vector`.
+    num_score, _, _ = _topvalues_pattern_score(p.get("topValues") or [], _is_numeric_array)
+    if num_score >= 0.95:
+        return None
+    return TypeCandidate(
+        "array", min(score, 0.90),
+        f"{int(score*100)}% of values parse as JSON arrays",
+    )
+
+
+def _detect_vector(p: dict[str, Any]) -> TypeCandidate | None:
+    """Vector columns: numeric-only arrays of consistent length. The
+    canonical use case is ML embeddings — DuckDB's array_cosine_similarity
+    et al. expect `DOUBLE[n]` (fixed-length array of doubles).
+
+    We detect uniform-length numeric arrays and report storage=DOUBLE[n]
+    where n is the observed length. Variable-length numeric arrays fall
+    back to `array`.
+    """
+    if p.get("type") != "string":
+        return None
+    score, _, total = _topvalues_pattern_score(p.get("topValues") or [], _is_numeric_array)
+    if score < 0.85 or total == 0:
+        return None
+    # Pick a representative length; if values disagree, demote to plain array.
+    import json as _json
+    lengths = set()
+    for tv in p.get("topValues") or []:
+        v = tv.get("value")
+        if isinstance(v, str) and _is_numeric_array(v):
+            try:
+                lengths.add(len(_json.loads(v)))
+            except Exception:
+                pass
+            if len(lengths) > 1:
+                return None  # variable-length → not vector
+    if len(lengths) != 1:
+        return None
+    n = next(iter(lengths))
+    return TypeCandidate(
+        "vector", min(score, 0.92),
+        f"numeric arrays of fixed length {n}",
+        storage=f"DOUBLE[{n}]",
+    )
+
+
+def _detect_decimal_string(p: dict[str, Any]) -> TypeCandidate | None:
+    """Detect string columns that look like decimal numbers but exceed
+    DuckDB's DECIMAL(38,n) precision — these need arbitrary-precision
+    string storage so the value isn't truncated.
+
+    Triggers on string columns where ≥85% of top values match a numeric
+    shape AND at least one observed value has more than ~30 significant
+    digits (DECIMAL(38,n) headroom is 38, we err conservative at 30).
+    """
+    if p.get("type") != "string":
+        return None
+    score, _, total = _topvalues_pattern_score(
+        p.get("topValues") or [], _is_decimal_string,
+    )
+    if score < 0.85 or total == 0:
+        return None
+    # Look at any top value's significant-digit count.
+    top = p.get("topValues") or []
+    max_sig = 0
+    for tv in top:
+        v = tv.get("value")
+        if isinstance(v, str) and _is_decimal_string(v):
+            digits_only = "".join(c for c in v if c.isdigit())
+            if len(digits_only) > max_sig:
+                max_sig = len(digits_only)
+    if max_sig <= 30:
+        # DECIMAL(38, n) can hold this; skip — let `currency` / `scientific`
+        # / a plain DECIMAL detector handle it.
+        return None
+    return TypeCandidate(
+        "decimal_string", 0.85,
+        f"{int(score*100)}% numeric values, max {max_sig} significant digits — arbitrary precision",
+        storage="VARCHAR",
+    )
+
+
+def _detect_bignum(p: dict[str, Any]) -> TypeCandidate | None:
+    """Promote integer columns whose magnitude exceeds BIGINT capacity.
+
+    Storage choice is range-aware:
+      - magnitude in [2^63·0.9, 2^127·0.9]  → HUGEINT (128-bit)
+      - magnitude > 2^127·0.9               → VARCHAR (lexical decimal,
+        arbitrary precision; downstream parsers handle large-number ops)
+
+    Also fires on hex string columns where the decoded numeric value
+    overflows BIGINT — those get parsed into HUGEINT or VARCHAR
+    depending on nibble count.
+    """
+    t = p.get("type")
+    mn, mx = p.get("min"), p.get("max")
+
+    # Numeric integer column: check magnitude.
+    if t == "integer" and isinstance(mn, (int, float)) and isinstance(mx, (int, float)):
+        max_abs = max(abs(int(mn)), abs(int(mx)))
+        if max_abs > _HUGEINT_MAX * _BIGINT_SAFETY_FACTOR:
+            return TypeCandidate(
+                "bignum", 0.90,
+                f"max |value| = {max_abs:.3e} exceeds HUGEINT — stored as VARCHAR",
+                storage="VARCHAR",
+            )
+        if max_abs >= _BIGINT_MAX * _BIGINT_SAFETY_FACTOR:
+            return TypeCandidate(
+                "bignum", 0.90,
+                f"max |value| = {max_abs:.3e} approaches BIGINT range",
+            )
+        return None
+
+    # Hex string column: nibble width drives storage choice.
+    #   ≤16 nibbles  →  fits BIGINT  → stays as `hex`, not `bignum`
+    #   17–32 nibbles →  fits HUGEINT → bignum, HUGEINT storage
+    #   >32 nibbles  →  needs lexical → bignum, VARCHAR storage
+    if t == "string":
+        score, _, total = _topvalues_pattern_score(p.get("topValues") or [], _is_hex)
+        if score >= 0.85 and total > 0:
+            for tv in p.get("topValues") or []:
+                v = tv.get("value")
+                if isinstance(v, str) and _is_hex(v):
+                    nibbles = len(v.lower().removeprefix("0x"))
+                    if nibbles > 32:
+                        return TypeCandidate(
+                            "bignum", 0.85,
+                            f"hex values are {nibbles} nibbles — exceeds HUGEINT, stored as VARCHAR",
+                            storage="VARCHAR",
+                        )
+                    if nibbles > 16:
+                        return TypeCandidate(
+                            "bignum", 0.85,
+                            f"hex values are {nibbles} nibbles wide — promoted to HUGEINT",
+                        )
+                    break
+    return None
+
+
 # ── The registry ─────────────────────────────────────────────────
 #
 # Order matters slightly: entries higher in the list act as tiebreakers
@@ -301,18 +560,22 @@ def _detect_hex(p: dict[str, Any]) -> TypeCandidate | None:
 
 TYPES: list[TypeDescriptor] = [
     # Numeric meta-types
-    TypeDescriptor("index",       "🔑 Index (unique)",      "integer", "BIGINT",   "Integer column where every value should be unique. Duplicates are flagged in the grid.",
+    TypeDescriptor("index",       "🔑 Index (unique)",      "integer", "BIGINT",         "Integer column where every value should be unique. Duplicates are flagged in the grid.",
                    detector=_detect_index),
-    TypeDescriptor("percentage",  "📊 Percentage",          "double",  "DOUBLE",   "Decimal in the [0, 1] range, displayed as a percent (0.15 → 15%).",
+    TypeDescriptor("percentage",  "📊 Percentage",          "double",  "DECIMAL(9,6)",   "Decimal in the [0, 1] range, displayed as a percent (0.15 → 15%). Stored as DECIMAL for exact arithmetic.",
                    detector=_detect_percentage),
-    TypeDescriptor("currency",    "💵 Currency",            "double",  "DOUBLE",   "Monetary value, displayed with thousands separator and 2 decimal places.",
+    TypeDescriptor("currency",    "💵 Currency",            "double",  "DECIMAL(18,4)",  "Monetary value with exact decimal arithmetic — DECIMAL(18,4) gives ±99 trillion at 4-decimal precision (covers any realistic money math without floating-point drift).",
                    detector=_detect_currency),
-    TypeDescriptor("scientific",  "🔬 Scientific (IEEE)",   "double",  "DOUBLE",   "IEEE 754 double formatted in scientific notation (1.234e+10). Useful for physics, astronomy, very small probabilities.",
+    TypeDescriptor("scientific",  "🔬 Scientific (IEEE)",   "double",  "DOUBLE",         "IEEE 754 double formatted in scientific notation (1.234e+10). For physics, astronomy, very small probabilities. Phase 1.2 promotes out-of-range values to VARCHAR storage.",
                    detector=_detect_scientific),
-    TypeDescriptor("hex",         "🔢 Hex",                 "string",  "VARCHAR",  "Number written in hexadecimal notation (0xCAFE, 0xFF00FF).",
+    TypeDescriptor("bignum",      "🧮 Big number",          "integer", "HUGEINT",        "128-bit signed integer (±1.7e38). Use when values exceed BIGINT range — e.g. SHA-256 fragments, genomic position counts, financial micro-units.",
+                   detector=_detect_bignum),
+    TypeDescriptor("decimal_string", "♾️ Decimal (string)",  "string",  "VARCHAR",        "Arbitrary-precision decimal stored as a lexical string. Use when DECIMAL(38,n) and HUGEINT both overflow — high-precision physical constants, financial micro-units, very large integers. SQL operations limited (no native SUM); value is preserved exactly.",
+                   detector=_detect_decimal_string),
+    TypeDescriptor("hex",         "🔢 Hex",                 "string",  "VARCHAR",        "Number written in hexadecimal notation (0xCAFE, 0xFF00FF). Numeric-decoded form lives in `bignum`.",
                    detector=_detect_hex),
     # String meta-types — most specific first
-    TypeDescriptor("uuid",        "🆔 UUID",                "string",  "VARCHAR",  "RFC 4122 universally-unique identifier (8-4-4-4-12 hex).",
+    TypeDescriptor("uuid",        "🆔 UUID",                "string",  "UUID",           "RFC 4122 universally-unique identifier. Stored as DuckDB's native 128-bit UUID type — compares + sorts faster than VARCHAR.",
                    detector=_string_pattern_detector("uuid", _is_uuid, "UUID")),
     TypeDescriptor("email",       "📧 Email",               "string",  "VARCHAR",  "Email address. Invalid entries are flagged in red.",
                    detector=_string_pattern_detector("email", _is_email, "email")),
@@ -328,6 +591,27 @@ TYPES: list[TypeDescriptor] = [
                    detector=_string_pattern_detector("color", _is_color, "CSS color")),
     TypeDescriptor("timezone",    "🌍 Timezone",            "string",  "VARCHAR",  "IANA timezone name (America/New_York, Europe/Berlin, …).",
                    detector=_detect_timezone),
+    # ── Composite + structured types ───────────────────────────────────
+    TypeDescriptor("json",        "📦 JSON",                "string",  "JSON",     "Semi-structured JSON object or array. DuckDB-native JSON type — supports path extraction (`->`, `->>`), array length, type-of.",
+                   detector=_detect_json),
+    TypeDescriptor("array",       "📚 Array",               "string",  "JSON",     "Variable-length list of values, JSON-encoded. For numeric fixed-length arrays prefer `vector`.",
+                   detector=_detect_array),
+    TypeDescriptor("vector",      "🧭 Vector",              "string",  "DOUBLE[]", "Fixed-length numeric array — ML embeddings, feature vectors. Storage is DuckDB's native DOUBLE[n] for fast cosine similarity / dot product / kNN.",
+                   detector=_detect_vector),
+    # ── Spatial coordinate types ───────────────────────────────────────
+    # No automatic detection from raw data — these come from explicit casts
+    # or upstream `pack_struct` steps. The convert_coordinates step does
+    # lossless conversion between cartesian ↔ polar ↔ geographic.
+    TypeDescriptor("cartesian2d", "📐 Cartesian (2D)",      "string",  "STRUCT(x DOUBLE, y DOUBLE)",                       "2D point (x, y). Convertible to polar2d (pure trig) or geographic via the `convert_coordinates` step.",
+                   detector=lambda p: None),
+    TypeDescriptor("cartesian3d", "📐 Cartesian (3D)",      "string",  "STRUCT(x DOUBLE, y DOUBLE, z DOUBLE)",             "3D point (x, y, z). Convertible to spherical polar3d.",
+                   detector=lambda p: None),
+    TypeDescriptor("polar2d",     "🧭 Polar (2D)",          "string",  "STRUCT(r DOUBLE, theta DOUBLE)",                   "Polar coordinate (r, θ) — radius + angle in radians. Convertible to cartesian2d (lossless).",
+                   detector=lambda p: None),
+    TypeDescriptor("polar3d",     "🧭 Polar (3D)",          "string",  "STRUCT(r DOUBLE, theta DOUBLE, phi DOUBLE)",       "Spherical polar (r, θ, φ). Convertible to cartesian3d.",
+                   detector=lambda p: None),
+    TypeDescriptor("geographic",  "🌍 Geographic",          "string",  "GEOMETRY",                                         "Point on Earth — lat/lon stored as DuckDB-spatial GEOMETRY (WKB). Distance is great-circle (Haversine). Convertible to cartesian (ECEF) via the `convert_coordinates` step.",
+                   detector=lambda p: None),
 ]
 
 

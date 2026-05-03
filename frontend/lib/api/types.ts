@@ -618,6 +618,10 @@ export interface components {
             histogram?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Storage — physical SQL type the values are stored in (DECIMAL(18,4),
+             *  HUGEINT, UUID, VARCHAR, …). Forward-patched until a backend
+             *  restart + `pnpm gen:api` makes it canonical. */
+            storage?: string | null;
             /** Candidates — added by the meta-type detector pass; not yet in
              *  the upstream Pydantic schema regen output. Re-run `pnpm gen:api`
              *  once the backend is restarted to make this canonical. */
@@ -625,6 +629,7 @@ export interface components {
                 type: string;
                 score: number;
                 reason: string;
+                storage?: string | null;
             }[];
         };
         /** CreatePipelineRequest */

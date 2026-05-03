@@ -2,7 +2,7 @@
 
 This page documents every step DIG ships with. It is **auto-generated** from each step's `manifest.json` plus optional hand-written notes under `docs/_steps/<step_id>.md` — re-run `python scripts/gen-steps-doc.py` whenever you add or change a step.
 
-**40 steps** across ✂️ Shape (6), 🧼 Clean (8), 🪄 Derive (6), 🤝 Combine (3), 📊 Aggregate (5), 📤 Output (3).
+**46 steps** across ✂️ Shape (7), 🧼 Clean (8), 🪄 Derive (9), 🤝 Combine (3), 📊 Aggregate (5), 📤 Output (5).
 
 ## Index
 
@@ -10,6 +10,7 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 
 - [🔍 Filter rows](#filter-rows) — Keep rows where the predicate evaluates to true.
 - [✏️ Rename columns](#rename-columns) — Rename one or more columns.
+- [↔️ Reorder columns](#reorder-columns) — Reorder the columns of the input.
 - [🎲 Sample rows](#sample-rows) — Take a random or head/tail sample of rows.
 - [📋 Select columns](#select-columns) — Keep only the chosen columns, in the chosen order.
 - [↕️ Sort rows](#sort-rows) — Order rows by one or more columns.
@@ -28,10 +29,13 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 
 ### 🪄 Derive
 
+- [🆕 Add column](#add-column) — Add a new column with a typed default value.
 - [📦 Bin numeric](#bin-numeric) — Bucket a numeric column into N equal-width bins, or into custom breakpoints.
+- [🧭 Convert coordinates](#convert-coordinates) — Lossless conversion between polar, Cartesian, and geographic coordinate systems.
 - [➕ Derive column](#derive-column) — Add a new column computed from a SQL expression over existing columns.
 - [📅 Extract date parts](#extract-date-parts) — Pull year, month, day, day-of-week (etc.
 - [🎯 Extract pattern](#extract-pattern) — Extract a regex group from a string column into a new column.
+- [🧮 Math equation](#math-equation) — Add a column computed from a math expression over existing columns.
 - [🌊 Rolling window](#rolling-window) — Add rolling-window aggregations (moving average, rolling sum, etc.
 - [📐 Z-score](#z-score) — Add a standardized (mean=0, std=1) version of a numeric column as a new column.
 
@@ -54,6 +58,8 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 - [🗃 Export to database](#export-to-database) — Write the data to a SQL database table.
 - [💾 Export to file](#export-to-file) — Write the data to disk in CSV, Parquet, Excel, JSON, or NDJSON.
 - [🖼 Export to image](#export-to-image) — Render the data as a PNG/SVG via matplotlib + seaborn.
+- [🔌 Export to JDBC](#export-to-jdbc) — Write rows to any JDBC-accessible database — Oracle, DB2, MS SQL Server, Snowflake, Teradata, Vertica, etc.
+- [🔔 Trigger webhook](#trigger-webhook) — Fire a webhook from inside this pipeline.
 
 ---
 
@@ -91,6 +97,23 @@ Tags: `rename`
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `mapping` | array |  | — | Renames |
+
+
+### ↔️ Reorder columns
+
+**ID:** `reorder_columns` · **Version:** `1.0.0`
+
+Reorder the columns of the input. The 'order' list is the explicit final left-to-right column order. Columns that exist in the input but aren't listed are appended at the end (preserving their input order); listed columns that don't exist in the input are skipped — so the step stays robust when upstream schemas change.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `reorder` `rearrange` `move` `order`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `order` | column_refs | ✓ | — | Column order (left to right) |
 
 
 ### 🎲 Sample rows
@@ -188,8 +211,10 @@ Tags: `cast` `type`
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `column` | column_ref | ✓ | — | Column |
-| `targetType` | enum | ✓ | `string` | Target type |
-| `strict` | boolean |  | `False` | Off: failed casts become NULL. On: pipeline fails on first bad value. |
+| `targetType` | enum | ✓ | `string` | Physical types (integer / double / string / boolean / date / datetime) change the underlying storage. Meta-types map onto a precise physical storage that matches their semantics — currency and percentage use DECIMAL for exact arithmetic, uuid uses native UUID, bignum uses HUGEINT for 128-bit integers (covers hex values that overflow BIGINT). String-shape meta-types (email, url, uuid as text, ip, phone, country, color, timezone) keep VARCHAR. The cast UI shows the most likely fits first based on automatic detection. |
+| `strict` | boolean |  | `False` | Off (default): values that don't fit the target type — out-of-range numbers, malformed shapes, overflowed precision — silently become NULL via TRY_CAST. The grid surfaces a 🔄 chip on any cast column with new NULLs so you can audit the loss in the profile drawer.
+
+On: the pipeline fails on the first value that can't be cast. Use when you need a guarantee the data is clean. |
 
 
 ### 🧽 Clean whitespace
@@ -351,6 +376,27 @@ Tags: `string` `case` `demo`
 
 ## 🪄 Derive
 
+### 🆕 Add column
+
+**ID:** `add_column` · **Version:** `1.0.0`
+
+Add a new column with a typed default value. The column can be placed at the start or end of the schema, or before/after a chosen reference column. Leave the default blank to seed every row with NULL.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `add` `new` `column` `default` `fill` `constant`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | ✓ | — | New column name |
+| `columnType` | enum | ✓ | `string` | Type |
+| `defaultValue` | string |  | — | Cast to the chosen type at runtime. For dates use 'YYYY-MM-DD'; for booleans use 'true' / 'false'. |
+| `position` | enum |  | `end` | Position |
+| `reference` | column_ref |  | — | Only used when Position = before / after — ignored otherwise. |
+
+
 ### 📦 Bin numeric
 
 **ID:** `bin_numeric` · **Version:** `1.0.0`
@@ -370,6 +416,26 @@ Tags: `bucket` `discretize` `histogram`
 | `bins` | integer |  | `5` | Number of bins |
 | `breaks` | string |  | — | e.g. 0,100,500,1000 |
 | `as` | string |  | `bin` | New column name |
+
+
+### 🧭 Convert coordinates
+
+**ID:** `convert_coordinates` · **Version:** `1.0.0`
+
+Lossless conversion between polar, Cartesian, and geographic coordinate systems. Pure trig for polar↔Cartesian; WGS84 ellipsoid math for geographic↔Cartesian (ECEF).
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `spatial` `geometry` `coordinates` `convert` `polar` `cartesian` `geographic`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `fromType` | enum | ✓ | — | What system the source columns express. cartesian: (x, y[, z]); polar: (r, θ[, φ]) with θ/φ in radians; geographic: (lat, lon) in degrees. |
+| `toType` | enum | ✓ | — | What system to produce. polar↔cartesian conversions are dimension-preserving (2D↔2D, 3D↔3D). geographic↔cartesian uses ECEF (Earth-Centered Earth-Fixed) on the WGS84 ellipsoid; output is 3D. |
+| `sourceColumns` | array | ✓ | — | The columns carrying the source coordinates, in canonical order: cartesian: [x, y, z?]; polar: [r, theta, phi?]; geographic: [lat, lon]. |
+| `outputPrefix` | string |  | `coord_` | Prepended to each generated output column name. Output names follow the canonical order of the target system: cartesian → x/y[/z]; polar → r/theta[/phi]; geographic → lat/lon. |
 
 
 ### ➕ Derive column
@@ -427,6 +493,26 @@ Tags: `string` `regex` `extract`
 | `pattern` | regex | ✓ | — | e.g. ([A-Z]{2}) — group 1 captures two uppercase letters |
 | `group` | integer |  | `1` | Capture group |
 | `as` | string | ✓ | — | New column name |
+
+
+### 🧮 Math equation
+
+**ID:** `math_equation` · **Version:** `1.0.0`
+
+Add a column computed from a math expression over existing columns. Supports arithmetic (+ - * / %), exponents (^ or pow()), and the usual math functions: sqrt, abs, log, ln, exp, sin, cos, tan, round, floor, ceil, mod, greatest, least. Reference columns by name, e.g. (price * quantity) - discount.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `math` `equation` `formula` `compute` `calculate` `arithmetic`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `resultName` | string | ✓ | — | Result column name |
+| `equation` | expression | ✓ | — | Math expression — e.g. (price * quantity) - discount, sqrt(a^2 + b^2), round(amount * 1.07, 2) |
+| `position` | enum |  | `end` | Position |
+| `reference` | column_ref |  | — | Only used when Position = before / after — ignored otherwise. |
 
 
 ### 🌊 Rolling window
@@ -905,3 +991,46 @@ DIG renders via matplotlib + seaborn — not a web charting library — so the o
 ![heatmap region × product](images/tutorials/tutorial-heatmap-sales.png)
 
 **Tip:** the file is written under `data/outputs/<run_id>/<step>.png` by default. Set `path` to override (relative paths are resolved against the run dir; absolute paths land where you put them).
+
+
+### 🔌 Export to JDBC
+
+**ID:** `export_to_jdbc` · **Version:** `1.0.0`
+
+Write rows to any JDBC-accessible database — Oracle, DB2, MS SQL Server, Snowflake, Teradata, Vertica, etc. Requires a Java runtime on the host and a path to the driver JAR. Use the standard 'Export to database' step for Postgres / MySQL / SQLite via native Python drivers.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+Tags: `export` `sink` `database` `jdbc` `java`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `url` | string | ✓ | — | Full JDBC URL — e.g. jdbc:oracle:thin:@//host:1521/ORCL · jdbc:sqlserver://host:1433;database=mydb |
+| `driverClass` | string | ✓ | — | Fully-qualified Java class — oracle.jdbc.OracleDriver · com.microsoft.sqlserver.jdbc.SQLServerDriver · etc. |
+| `jarPath` | string | ✓ | — | Absolute path to the .jar file (or a directory of jars). |
+| `username` | string |  | — | Username |
+| `password` | string |  | — | Supports ${ENV_VAR} interpolation. |
+| `table` | string | ✓ | — | Schema-qualify if needed (e.g. analytics.orders). |
+| `mode` | enum | ✓ | `append` | append = INSERT only · truncate_then_append = TRUNCATE then INSERT · drop_and_create = DROP then CREATE TABLE then INSERT |
+| `batchSize` | integer |  | `1000` | Rows per JDBC executemany() call. Higher = faster but more memory. |
+
+
+### 🔔 Trigger webhook
+
+**ID:** `webhook_trigger` · **Version:** `1.0.0`
+
+Fire a webhook from inside this pipeline. Pick a global webhook by label (defined in Settings → Global webhooks). Webhooks with on='triggered' only fire from this step — never auto-fire on run completion. Data passes through unchanged. If you haven't created any webhooks yet, save the step empty and pick one later.
+
+🛠 engine: `polars` · ⚠️ non-deterministic · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+Tags: `webhook` `trigger` `notify` `side-effect` `integration`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `webhookLabel` | string |  | — | Label of the global webhook to fire. Manage webhooks in Settings → 🔔 Global webhooks. Leave blank to make this a placeholder step you'll wire up later. |
+| `extraPayload` | string |  | — | Merged into the default payload — useful for tagging the call with stage info, e.g. {"stage": "after-cleansing"}. |
+| `failOnError` | boolean |  | `False` | Off (default): a 5xx or timeout from the receiver is logged but the pipeline continues. On: a webhook failure aborts the pipeline at this step. |

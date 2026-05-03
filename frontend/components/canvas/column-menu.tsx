@@ -118,7 +118,11 @@ export function ColumnMenu({
         exit={{ opacity: 0, scale: 0.97 }}
         transition={{ type: "spring", stiffness: 360, damping: 28 }}
         style={{ position: "fixed", left: x, top: y, width: w }}
-        className="z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl py-1 text-sm"
+        // font-sans is explicit on the popover root so menu items / type
+        // labels never inherit the grid table's font-mono — the menu lives
+        // in the same React subtree as LiveGrid, so without this the mono
+        // can leak into "Cast to → double" and similar labels.
+        className="z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl py-1 text-sm font-sans"
       >
         <header className="px-3 py-2 border-b border-border/60 flex items-center gap-2 text-xs">
           <span className="text-muted-foreground uppercase tracking-wider">Column</span>
@@ -311,7 +315,7 @@ function CastSection({
   onCast,
 }: {
   currentType?: string;
-  candidates: Array<{ type: string; score: number; reason: string }>;
+  candidates: Array<{ type: string; score: number; reason: string; storage?: string | null }>;
   allTypes: TypeDescriptor[];
   showAll: boolean;
   onToggleShowAll: () => void;
@@ -361,15 +365,28 @@ function CastSection({
               const td = byId[c.type];
               const label = td?.label ?? c.type;
               const pct = Math.round(c.score * 100);
+              // Show the SQL storage when the detector chose something
+              // other than the descriptor's default — that's where the
+              // user's "what changes if I cast?" trade-off lives. e.g.
+              // "scientific → VARCHAR" tells the user values won't fit DOUBLE.
+              const storageOverride =
+                c.storage && td && c.storage !== td.base.toUpperCase() && c.storage !== td.label.split(" ")[1]?.toUpperCase()
+                  ? c.storage
+                  : null;
               return (
                 <button
                   key={c.type}
                   type="button"
                   onClick={() => onCast(c.type)}
-                  title={c.reason}
+                  title={`${c.reason}${c.storage ? ` (stored as ${c.storage})` : ""}`}
                   className="w-full text-left px-2 py-1 rounded hover:bg-muted text-xs flex items-center gap-2"
                 >
                   <span className="flex-1 truncate">{label}</span>
+                  {storageOverride && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono" title={`Stored as ${storageOverride}`}>
+                      → {storageOverride}
+                    </span>
+                  )}
                   <span className="text-[10px] text-muted-foreground tabular-nums">{pct}%</span>
                 </button>
               );

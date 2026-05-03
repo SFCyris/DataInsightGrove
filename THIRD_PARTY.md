@@ -23,8 +23,8 @@ If you find a missing or incorrect attribution, please open an issue at
 
 ## Summary
 
-- Total Python dependencies (transitive): **77**
-- Total npm dependencies (production, transitive): **460**
+- Total Python dependencies (transitive): **78**
+- Total npm dependencies (production, transitive): **461**
 
 ### By license family
 
@@ -33,11 +33,12 @@ If you find a missing or incorrect attribution, please open an issue at
 | LGPL | 0 | 1 |
 | MPL-2.0 | 3 | 0 |
 | Apache-2.0 | 5 | 10 |
-| BSD | 26 | 14 |
+| BSD | 27 | 14 |
 | BlueOak | 0 | 2 |
 | CC-BY | 0 | 1 |
 | ISC | 0 | 58 |
 | MIT | 41 | 372 |
+| Other / Unclear | 0 | 1 |
 | PSF | 2 | 1 |
 | Unlicense | 0 | 1 |
 
@@ -500,7 +501,7 @@ THE SOFTWARE.
 
 ## BSD
 
-### BSD (Python, 26 packages)
+### BSD (Python, 27 packages)
 
 | Package | Version | License | Source / project URL |
 |---|---|---|---|
@@ -530,6 +531,7 @@ THE SOFTWARE.
 | `starlette` | 1.0.0 | BSD-3-Clause | <https://github.com/Kludex/starlette> |
 | `threadpoolctl` | 3.6.0 | BSD-3-Clause | <https://github.com/joblib/threadpoolctl> |
 | `websockets` | 16.0 | BSD-3-Clause | <https://github.com/python-websockets/websockets> |
+| `xlsxwriter` | 3.2.9 | BSD-2-Clause | <https://github.com/jmcnamara/XlsxWriter> |
 
 ### BSD (npm, 14 packages)
 
@@ -906,6 +908,17 @@ the runtime call graph. See that section for details.
 
 ---
 
+## Other / Unclear
+
+### Other / Unclear (npm, 1 package)
+
+| Package | Version | License | Source / project URL |
+|---|---|---|---|
+| `geist` | 1.7.0 | SIL OPEN FONT LICENSE | <https://vercel.com/font> |
+
+
+---
+
 ## Special-case attributions
 
 ### Bundled DuckDB-WASM binaries
@@ -982,11 +995,16 @@ DIG distributions because no LGPL-licensed code travels with them.
 
 - DIG ships emoji as Unicode characters rendered by the user's system
   emoji font. No emoji font files are bundled.
-- DIG uses the [Geist Sans](https://vercel.com/font) and Geist Mono
-  webfonts via Next.js's `next/font/google` integration. These are
-  served from Google Fonts at runtime; their copyright belongs to
-  Vercel under the **SIL Open Font License 1.1** — see
-  <https://github.com/vercel/geist-font/blob/main/LICENSE.TXT>.
+- DIG bundles **Geist Sans** and **Geist Mono** via the `geist` npm
+  package (Vercel + basement.studio). The actual `.woff2` files travel
+  with every build artifact (web bundle, Mac `.app`, Linux package),
+  meaning DIG runs offline with no font CDN fetch.
+  - Copyright: © 2023 Vercel, in collaboration with basement.studio.
+  - License: **SIL Open Font License 1.1** (OFL-1.1).
+  - License text shipped with this distribution: [`licenses/Geist-OFL.txt`](licenses/Geist-OFL.txt).
+  - Upstream: <https://github.com/vercel/geist-font>.
+  - Reserved Font Names: "Geist". Per OFL §3, derivatives that use
+    these names are not permitted; DIG uses the fonts as-is.
 
 ---
 

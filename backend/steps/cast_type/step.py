@@ -7,30 +7,61 @@ from typing import Any
 from dig.engine.step import Step, quote_ident
 
 _TYPE_TO_SQL = {
-    "integer": "BIGINT",
-    "double": "DOUBLE",
-    "string": "VARCHAR",
-    "boolean": "BOOLEAN",
-    "date": "DATE",
+    # ── Base physical types ────────────────────────────────────────────
+    "integer":  "BIGINT",
+    "double":   "DOUBLE",
+    "string":   "VARCHAR",
+    "boolean":  "BOOLEAN",
+    "date":     "DATE",
     "datetime": "TIMESTAMP",
-    # Meta-types — physical storage is the same as their base type, but the
-    # logical-type label travels through the schema and lights up special
-    # rendering / validation in the grid. The full registry of meta-types
-    # (with detectors + descriptions) lives in dig.engine.meta_types:TYPES.
-    # Any new entry there should be mirrored here.
-    "index":       "BIGINT",
-    "percentage":  "DOUBLE",
-    "currency":    "DOUBLE",
-    "scientific":  "DOUBLE",
-    "hex":         "VARCHAR",
-    "uuid":        "VARCHAR",
-    "email":       "VARCHAR",
-    "url":         "VARCHAR",
-    "ip":          "VARCHAR",
-    "phone":       "VARCHAR",
-    "country":     "VARCHAR",
-    "color":       "VARCHAR",
-    "timezone":    "VARCHAR",
+    # ── Meta-types ─────────────────────────────────────────────────────
+    # Where DuckDB has a native physical type that's a better fit than
+    # DOUBLE/VARCHAR, we use it. The trade-offs:
+    #
+    #   currency, percentage  → DECIMAL  (exact decimal arithmetic; no
+    #     floating-point drift like 0.1+0.2≠0.3 on DOUBLE).
+    #   uuid                  → UUID    (DuckDB's 128-bit native UUID;
+    #     compares + sorts faster than VARCHAR; binary on disk).
+    #   bignum                → HUGEINT (128-bit signed int; covers hex
+    #     values that overflow BIGINT, e.g. SHA-256 fragments).
+    #   scientific            → DOUBLE  (for now; range-aware storage in
+    #     the multi-storage detection step picks VARCHAR when values
+    #     exceed ±1.8e308 — see Phase 1.2).
+    #
+    # Anything that's semantically a string keeps VARCHAR — leading-zero
+    # phone numbers, email addresses, IANA timezones, etc.
+    "index":          "BIGINT",
+    "percentage":     "DECIMAL(9,6)",     # 0.123456 fits; ≤999.999999 absolute
+    "currency":       "DECIMAL(18,4)",    # ±99,999,999,999,999.9999 — fits any
+                                          # realistic monetary value, exact math
+    "scientific":     "DOUBLE",           # IEEE 754; 1.2 promotes to VARCHAR
+                                          # for out-of-range values
+    "hex":            "VARCHAR",          # text notation; bignum below for the
+                                          # numeric-decoded form
+    "bignum":         "HUGEINT",          # 128-bit, ±170,141,183,460,469,231,
+                                          # 731,687,303,715,884,105,727
+    "decimal_string": "VARCHAR",          # arbitrary precision; lexical decimal
+                                          # storage when DECIMAL/HUGEINT overflow
+    # ── Composite + spatial types ──────────────────────────────────────
+    "json":           "JSON",             # DuckDB native JSON
+    "array":          "JSON",             # variable-length list, JSON-encoded
+    "vector":         "DOUBLE[]",         # fixed-length numeric array (DuckDB
+                                          # array_cosine_similarity / kNN compatible)
+    "cartesian2d":    "STRUCT(x DOUBLE, y DOUBLE)",
+    "cartesian3d":    "STRUCT(x DOUBLE, y DOUBLE, z DOUBLE)",
+    "polar2d":        "STRUCT(r DOUBLE, theta DOUBLE)",
+    "polar3d":        "STRUCT(r DOUBLE, theta DOUBLE, phi DOUBLE)",
+    "geographic":     "GEOMETRY",         # DuckDB spatial extension
+    "uuid":           "UUID",             # native DuckDB UUID, not VARCHAR
+    "email":          "VARCHAR",
+    "url":            "VARCHAR",
+    "ip":             "VARCHAR",
+    "phone":          "VARCHAR",
+    "country":        "VARCHAR",
+    "color":          "VARCHAR",
+    "timezone":       "VARCHAR",
+    # decimal_string is implemented in Phase 1.5 — VARCHAR storage for
+    # arbitrary-precision decimals beyond DECIMAL's 38-digit limit.
 }
 
 

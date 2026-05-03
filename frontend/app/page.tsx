@@ -216,7 +216,10 @@ export default function Home() {
               <p className="text-xs uppercase tracking-[0.25em] text-emerald-300/70">
                 DataInsightGrove<sup className="ml-0.5 text-[0.6em] tracking-normal" aria-label="trademark">™</sup>
                 <span className="mx-1.5 text-emerald-300/40">·</span>
-                v0.0.1
+                {/* Pulled from the live /health endpoint via the same query
+                    the footer uses, so the version always tracks the running
+                    backend instead of a hand-typed string drifting over time. */}
+                v{health.data?.version ?? "—"}
               </p>
             </div>
             <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">

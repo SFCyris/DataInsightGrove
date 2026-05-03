@@ -16,19 +16,15 @@
 // ─────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+// Geist Sans + Geist Mono are vendored via the `geist` npm package (not
+// `next/font/google`) so the actual .woff2 binaries ship with the build —
+// no runtime fetch to Google's CDN, no build-time fetch either, fully
+// self-contained for the OFL-licensed bundle. Attribution: Vercel + basement.studio,
+// SIL Open Font License 1.1; see /licenses/Geist-OFL.txt.
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   // The literal ™ is fine in document.title — modern browsers render it cleanly.
@@ -63,7 +59,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
       // The Mac wrapper (mac/DataInsightGrove.swift) injects
       // data-dig-mac="true" on this element via a WKUserScript that
       // fires at document-start — before React hydrates. The server

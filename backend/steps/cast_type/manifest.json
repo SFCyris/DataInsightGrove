@@ -21,18 +21,20 @@
       "label": "Target type",
       "enumValues": [
         "integer", "double", "string", "boolean", "date", "datetime",
-        "index", "percentage", "currency", "scientific", "hex",
-        "uuid", "email", "url", "ip", "phone", "country", "color", "timezone"
+        "index", "percentage", "currency", "scientific", "hex", "bignum", "decimal_string",
+        "uuid", "email", "url", "ip", "phone", "country", "color", "timezone",
+        "json", "array", "vector",
+        "cartesian2d", "cartesian3d", "polar2d", "polar3d", "geographic"
       ],
       "required": true,
       "default": "string",
-      "help": "Physical types (integer / double / string / boolean / date / datetime) change how the column is stored. Meta-types (index, percentage, currency, scientific, hex, uuid, email, url, ip, phone, country, color, timezone) keep the same storage but add semantic constraints — duplicates flagged for index, invalid entries highlighted in red, formatted display, etc. The cast UI shows the most likely fits first based on automatic detection."
+      "help": "Physical types (integer / double / string / boolean / date / datetime) change the underlying storage. Meta-types map onto a precise physical storage that matches their semantics — currency and percentage use DECIMAL for exact arithmetic, uuid uses native UUID, bignum uses HUGEINT for 128-bit integers (covers hex values that overflow BIGINT). String-shape meta-types (email, url, uuid as text, ip, phone, country, color, timezone) keep VARCHAR. The cast UI shows the most likely fits first based on automatic detection."
     },
     "strict": {
       "type": "boolean",
       "label": "Strict (fail on bad values)",
       "default": false,
-      "help": "Off: failed casts become NULL. On: pipeline fails on first bad value."
+      "help": "Off (default): values that don't fit the target type — out-of-range numbers, malformed shapes, overflowed precision — silently become NULL via TRY_CAST. The grid surfaces a 🔄 chip on any cast column with new NULLs so you can audit the loss in the profile drawer.\n\nOn: the pipeline fails on the first value that can't be cast. Use when you need a guarantee the data is clean."
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },

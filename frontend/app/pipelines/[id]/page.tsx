@@ -503,6 +503,10 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           // column (e.g. "email", "index"). Fall back to the physical
           // polars dtype only when there's no logical interpretation.
           type: c.type ?? c.polarsType ?? "string",
+          // SQL storage type from the detector pass — DECIMAL(18,4),
+          // HUGEINT, UUID, … — surfaced in the header tooltip and
+          // profile drawer so users can see the on-disk representation.
+          storage: c.storage ?? null,
           candidates: c.candidates,
         })) ?? [];
       return {
@@ -514,8 +518,21 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       };
     }
     if (preview) {
+      // Merge the inferred logical schema for the focused node onto the
+      // preview's columns. The preview comes from DuckDB-WASM and only
+      // carries physical dtypes (DOUBLE / VARCHAR / …); the logical types
+      // (`currency`, `percentage`, `email`, …) live in schemas[nodeId],
+      // computed by each step's infer_schema. Without this join, casting
+      // a column to `currency` would still render as `num` because the
+      // grid would only see DuckDB's DOUBLE.
+      const nodeSchema: Record<string, string> = focusedId ? (schemas[focusedId] ?? {}) : {};
+      const cols = preview.columns.map((c) => ({
+        ...c,
+        // Schema's logical type wins; physical dtype is the fallback.
+        type: nodeSchema[c.name] ?? c.type,
+      }));
       return {
-        columns: preview.columns,
+        columns: cols,
         rows: preview.rows,
         totalRows: preview.rowCount,
         loading: previewLoading,
@@ -531,6 +548,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     datasetRowsQ.isLoading,
     preview,
     previewLoading,
+    focusedId,
+    schemas,
   ]);
 
   // ---- Diff vs previous step ----

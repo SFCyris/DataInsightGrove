@@ -142,7 +142,10 @@ export function isValidCountry(v: unknown): boolean {
 
 const _META_TYPES = new Set([
   "index", "timezone", "url", "email", "uuid", "ip", "country",
-  "color", "phone", "hex", "percentage", "currency", "scientific",
+  "color", "phone", "hex", "bignum", "decimal_string",
+  "percentage", "currency", "scientific",
+  "json", "array", "vector",
+  "cartesian2d", "cartesian3d", "polar2d", "polar3d", "geographic",
 ]);
 
 /** True if the column's logical type triggers per-cell validation/formatting. */

@@ -35,7 +35,7 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## What ships today
 
-- **38 steps** across 6 categories: shape, clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus a `expectations` step for inline data-quality assertions.
+- **46 steps** across 6 categories: shape, clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling · convert_coordinates** for polar↔Cartesian↔geographic), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus a `expectations` step for inline data-quality assertions.
 - **8 connectors**: csv · parquet · excel · json · https · sqlite · postgres · mysql.
 - **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts.
 - **Rule-based hints** in a side panel — deterministic data-preparation suggestions surfaced from the column profile (not ML predictions, not selection-driven, not a ranked card stack).
@@ -108,6 +108,7 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - 🚀 [Getting started](docs/getting_started.md) — install → first pipeline in 10 minutes
 - 🎓 [First-steps tutorials](docs/tutorials.md) — three short walkthroughs (image / CSV / Parquet output)
 - 📚 [Step library](docs/STEPS.md) — every step DIG ships with, auto-generated from manifests
+- 🏷 [Data types](docs/DATA_TYPES.md) — the 29 base + meta-types (including currency-as-DECIMAL, vector embeddings, JSON, and polar/Cartesian/geographic coordinates) with constraints, ranges, storage, and use cases
 - 🧪 [E2E validation](docs/E2E_VALIDATION.md) — every step exercised against real data
 - ♻️ [Lifecycle reference](docs/lifecycle.md) — start/stop/status/config + Mac app + Linux desktop
 - 🏗 [Architecture](docs/ARCHITECTURE.md) — what's where and why
