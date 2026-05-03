@@ -193,7 +193,7 @@ WebSocket upgrades carry the token via `?token=...` because browsers can't relia
 
 ### What this defends against
 
-- Anyone on the LAN browsing your IP and finding a wide-open data prep tool
+- Anyone on the LAN browsing your IP and finding a wide-open data preparation tool
 - Cross-origin scripts: CORS is locked to the configured `DIG_CORS_ORIGINS` (default `http://localhost:3000,http://127.0.0.1:3000`)
 - SQL-injection via predicate/expression params: `assert_safe_expr()` in [`backend/dig/engine/step.py`](../backend/dig/engine/step.py) denies `ATTACH`, `COPY`, file IO, and statement separators inside user-authored SQL fragments
 - Path traversal via dataset URI: both `/runs/{id}/lineage` and `/runs/{id}/artifact` confine the resolved path under `data_dir()`

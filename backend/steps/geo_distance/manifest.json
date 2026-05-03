@@ -1,0 +1,27 @@
+{
+  "id": "geo_distance",
+  "version": "1.0.0",
+  "label": "🌍 Geographic distance",
+  "description": "Compute great-circle distance (Haversine, in metres) between two lat/lon points. Add as a new column.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "lat1Column": { "type": "column_ref", "label": "First point — latitude (degrees)",  "columnFrom": "in", "required": true },
+    "lon1Column": { "type": "column_ref", "label": "First point — longitude (degrees)", "columnFrom": "in", "required": true },
+    "lat2Column": { "type": "column_ref", "label": "Second point — latitude (degrees)", "columnFrom": "in", "required": true },
+    "lon2Column": { "type": "column_ref", "label": "Second point — longitude (degrees)","columnFrom": "in", "required": true },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "distance_m",
+      "required": true,
+      "help": "Name of the new column. Values are in metres on a sphere of radius 6,371,000 m (mean Earth radius)."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["spatial", "geographic", "distance", "haversine", "derive"]
+}

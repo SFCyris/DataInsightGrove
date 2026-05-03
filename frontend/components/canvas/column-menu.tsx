@@ -23,7 +23,18 @@ export type ColumnAction =
   // Insert a fresh column adjacent to `reference`. The editor adds an
   // `add_column` step with defaults (string type, NULL default) that the
   // user fine-tunes via the step's param form afterwards.
-  | { kind: "insert_column"; position: "before" | "after"; reference: string };
+  | { kind: "insert_column"; position: "before" | "after"; reference: string }
+  // Two-step composite: `pack_struct` (build a struct from N source
+  // columns) followed by `cast_type` on that new column. Used by the
+  // spatial-pair suggestions to take e.g. (LATITUDE, LONGITUDE) → a
+  // single `geographic` column in one click. The dispatcher inserts both
+  // steps in order and focuses the cast so the user can rename / tweak.
+  | {
+      kind: "pack_then_cast";
+      outputColumn: string;
+      fields: Array<{ fieldName: string; sourceColumn: string }>;
+      targetType: string;
+    };
 
 // Conservative fallback when the /types endpoint hasn't loaded (or the user
 // is offline). These mirror the IDs in backend/dig/engine/meta_types.py.

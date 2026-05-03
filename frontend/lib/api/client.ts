@@ -131,7 +131,7 @@ export interface PipelineNode {
   inputs: Record<string, PipelineRef>;
   outputs: string[];
   params: Record<string, unknown>;
-  ui?: { x?: number; y?: number; label?: string };
+  ui?: { x?: number; y?: number; label?: string; note?: string };
 }
 export interface PipelineOutput {
   id: string;
@@ -172,10 +172,18 @@ export interface RunOutputPage {
   totalRows: number;
 }
 
+export interface NodeStatus {
+  ok: boolean;
+  error?: string;
+}
+
 export interface ValidateResult {
   ok: boolean;
   errors: string[];
   schemas: Record<string, Record<string, string>>;
+  /** Per-node compile status — `nodeStatus[node_id] = {ok, error?}`.
+   *  Undefined = older backend that doesn't report it (graceful fallback). */
+  nodeStatus?: Record<string, NodeStatus>;
 }
 
 class ApiError extends Error {
@@ -227,6 +235,32 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ annotations }),
+    }),
+
+  createDatasetFromUri: (
+    name: string,
+    connectorId: string,
+    uri: string,
+    options: Record<string, unknown> = {},
+  ) =>
+    request<Dataset>("/datasets/from-uri", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, connector_id: connectorId, uri, options }),
+    }),
+
+  pickSheet: (datasetId: string, sheet: string) =>
+    request<Dataset>(`/datasets/${datasetId}/sheet`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sheet }),
+    }),
+
+  pickIsland: (datasetId: string, range: string) =>
+    request<Dataset>(`/datasets/${datasetId}/island`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ range }),
     }),
 
   uploadDataset: async (file: File, name?: string, connectorId = "csv", options: object = {}) => {
@@ -316,6 +350,26 @@ export const api = {
       terminal: string | null;
       sampleRows: number | null;
     }>(`/pipelines/${id}/compile?${q}`, { method: "POST", signal });
+  },
+  /** Run a pipeline preview on the backend DuckDB and return rows directly.
+   *  Used as a transparent fallback when the WASM build can't run the SQL —
+   *  notably when the spatial extension is required (geographic / GEOMETRY). */
+  previewOnBackend: (
+    id: string,
+    opts: { sampleRows?: number; previewLimit?: number; terminal?: string; signal?: AbortSignal } = {},
+  ) => {
+    const q = new URLSearchParams({
+      sample_rows: String(opts.sampleRows ?? 100000),
+      preview_limit: String(opts.previewLimit ?? 500),
+    });
+    if (opts.terminal) q.set("terminal", opts.terminal);
+    return request<{
+      columns: Array<{ name: string; type: string }>;
+      rows: Array<Record<string, unknown>>;
+      rowCount: number;
+      sampleRows: number;
+      elapsedMs: number;
+    }>(`/pipelines/${id}/preview?${q}`, { method: "POST", signal: opts.signal });
   },
 
   // ---- Runs ----
@@ -451,7 +505,7 @@ export interface SettingDescriptor {
   default: unknown | null;
   label: string;
   help: string;
-  type: "path" | "integer" | "enum" | "boolean";
+  type: "path" | "integer" | "enum" | "boolean" | "string" | "secret" | "float";
   options?: string[];
 }
 
@@ -491,6 +545,244 @@ export interface GlobalWebhookInput {
 export interface GlobalWebhookRecord extends GlobalWebhookInput {
   id: string;
 }
+
+// ---- AI assistant -------------------------------------------------------
+
+export interface AiConfigOut {
+  enabled: boolean;
+  provider: "local" | "openai_compat" | "disabled";
+  endpoint: string;
+  model: string;
+  has_api_key: boolean;
+  max_tokens: number;
+  temperature: number;
+}
+
+export interface AiProbeOut {
+  ok: boolean;
+  error?: string | null;
+  model?: string | null;
+  reply?: string | null;
+}
+
+export interface AiChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface AiChatResponse {
+  text: string;
+  model: string;
+  usage?: Record<string, number> | null;
+}
+
+export interface AiExplainOut {
+  markdown: string;
+  model: string;
+}
+
+export interface AiFixExpressionIn {
+  expression: string;
+  columns?: Array<{ name: string; type: string }>;
+  intent?: string;
+  error?: string;
+  kind?: "predicate" | "scalar";
+}
+
+export interface AiFixExpressionOut {
+  fixed: string;
+  explanation: string;
+  confidence: "high" | "medium" | "low";
+  model: string;
+}
+
+export interface AiProbeUrlIn {
+  url: string;
+  auth_header?: string | null;
+}
+
+export interface AiProbeUrlOut {
+  ok: boolean;
+  status: number | null;
+  content_type?: string | null;
+  final_url?: string | null;
+  length?: number;
+  error?: string | null;
+  body_preview?: string | null;
+  json_shape?: { type: string; length?: number; keys?: string[]; first_keys?: string[] | null } | null;
+}
+
+export interface AiGenerateConnectorIn {
+  url: string;
+  intent?: string | null;
+  sample_shape?: Record<string, unknown> | null;
+  auth_kind?: "none" | "bearer" | "api_key_query" | "basic";
+}
+
+export interface AiLintIssue {
+  line: number;
+  col: number;
+  rule: string;
+  message: string;
+}
+
+export interface AiGeneratedConnector {
+  id: string;
+  label?: string | null;
+  description?: string | null;
+  manifest: Record<string, unknown>;
+  connector_py: string;
+  lint_issues: AiLintIssue[];
+  model: string;
+  pending_path: string;
+  safe_to_install: boolean;
+}
+
+export interface AiSuggestion {
+  step_id: string;
+  params: Record<string, unknown>;
+  why: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface AiSuggestNextIn {
+  pipeline_id: string;
+  focused_node_id?: string | null;
+  focused_schema?: Record<string, string>;
+  goal: string;
+}
+
+export interface AiSuggestNextOut {
+  suggestions: AiSuggestion[];
+  model: string;
+}
+
+export interface AiGenerateStepIn {
+  description: string;
+  schema_hint?: Record<string, string>;
+}
+
+export interface AiGeneratedStep {
+  id: string;
+  label?: string | null;
+  description?: string | null;
+  manifest: Record<string, unknown>;
+  step_py: string;
+  lint_issues: AiLintIssue[];
+  model: string;
+  pending_path: string;
+  safe_to_install: boolean;
+}
+
+export interface AiModelsOut {
+  models: string[];
+  endpoint: string;
+}
+
+export const aiApi = {
+  config: () => request<AiConfigOut>("/ai/config"),
+  probe: () => request<AiProbeOut>("/ai/probe", { method: "POST" }),
+  listModels: () => request<AiModelsOut>("/ai/models"),
+  chat: (
+    messages: AiChatMessage[],
+    opts?: { responseFormat?: "json_object"; temperature?: number; maxTokens?: number },
+  ) =>
+    request<AiChatResponse>("/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        response_format: opts?.responseFormat,
+        temperature: opts?.temperature,
+        max_tokens: opts?.maxTokens,
+      }),
+    }),
+  explainPipeline: (pipelineId: string) =>
+    request<AiExplainOut>(`/ai/explain-pipeline/${pipelineId}`, { method: "POST" }),
+  fixExpression: (body: AiFixExpressionIn) =>
+    request<AiFixExpressionOut>("/ai/fix-expression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  probeUrl: (body: AiProbeUrlIn) =>
+    request<AiProbeUrlOut>("/ai/probe-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  generateConnector: (body: AiGenerateConnectorIn) =>
+    request<AiGeneratedConnector>("/ai/generate-connector", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  installConnector: (connectorId: string) =>
+    request<{ ok: boolean; installed_at: string; note: string }>(
+      "/ai/install-connector",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connector_id: connectorId }),
+      },
+    ),
+  discardConnector: (connectorId: string) =>
+    request<{ ok: boolean; discarded: string }>(
+      `/ai/pending-connector/${connectorId}`,
+      { method: "DELETE" },
+    ),
+  suggestNextStep: (body: AiSuggestNextIn) =>
+    request<AiSuggestNextOut>("/ai/suggest-next-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  generateStep: (body: AiGenerateStepIn) =>
+    request<AiGeneratedStep>("/ai/generate-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  installStep: (stepId: string) =>
+    request<{ ok: boolean; installed_at: string; note: string }>(
+      "/ai/install-step",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId }),
+      },
+    ),
+  discardStep: (stepId: string) =>
+    request<{ ok: boolean; discarded: string }>(
+      `/ai/pending-step/${stepId}`,
+      { method: "DELETE" },
+    ),
+};
+
+// ---- Schedules (cron-backed) -------------------------------------------
+
+export interface ScheduleEntry {
+  pipeline_id: string;
+  cron: string;
+  sample_rows?: number | null;
+  raw: string;
+}
+
+export const schedulesApi = {
+  list: () => request<ScheduleEntry[]>("/schedules"),
+  add: (pipelineId: string, cron: string, sampleRows?: number) =>
+    request<ScheduleEntry>("/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pipeline_id: pipelineId,
+        cron,
+        sample_rows: sampleRows,
+      }),
+    }),
+  remove: (pipelineId: string) =>
+    request<{ ok: boolean }>(`/schedules/${pipelineId}`, { method: "DELETE" }),
+};
 
 export { ApiError };
 export type { paths };

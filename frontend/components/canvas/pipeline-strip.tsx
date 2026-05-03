@@ -20,6 +20,11 @@ interface Props {
   selectedId: string | null;
   /** Map of node id -> row count (for the impact badge) */
   rowCounts: Record<string, number | null>;
+  /** Optional per-node compile status from the validate endpoint —
+   *  `nodeStatus[id] = { ok, error? }`. Broken nodes render with a red
+   *  border + a tooltip showing the humanised error. Undefined entries
+   *  mean "unknown / not yet validated" and render as normal. */
+  nodeStatus?: Record<string, { ok: boolean; error?: string }>;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onAddStep: (e: React.MouseEvent) => void;
@@ -108,10 +113,20 @@ interface NodeOrDataset {
   paramSummary?: string;
   rowCount: number | null;
   selected: boolean;
+  /** True when the node has a non-empty `ui.note` — the strip shows a
+   *  small 💬 next to the label so users can spot annotated steps at a glance. */
+  hasNote?: boolean;
+  /** True when the node failed to compile in the most recent validate
+   *  (column doesn't exist, bad expression, etc.). The pill renders red
+   *  and the tooltip carries the humanised error so the user can act. */
+  broken?: boolean;
+  /** Humanised error message — title + hint joined. Shown as the pill's
+   *  title attribute when broken. */
+  brokenReason?: string;
 }
 
 export function PipelineStrip({
-  doc, manifests, selectedId, rowCounts, onSelect, onDelete, onAddStep, onRemoveDataset, onContextMenu,
+  doc, manifests, selectedId, rowCounts, nodeStatus, onSelect, onDelete, onAddStep, onRemoveDataset, onContextMenu,
 }: Props) {
   const items: NodeOrDataset[] = [];
 
@@ -132,6 +147,7 @@ export function PipelineStrip({
   //  the canvas view shows the real graph.)
   for (const n of doc.nodes) {
     const manifest = manifests[n.step];
+    const status = nodeStatus?.[n.id];
     items.push({
       kind: "node",
       id: n.id,
@@ -141,6 +157,9 @@ export function PipelineStrip({
       paramSummary: summarizeParams(n, manifest),
       rowCount: rowCounts[n.id] ?? null,
       selected: selectedId === n.id,
+      hasNote: Boolean((n.ui as { note?: string } | undefined)?.note?.trim()),
+      broken: status?.ok === false,
+      brokenReason: status?.error,
     });
   }
 
@@ -202,15 +221,53 @@ export function PipelineStrip({
                     "group relative pl-2 pr-1.5 py-1 rounded-md border text-xs transition-all",
                     "flex items-center gap-1.5 max-w-[260px] cursor-pointer",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                    it.selected
-                      ? "border-foreground/40 bg-foreground/10 ring-2 ring-ring/40"
-                      : "border-border bg-card hover:border-foreground/30",
+                    // Three states, not mutually exclusive:
+                    //   1. selected — bright emerald (the focused step;
+                    //      also where a new "Add step" lands)
+                    //   2. broken — red ring (compile failed; tooltip carries
+                    //      the humanised error)
+                    //   3. selected + broken — emerald background, red ring
+                    //   4. normal — muted card
+                    // Selected colour is intentionally bold so the user
+                    // always knows where in the chain they're looking AND
+                    // where the next inserted step will land.
+                    it.broken && it.selected
+                      ? "border-rose-500/70 bg-emerald-100 dark:bg-emerald-500/20 ring-2 ring-rose-500/60"
+                      : it.broken
+                        ? "border-rose-500/70 bg-rose-50/40 dark:bg-rose-900/20 ring-2 ring-rose-500/40 hover:bg-rose-50/70"
+                        : it.selected
+                          ? "border-emerald-500/70 bg-emerald-100 dark:bg-emerald-500/20 ring-2 ring-emerald-500/60 shadow-sm"
+                          : "border-border bg-card hover:border-foreground/30",
                   ].join(" ")}
-                  title={it.paramSummary || "Right-click for more"}
+                  // Tooltip layering: broken reason wins, then param summary.
+                  title={
+                    it.broken
+                      ? `⚠ ${it.brokenReason ?? "Compile failed"}\n\n${it.paramSummary || ""}`.trim()
+                      : it.paramSummary || "Right-click for more"
+                  }
                   aria-pressed={it.selected}
+                  aria-invalid={it.broken || undefined}
                 >
                   <span aria-hidden>{it.emoji}</span>
                   <span className="truncate font-medium">{it.label}</span>
+                  {it.broken && (
+                    <span
+                      className="text-[11px] text-rose-600 dark:text-rose-400"
+                      title={it.brokenReason ?? "Compile failed"}
+                      aria-label="Step has a compile error"
+                    >
+                      ⚠
+                    </span>
+                  )}
+                  {it.hasNote && (
+                    <span
+                      className="text-[10px] text-amber-600 dark:text-amber-400"
+                      title="Has a note"
+                      aria-label="Has a note"
+                    >
+                      💬
+                    </span>
+                  )}
                   {it.paramSummary && (
                     <span className="text-muted-foreground/80 truncate hidden sm:inline">
                       <span className="opacity-50 mx-1">·</span>

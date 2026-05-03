@@ -38,6 +38,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Types
+         * @description The complete catalog of logical types DIG knows about.
+         *
+         *     Returns base physical types first (string, integer, double, boolean,
+         *     date, datetime) followed by every meta-type from the detector
+         *     registry (index, percentage, currency, scientific, hex, uuid, email,
+         *     url, ip, phone, country, color, timezone). Each entry carries an
+         *     id, a UI label (with emoji), the base physical storage type, and a
+         *     one-line dropdown description.
+         *
+         *     This endpoint is the single source of truth for the cast UI's
+         *     "Show all types" view. The smart-picks list comes from per-column
+         *     profile candidates (see profile.py + meta_types.detect_candidates),
+         *     which reference the IDs returned here.
+         */
+        get: operations["list_types_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/datasets": {
         parameters: {
             query?: never;
@@ -558,6 +590,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Settings */
+        get: operations["list_settings_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Setting */
+        put: operations["set_setting_settings__key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jdbc-drivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Drivers */
+        get: operations["list_drivers_jdbc_drivers_get"];
+        put?: never;
+        /** Create Driver */
+        post: operations["create_driver_jdbc_drivers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jdbc-drivers/{driver_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Driver */
+        put: operations["update_driver_jdbc_drivers__driver_id__put"];
+        post?: never;
+        /** Delete Driver */
+        delete: operations["delete_driver_jdbc_drivers__driver_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/global-webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Webhooks */
+        get: operations["list_webhooks_global_webhooks_get"];
+        put?: never;
+        /** Create Webhook */
+        post: operations["create_webhook_global_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/global-webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Webhook */
+        put: operations["update_webhook_global_webhooks__webhook_id__put"];
+        post?: never;
+        /** Delete Webhook */
+        delete: operations["delete_webhook_global_webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fs/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fs Browse
+         * @description List the subdirectories of `path` (defaults to the user's home).
+         *
+         *     Returns:
+         *       - path: the resolved absolute path being shown
+         *       - parent: the parent directory's absolute path, or None at the root
+         *       - home: $HOME — the picker uses this for a "🏠 Home" shortcut
+         *       - entries: subdirectories, alphabetical, hidden ones (starting with ".")
+         *                  dropped because they bloat the list and are rarely intended
+         *                  destinations for input/output data
+         *       - exists: whether `path` actually exists on disk
+         *
+         *     No path is rejected outright — the picker shows "(doesn't exist)" if
+         *     the user types or arrives at a missing directory. This keeps the UX
+         *     forgiving (you can paste a half-typed path and fix it visually) without
+         *     leaking arbitrary filesystem error messages.
+         */
+        get: operations["fs_browse_fs_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -592,6 +764,8 @@ export interface components {
             name: string;
             /** Type */
             type: string;
+            /** Storage */
+            storage?: string | null;
             /** Polarstype */
             polarsType?: string | null;
             /** Nullcount */
@@ -618,19 +792,8 @@ export interface components {
             histogram?: {
                 [key: string]: unknown;
             }[] | null;
-            /** Storage — physical SQL type the values are stored in (DECIMAL(18,4),
-             *  HUGEINT, UUID, VARCHAR, …). Forward-patched until a backend
-             *  restart + `pnpm gen:api` makes it canonical. */
-            storage?: string | null;
-            /** Candidates — added by the meta-type detector pass; not yet in
-             *  the upstream Pydantic schema regen output. Re-run `pnpm gen:api`
-             *  once the backend is restarted to make this canonical. */
-            candidates?: {
-                type: string;
-                score: number;
-                reason: string;
-                storage?: string | null;
-            }[];
+            /** Candidates */
+            candidates?: components["schemas"]["TypeCandidate"][];
         };
         /** CreatePipelineRequest */
         CreatePipelineRequest: {
@@ -667,6 +830,26 @@ export interface components {
             annotations?: {
                 [key: string]: string;
             } | null;
+            /** Forward-patched until next `pnpm gen:api` after backend restart.
+             *  Populated only when status === 'awaiting_sheet_pick' for a
+             *  multi-sheet Excel upload. */
+            availableSheets?: string[] | null;
+            selectedSheet?: string | null;
+            /** Populated only when status === 'awaiting_island_pick'. Each
+             *  island carries top_row/bottom_row/left_col/right_col, n_rows,
+             *  n_cols, range_a1 (Excel A1 string), preview_first_row, density. */
+            availableIslands?: Array<{
+                top_row: number;
+                bottom_row: number;
+                left_col: number;
+                right_col: number;
+                n_rows: number;
+                n_cols: number;
+                range_a1: string;
+                preview_first_row: (string | null)[];
+                density: number;
+            }> | null;
+            selectedIsland?: string | null;
             /**
              * Createdat
              * Format: date-time
@@ -689,6 +872,74 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["ColumnInfo"][];
         };
+        /** FsBrowseOut */
+        FsBrowseOut: {
+            /** Path */
+            path: string;
+            /** Parent */
+            parent: string | null;
+            /** Home */
+            home: string;
+            /** Entries */
+            entries: components["schemas"]["FsEntry"][];
+            /** Exists */
+            exists: boolean;
+        };
+        /** FsEntry */
+        FsEntry: {
+            /** Name */
+            name: string;
+            /** Is Dir */
+            is_dir: boolean;
+        };
+        /** GlobalWebhookIn */
+        GlobalWebhookIn: {
+            /** Label */
+            label?: string | null;
+            /** Url */
+            url: string;
+            /**
+             * On
+             * @default always
+             */
+            on: string;
+            /** Secret */
+            secret?: string | null;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** GlobalWebhookOut */
+        GlobalWebhookOut: {
+            /** Label */
+            label?: string | null;
+            /** Url */
+            url: string;
+            /**
+             * On
+             * @default always
+             */
+            on: string;
+            /** Secret */
+            secret?: string | null;
+            /** Headers */
+            headers?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Id */
+            id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -702,6 +953,34 @@ export interface components {
             version: string;
             /** Name */
             name: string;
+        };
+        /** JdbcDriverIn */
+        JdbcDriverIn: {
+            /** Name */
+            name: string;
+            /** Driverclass */
+            driverClass: string;
+            /** Jarpath */
+            jarPath: string;
+            /** Urltemplate */
+            urlTemplate?: string | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** JdbcDriverOut */
+        JdbcDriverOut: {
+            /** Name */
+            name: string;
+            /** Driverclass */
+            driverClass: string;
+            /** Jarpath */
+            jarPath: string;
+            /** Urltemplate */
+            urlTemplate?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Id */
+            id: string;
         };
         /**
          * PipelineDoc
@@ -800,6 +1079,50 @@ export interface components {
             /** Samplerows */
             sampleRows?: number | null;
         };
+        /** SettingDescriptor */
+        SettingDescriptor: {
+            /** Key */
+            key: string;
+            /** Value */
+            value?: unknown | null;
+            /** Default */
+            default?: unknown | null;
+            /** Label */
+            label: string;
+            /** Help */
+            help: string;
+            /** Type */
+            type: string;
+            /** Options */
+            options?: string[] | null;
+        };
+        /** SettingValue */
+        SettingValue: {
+            /** Value */
+            value?: unknown | null;
+        };
+        /**
+         * TypeCandidate
+         * @description One detected possibility for a column's type. Profiling attaches a
+         *     list of these per column, sorted by score descending — element [0] is
+         *     DIG's pick, the rest are alternates surfaced in the Cast UI.
+         *
+         *     `storage` carries the SQL physical type the cast would land in
+         *     (DECIMAL(18,4), HUGEINT, UUID, VARCHAR, …). It's range-aware: a
+         *     `scientific` candidate whose values exceed IEEE 754 will report
+         *     storage=VARCHAR rather than DOUBLE, so the Cast UI can show the
+         *     user the trade-off before they apply.
+         */
+        TypeCandidate: {
+            /** Type */
+            type: string;
+            /** Score */
+            score: number;
+            /** Reason */
+            reason: string;
+            /** Storage */
+            storage?: string | null;
+        };
         /** UpdatePipelineRequest */
         UpdatePipelineRequest: {
             /** Document */
@@ -852,6 +1175,28 @@ export interface operations {
         };
     };
     list_connectors_connectors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_types_types_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1836,6 +2181,326 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingDescriptor"][];
+                };
+            };
+        };
+    };
+    set_setting_settings__key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingDescriptor"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drivers_jdbc_drivers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JdbcDriverOut"][];
+                };
+            };
+        };
+    };
+    create_driver_jdbc_drivers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JdbcDriverIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JdbcDriverOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_driver_jdbc_drivers__driver_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                driver_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JdbcDriverIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JdbcDriverOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_driver_jdbc_drivers__driver_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                driver_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_webhooks_global_webhooks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalWebhookOut"][];
+                };
+            };
+        };
+    };
+    create_webhook_global_webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalWebhookIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalWebhookOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_webhook_global_webhooks__webhook_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalWebhookIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalWebhookOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_webhook_global_webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fs_browse_fs_browse_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FsBrowseOut"];
                 };
             };
             /** @description Validation Error */

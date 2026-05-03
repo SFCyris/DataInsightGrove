@@ -1,0 +1,17 @@
+{
+  "id": "hdf5",
+  "version": "1.0.0",
+  "label": "🧪 HDF5",
+  "description": "Read HDF5 files (.h5, .hdf5). Walks the group tree to find tabular datasets — picks the first 2-D dataset by default, or use the 'path' option to select a specific dataset by its in-file path (e.g. /experiment/run1/data). Requires the [science] extra (h5py).",
+  "kind": "source",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["h5", "hdf5"],
+  "options": {
+    "path": {
+      "type": "string",
+      "label": "Dataset path",
+      "help": "In-file path to the dataset, e.g. /group/sub/dataset. Default: the first 2-D dataset found in depth-first order."
+    }
+  },
+  "tags": ["scientific", "binary", "hierarchical"]
+}

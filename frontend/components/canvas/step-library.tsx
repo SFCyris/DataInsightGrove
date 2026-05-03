@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type StepManifest } from "@/lib/api/client";
@@ -23,9 +24,18 @@ export function StepLibrary({ onAdd }: Props) {
 
   return (
     <aside className="w-[260px] shrink-0 border-r border-border bg-background/40 backdrop-blur p-3 overflow-y-auto">
-      <p className="text-xs uppercase tracking-widest text-muted-foreground mb-3 px-1">
-        🧰 Step library
-      </p>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">
+          🧰 Step library
+        </p>
+        <Link
+          href="/steps/new"
+          className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline"
+          title="AI: generate a custom step plugin"
+        >
+          ✨ AI generate
+        </Link>
+      </div>
       {steps.isLoading && (
         <div className="space-y-2">
           {[0, 1, 2, 3].map((i) => (

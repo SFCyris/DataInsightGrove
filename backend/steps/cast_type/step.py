@@ -90,5 +90,36 @@ class CastTypeStep(Step):
             s[col] = target
         return s
 
+    def validation_sql(self, params: dict[str, Any], inputs: dict[str, str]) -> str | None:
+        """Count cast outcomes by comparing pre-cast input to a re-applied
+        TRY_CAST. The executor runs this against the upstream CTE chain
+        and attaches the result to the run as an artifact.
+
+        Reports four counts:
+          - total: rows in the input
+          - source_null: input was already NULL (cast didn't lose anything)
+          - cast_failures: input was non-null but became NULL via TRY_CAST
+                           (precision loss / overflow / shape mismatch)
+          - source_non_null: input was non-null (sanity baseline)
+        """
+        col = params.get("column")
+        target = params.get("targetType")
+        if not col or not target or target not in _TYPE_TO_SQL:
+            return None
+        src = inputs.get("in")
+        if not src:
+            return None
+        col_q = quote_ident(col)
+        sql_type = _TYPE_TO_SQL[target]
+        return (
+            f"SELECT "
+            f"COUNT(*) AS total, "
+            f"COUNT(*) FILTER (WHERE {col_q} IS NULL) AS source_null, "
+            f"COUNT(*) FILTER (WHERE {col_q} IS NOT NULL) AS source_non_null, "
+            f"COUNT(*) FILTER (WHERE {col_q} IS NOT NULL AND TRY_CAST({col_q} AS {sql_type}) IS NULL) "
+            f"AS cast_failures "
+            f"FROM {src}"
+        )
+
 
 step = CastTypeStep(json.loads((Path(__file__).parent / "manifest.json").read_text()))

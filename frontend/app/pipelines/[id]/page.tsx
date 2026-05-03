@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/client";
 import { subscribe } from "@/lib/api/ws";
 import { previewPipeline, type PreviewResult } from "@/lib/engine/dispatcher";
+import { humanizeSqlError } from "@/lib/humanize-sql-error";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { Tour, type TourStep } from "@/components/tour/tour";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,6 +27,9 @@ import { GraphCanvas } from "@/components/canvas/graph-canvas";
 import { PipelineStrip } from "@/components/canvas/pipeline-strip";
 import { QuickAddMenu } from "@/components/canvas/quick-add-menu";
 import { ExportMenu } from "@/components/canvas/export-menu";
+import { ExplainPipelineButton } from "@/components/canvas/explain-pipeline";
+import { SuggestNextButton } from "@/components/canvas/suggest-next";
+import { LineageDrawer } from "@/components/canvas/lineage-drawer";
 import { ParamForm } from "@/components/canvas/param-form";
 import { SaveIndicator } from "@/components/canvas/save-indicator";
 import { SuggestionsPanel } from "@/components/canvas/suggestions-panel";
@@ -64,39 +68,102 @@ function newNodeId(): string {
   return `n_${Date.now().toString(36)}${Math.floor(Math.random() * 0xffff).toString(36)}`;
 }
 
-/** Append a linear single-input step to the end of a doc, wired from the current terminal. */
-function appendLinearStep(
+/** Insert a linear single-input step into a doc.
+ *
+ * If `afterNodeId` names an existing node or dataset, the new step is
+ * spliced in IMMEDIATELY AFTER that point — its input becomes
+ * afterNodeId's output, and any node that was previously consuming
+ * afterNodeId's output gets re-wired to consume the new step's output.
+ * The new node's array position lands right after afterNodeId so the
+ * pipeline strip's linear order matches the DAG order.
+ *
+ * If `afterNodeId` is null/undefined, the step is appended to the end
+ * of the chain (legacy behaviour).
+ *
+ * Why this matters: focus-aware insertion means changes go where the
+ * user is looking, not at the end of the chain. Combined with per-node
+ * red-status marking from /pipelines/{id}/validate, this lets the user
+ * edit anywhere mid-pipeline and immediately see what downstream steps
+ * (if any) were broken by the change.
+ */
+function insertStepAfter(
   doc: PipelineDocument,
   manifest: StepManifest,
   params: Record<string, unknown>,
+  afterNodeId: string | null | undefined,
 ): { doc: PipelineDocument; nodeId: string } {
-  const lastNode = doc.nodes[doc.nodes.length - 1];
-  const lastRef = lastNode
-    ? { ref: lastNode.id, port: lastNode.outputs[0] ?? "out" }
-    : doc.datasets[0]
-      ? { ref: doc.datasets[0].id }
-      : null;
-  if (!lastRef) {
-    throw new Error("Add a dataset before adding steps.");
-  }
   const portsIn = manifest.io.inputs.ports ?? ["in"];
   const portsOut = manifest.io.outputs.ports ?? ["out"];
-  const id = newNodeId();
-  const node: PipelineNode = {
-    id,
+  const newId = newNodeId();
+
+  // Resolve the upstream reference.
+  const referenced = afterNodeId ?? doc.nodes[doc.nodes.length - 1]?.id ?? doc.datasets[0]?.id;
+  if (!referenced) {
+    throw new Error("Add a dataset before adding steps.");
+  }
+  // If `referenced` is a node, use its first output port; if a dataset, no port.
+  const upstreamNode = doc.nodes.find((n) => n.id === referenced);
+  const upstreamRef = upstreamNode
+    ? { ref: upstreamNode.id, port: upstreamNode.outputs[0] ?? "out" }
+    : { ref: referenced };
+
+  const newNode: PipelineNode = {
+    id: newId,
     step: manifest.id,
     stepVersion: manifest.version,
-    inputs: { [portsIn[0]]: lastRef },
+    inputs: { [portsIn[0]]: upstreamRef },
     outputs: portsOut,
     params,
     ui: {
-      x: 220 + doc.nodes.length * 220,
-      y: 100,
+      // Layout: place visually just after the upstream node when we have its
+      // coordinates, else fall back to end-of-chain positioning.
+      x: upstreamNode?.ui?.x != null ? upstreamNode.ui.x + 220 : 220 + doc.nodes.length * 220,
+      y: upstreamNode?.ui?.y ?? 100,
       label: manifest.label,
     },
   };
-  return { doc: { ...doc, nodes: [...doc.nodes, node] }, nodeId: id };
+
+  // Re-wire any node that was consuming the upstream output to consume the
+  // new node's output. Without this, the new step would dangle off the side
+  // of the DAG instead of being inline. We pick the first output port of
+  // the new node as the new reference target.
+  const newPort = portsOut[0];
+  const rewired = doc.nodes.map((n) => {
+    if (n.id === newId) return n;  // shouldn't happen but be safe
+    let inputsChanged = false;
+    const newInputs: Record<string, { ref: string; port?: string }> = {};
+    for (const [port, ref] of Object.entries(n.inputs)) {
+      // Match by node id; preserve port references for multi-output upstreams.
+      if (ref.ref === referenced && (!upstreamNode || ref.port === upstreamNode.outputs[0])) {
+        newInputs[port] = { ref: newId, port: newPort };
+        inputsChanged = true;
+      } else {
+        newInputs[port] = ref;
+      }
+    }
+    return inputsChanged ? { ...n, inputs: newInputs } : n;
+  });
+
+  // Insert the new node into the array right after the upstream node so
+  // the linear strip order matches DAG order. Datasets aren't in the
+  // nodes array, so when the upstream is a dataset we just prepend.
+  let inserted: PipelineNode[];
+  if (upstreamNode) {
+    const idx = rewired.findIndex((n) => n.id === referenced);
+    inserted = [...rewired.slice(0, idx + 1), newNode, ...rewired.slice(idx + 1)];
+  } else {
+    inserted = [newNode, ...rewired];
+  }
+
+  return { doc: { ...doc, nodes: inserted }, nodeId: newId };
 }
+
+// Backwards-compat alias for any caller that still uses the old name.
+const appendLinearStep = (
+  doc: PipelineDocument,
+  manifest: StepManifest,
+  params: Record<string, unknown>,
+) => insertStepAfter(doc, manifest, params, null);
 
 function removeNodeFromDoc(doc: PipelineDocument, nodeId: string): PipelineDocument {
   return {
@@ -150,6 +217,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     `dig.editor.focused.${pipelineId}`, null,
   );
   const [schemas, setSchemas] = useState<Record<string, Record<string, string>>>({});
+  // Per-node compile status from /pipelines/{id}/validate. Drives the
+  // PipelineStrip's red-pill rendering. Empty until the first validate
+  // completes; older backends that don't emit `nodeStatus` leave it empty
+  // and the strip stays in its non-status mode.
+  const [nodeStatus, setNodeStatus] = useState<Record<string, { ok: boolean; error?: string }>>({});
 
   // Tour-of-pipeline
   const undoStack = useRef<PipelineDocument[]>([]);
@@ -326,6 +398,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         const res = await api.validatePipeline(pipelineId);
         if (cancelled) return;
         setSchemas(res.schemas ?? {});
+        setNodeStatus(res.nodeStatus ?? {});
         // Surface validation errors that block downstream work (cycle in DAG,
         // unknown step id, etc.). Without this, the user sees no schemas and
         // gets no clue why. Stay silent for the common "pipeline is empty
@@ -647,7 +720,9 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     (manifest: StepManifest) => {
       if (!doc) return;
       try {
-        const { doc: next, nodeId } = appendLinearStep(doc, manifest, defaultParams(manifest));
+        // Insert after the focused step (or dataset) so changes go where
+        // the user is looking, not at the end of the chain.
+        const { doc: next, nodeId } = insertStepAfter(doc, manifest, defaultParams(manifest), focusedId);
         updateDoc(next);
         setFocusedId(nodeId);
         setTab("params");
@@ -669,6 +744,43 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const handleColumnAction = useCallback(
     (a: ColumnAction) => {
       if (!doc) return;
+      // Composite action: pack N source columns into a struct, then cast
+      // that struct to a meta-type (geographic / cartesian2d / polar2d / …).
+      // Two `insertStepAfter` calls chained: the second uses the new
+      // pack-step's id as `afterNodeId` so the cast lands directly downstream.
+      if (a.kind === "pack_then_cast") {
+        const packManifest = manifestsById["pack_struct"];
+        const castManifest = manifestsById["cast_type"];
+        if (!packManifest || !castManifest) {
+          toast.error("Step 'pack_struct' or 'cast_type' not registered");
+          return;
+        }
+        try {
+          const prevDoc = doc;
+          const { doc: afterPack, nodeId: packId } = insertStepAfter(
+            doc,
+            packManifest,
+            { outputColumn: a.outputColumn, fields: a.fields },
+            focusedId,
+          );
+          const { doc: afterCast, nodeId: castId } = insertStepAfter(
+            afterPack,
+            castManifest,
+            { column: a.outputColumn, targetType: a.targetType, strict: false },
+            packId,
+          );
+          updateDoc(afterCast);
+          setFocusedId(castId);
+          setTab("params");
+          toast.success(`✨ Added 📦 pack_struct + 🔄 cast → ${a.targetType}`, {
+            duration: 4500,
+            action: { label: "Undo", onClick: () => updateDoc(prevDoc) },
+          });
+        } catch (e) {
+          toast.error((e as Error).message);
+        }
+        return;
+      }
       const stepId = (() => {
         switch (a.kind) {
           case "filter_eq":
@@ -739,7 +851,13 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       })();
       try {
         const prevDoc = doc;
-        const { doc: next, nodeId } = appendLinearStep(doc, manifest, params);
+        // Column actions originate from the FOCUSED step (the column menu
+        // operates on what's visible there) — insert the new step right
+        // after that focus so the cast / filter / rename happens at the
+        // exact point the user invoked it. Without this, casting from an
+        // earlier step's column menu would mis-place the cast at the end
+        // of the chain (the bug that surfaced "customer_id not found").
+        const { doc: next, nodeId } = insertStepAfter(doc, manifest, params, focusedId);
         updateDoc(next);
         setFocusedId(nodeId);
         setTab("params");
@@ -954,7 +1072,13 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   return (
     <main className="flex flex-1 flex-col h-screen min-h-0">
       {/* Top bar */}
-      <header className="border-b border-border bg-background/80 backdrop-blur px-4 py-2 flex items-center gap-3 shrink-0">
+      {/* `relative z-30` so the toolbar's stacking context sits above the
+          workspace below. Without it, `backdrop-blur` traps the Add-dataset
+          dropdown's z-[60] inside the header's context — the dropdown
+          renders visually but LiveGrid's transparent empty-state overlay
+          (later in document order, same z=auto in root) silently swallows
+          clicks on the part of the dropdown that overflows past the toolbar. */}
+      <header className="relative z-30 border-b border-border bg-background/80 backdrop-blur px-4 py-2 flex items-center gap-3 shrink-0">
         <Link
           href="/pipelines"
           className={buttonVariants({ variant: "ghost", size: "sm" })}
@@ -1019,6 +1143,26 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           )}
         </div>
 
+        {/* Lineage opt-in: when checked, the pipeline doc's
+            metadata.trackLineage flips on, and the executor records each
+            output row's source-row indices. Cost: ~10–30% slower run +
+            extra storage for the lineage map. The grid then shows a 🔍
+            button on each output row to trace it back. */}
+        <label
+          className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none px-1"
+          title="Record per-row source links so you can click 🔍 in the run output to trace any value back to its source dataset row. Adds ~10–30% to run time."
+        >
+          <input
+            type="checkbox"
+            checked={Boolean(doc.metadata?.trackLineage)}
+            onChange={(e) => {
+              const next = { ...doc, metadata: { ...(doc.metadata ?? {}), trackLineage: e.target.checked } };
+              updateDoc(next);
+            }}
+          />
+          🔍 lineage
+        </label>
+
         <Button
           data-tour="editor-run"
           onClick={() => runMutation.mutate()}
@@ -1080,6 +1224,38 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           </button>
         </div>
 
+        <SuggestNextButton
+          pipelineId={pipelineId}
+          focusedNodeId={focusedId}
+          // Schema is keyed by node id; the suggest endpoint reads
+          // column-name → logical-type from the focused node so the AI
+          // can refer to columns by name.
+          focusedSchema={focusedId ? (schemas[focusedId] ?? {}) : {}}
+          onApply={(suggestion) => {
+            if (!doc) return;
+            const manifest = manifestsById[suggestion.step_id];
+            if (!manifest) {
+              toast.error(`Step '${suggestion.step_id}' is not registered`);
+              return;
+            }
+            try {
+              // AI suggestions land at the focused position too — same
+              // mental model as everywhere else.
+              const { doc: next, nodeId } = insertStepAfter(
+                doc,
+                manifest,
+                suggestion.params,
+                focusedId,
+              );
+              updateDoc(next);
+              setFocusedId(nodeId);
+              setTab("params");
+            } catch (e) {
+              toast.error(`Couldn't add step: ${(e as Error).message}`);
+            }
+          }}
+        />
+        <ExplainPipelineButton pipelineId={pipelineId} />
         <ExportMenu pipelineId={pipelineId} />
 
         <Button
@@ -1108,6 +1284,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               sampleRows={preview?.sampleRows ?? 100_000}
               loading={gridData.loading}
               elapsedMs={gridData.elapsedMs}
+              ranLocally={preview ? preview.ranLocally : true}
               onColumnAction={handleColumnAction}
               onCellQuickFilter={handleCellQuickFilter}
               highlights={highlights}
@@ -1139,13 +1316,39 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                     </p>
                   </div>
                 ) : previewError ? (
-                  <div className="max-w-sm">
-                    <div className="text-5xl mb-2">⚠️</div>
-                    <p className="text-destructive">{previewError}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Adjust the focused step's params or undo to recover.
-                    </p>
-                  </div>
+                  (() => {
+                    // Build the available-columns hint from the upstream
+                    // step's schema (the input to the focused node). When
+                    // the focused node is a dataset, use its own schema.
+                    const focusedNode = focusedId
+                      ? doc?.nodes.find((n) => n.id === focusedId)
+                      : null;
+                    const upstreamRef = focusedNode
+                      ? Object.values(focusedNode.inputs)[0]?.ref
+                      : focusedId;
+                    const cols = upstreamRef ? Object.keys(schemas[upstreamRef] ?? {}) : [];
+                    const humanized = humanizeSqlError(previewError, cols);
+                    return (
+                      <div className="max-w-md">
+                        <div className="text-5xl mb-2">⚠️</div>
+                        <p className="text-destructive font-medium">{humanized.title}</p>
+                        {humanized.hint && (
+                          <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                            {humanized.hint}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground/70 mt-2">
+                          Edit the focused step's params or ⌘Z to recover.
+                        </p>
+                        {!humanized.recognised && (
+                          <details className="mt-2 text-[10px] text-muted-foreground/60">
+                            <summary className="cursor-pointer">Raw error</summary>
+                            <pre className="font-mono whitespace-pre-wrap break-all mt-1">{previewError}</pre>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : undefined
               }
             />
@@ -1157,6 +1360,28 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                 manifests={manifestsById}
                 selectedId={focusedId}
                 rowCounts={rowCounts}
+                // Humanise the per-node compile errors before they hit the
+                // tooltip — the raw "Binder Error: Column 'X' in REPLACE
+                // list not found in FROM clause" is illegible. We compute
+                // available columns from the upstream schema for each
+                // node so the tooltip can suggest valid alternatives.
+                nodeStatus={(() => {
+                  if (Object.keys(nodeStatus).length === 0) return undefined;
+                  const out: Record<string, { ok: boolean; error?: string }> = {};
+                  for (const node of doc.nodes) {
+                    const s = nodeStatus[node.id];
+                    if (!s) { out[node.id] = { ok: true }; continue; }
+                    if (s.ok) { out[node.id] = { ok: true }; continue; }
+                    const upRef = Object.values(node.inputs)[0]?.ref;
+                    const cols = upRef ? Object.keys(schemas[upRef] ?? {}) : [];
+                    const h = humanizeSqlError(s.error ?? "", cols);
+                    out[node.id] = {
+                      ok: false,
+                      error: [h.title, h.hint].filter(Boolean).join(" "),
+                    };
+                  }
+                  return out;
+                })()}
                 onSelect={setFocusedId}
                 onDelete={(id) => {
                   const next = removeNodeFromDoc(doc, id);
@@ -1261,6 +1486,36 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                     upstreamColumns={upstreamColumns}
                     onChange={(next) => updateDoc(setNodeParams(doc, selectedNode.id, next))}
                   />
+                  {/* Free-form note attached to the step. Persists in
+                      node.ui.note so it travels with the pipeline document
+                      (export / import / share-via-Git). Last-write-wins on
+                      multi-session edits — same model as everything else
+                      in the doc. No threading / authorship — that needs a
+                      real CRDT layer we explicitly skip for now. */}
+                  <div className="mt-4 pt-4 border-t border-border/40">
+                    <label className="text-[11px] uppercase tracking-widest text-muted-foreground flex items-center gap-1.5 mb-1.5">
+                      <span>💬 Note</span>
+                      <span className="text-[10px] normal-case tracking-normal text-muted-foreground/70">
+                        (saved with pipeline)
+                      </span>
+                    </label>
+                    <textarea
+                      value={String(selectedNode.ui?.note ?? "")}
+                      onChange={(e) => {
+                        const next: PipelineDocument = {
+                          ...doc,
+                          nodes: doc.nodes.map((n) =>
+                            n.id === selectedNode.id
+                              ? { ...n, ui: { ...(n.ui ?? {}), note: e.target.value } }
+                              : n,
+                          ),
+                        };
+                        updateDoc(next);
+                      }}
+                      placeholder="Why this step exists, edge cases to watch, links to docs/issues…"
+                      className="w-full text-xs rounded-md border border-input bg-background px-2 py-1.5 min-h-[60px]"
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="text-center text-xs text-muted-foreground pt-12">
@@ -1291,7 +1546,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         </div>
       )}
       {outputPage && (
-        <BackendResultPanel page={outputPage} onClose={() => setOutputPage(null)} />
+        <BackendResultPanel page={outputPage} onClose={() => setOutputPage(null)} runId={run?.id ?? null} />
       )}
       {run?.artifacts && Object.keys(run.artifacts).length > 0 && (
         <ArtifactsPanel runId={run.id} artifacts={run.artifacts} />
@@ -1517,8 +1772,13 @@ function LineageView({
 }
 
 function BackendResultPanel({
-  page, onClose,
-}: { page: RunOutputPage; onClose: () => void }) {
+  page, onClose, runId,
+}: { page: RunOutputPage; onClose: () => void; runId?: string | null }) {
+  // Lineage drawer state — clicking the 🔍 button on a row opens it.
+  // runId is optional (some callers may show output without a run, e.g.
+  // imported run records); when missing we hide the lineage button.
+  const [traceRow, setTraceRow] = useState<number | null>(null);
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 10 }}
@@ -1534,6 +1794,11 @@ function BackendResultPanel({
         <span className="text-xs text-muted-foreground tabular-nums">
           {fmtInt(page.totalRows)} rows · {page.columns.length} cols
         </span>
+        {runId && (
+          <span className="text-[10px] text-muted-foreground italic">
+            click 🔍 on a row to trace its lineage
+          </span>
+        )}
         <span className="flex-1" />
         <button
           type="button"
@@ -1547,6 +1812,9 @@ function BackendResultPanel({
         <table className="text-xs tabular-nums">
           <thead>
             <tr>
+              {runId && (
+                <th className="px-2 py-1 border-b border-border w-8" aria-label="Lineage" />
+              )}
               {page.columns.map((c) => (
                 <th key={c.name} className="px-2 py-1 text-left font-medium border-b border-border whitespace-nowrap">
                   {c.name}{" "}
@@ -1557,7 +1825,19 @@ function BackendResultPanel({
           </thead>
           <tbody>
             {page.rows.map((r, i) => (
-              <tr key={i} className="hover:bg-muted/30">
+              <tr key={i} className="hover:bg-muted/30 group">
+                {runId && (
+                  <td className="px-1 border-b border-border/30 align-middle">
+                    <button
+                      type="button"
+                      onClick={() => setTraceRow(page.offset + i)}
+                      title={`Trace lineage for row ${page.offset + i}`}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted rounded px-1 py-0.5 text-xs"
+                    >
+                      🔍
+                    </button>
+                  </td>
+                )}
                 {page.columns.map((c) => (
                   <td key={c.name} className="px-2 py-1 border-b border-border/30 whitespace-nowrap">
                     {String(r[c.name] ?? "")}
@@ -1568,6 +1848,15 @@ function BackendResultPanel({
           </tbody>
         </table>
       </div>
+
+      {runId && (
+        <LineageDrawer
+          open={traceRow !== null}
+          onClose={() => setTraceRow(null)}
+          runId={runId}
+          rowIndex={traceRow}
+        />
+      )}
     </motion.section>
   );
 }

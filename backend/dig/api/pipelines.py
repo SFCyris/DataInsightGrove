@@ -210,21 +210,79 @@ async def delete_pipeline(
 async def validate_pipeline(
     pipeline_id: str, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
+    """Validate the pipeline + report per-node compile status.
+
+    Response shape:
+      {
+        ok: bool,
+        errors: [str, ...],
+        schemas: { node_id: { col: type, ... }, ... },
+        nodeStatus: { node_id: { ok: bool, error?: str } }
+      }
+
+    `nodeStatus` lets the editor mark broken steps in red — typical case is
+    "user added a step that referenced a column dropped/renamed by an
+    earlier step." The frontend pill turns red and the tooltip shows the
+    specific compile error.
+    """
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
     try:
         p = Pipeline.model_validate(row.document)
-        validate(p)
-        param_errs = validate_params_against_manifests(p)
-        if param_errs:
-            return {"ok": False, "errors": param_errs, "schemas": {}}
-        schemas = {k: v for k, v in infer_schemas(p).items()}
-        return {"ok": True, "errors": [], "schemas": schemas}
-    except DagError as e:
-        return {"ok": False, "errors": [str(e)], "schemas": {}}
     except Exception as e:
-        return {"ok": False, "errors": [f"{type(e).__name__}: {e}"], "schemas": {}}
+        return {
+            "ok": False,
+            "errors": [f"{type(e).__name__}: {e}"],
+            "schemas": {},
+            "nodeStatus": {},
+        }
+
+    # DAG-level validation runs first — if the structure is broken (cycle,
+    # missing reference) we can't say anything per-node and return early.
+    try:
+        validate(p)
+    except DagError as e:
+        return {"ok": False, "errors": [str(e)], "schemas": {}, "nodeStatus": {}}
+    except Exception as e:
+        return {
+            "ok": False,
+            "errors": [f"{type(e).__name__}: {e}"],
+            "schemas": {},
+            "nodeStatus": {},
+        }
+
+    param_errs = validate_params_against_manifests(p)
+    if param_errs:
+        return {"ok": False, "errors": param_errs, "schemas": {}, "nodeStatus": {}}
+
+    # Per-node compile probe. We try to compile the SQL with each node as
+    # the terminal and report whether it succeeded. Schema inference is a
+    # superset of compile validity (a node whose schema can't be inferred
+    # also can't compile), so we feed compile errors into the response.
+    from dig.engine.executor import compile_to_sql as _compile
+
+    node_status: dict[str, dict[str, Any]] = {}
+    for node in p.nodes:
+        try:
+            _compile(p, terminal=node.id)
+            node_status[node.id] = {"ok": True}
+        except Exception as e:
+            node_status[node.id] = {
+                "ok": False,
+                "error": f"{type(e).__name__}: {e}"[:500],
+            }
+
+    schemas = {k: v for k, v in infer_schemas(p).items()}
+    overall_ok = all(s.get("ok") for s in node_status.values()) if node_status else True
+    return {
+        "ok": overall_ok,
+        "errors": [] if overall_ok else [
+            f"{nid}: {s['error']}" for nid, s in node_status.items() if not s.get("ok")
+        ],
+        "schemas": schemas,
+        "nodeStatus": node_status,
+    }
 
 
 @router.get("/{pipeline_id}/export")
@@ -351,16 +409,23 @@ async def create_from_template(
     doc_str = json.dumps(doc).replace("{{PIPELINE_ID}}", pid)
 
     if tmpl.get("needsSampleDataset"):
-        # Ensure the demo dataset exists; pick the first matching one or import.
-        from sqlalchemy import select as _select
+        # Templates can specify which demo CSV they need via `sampleDataset`
+        # (basename without .csv). Defaults to customers-demo for backward
+        # compat with templates predating spatial/vector samples.
+        sample_basename = tmpl.get("sampleDataset", "customers-demo")
+        sample_label = sample_basename.replace("-", " · ")
+        sample_csv = repo / "samples" / f"{sample_basename}.csv"
 
+        from sqlalchemy import select as _select
         from dig.storage.models import Dataset as _Dataset
 
+        # Match by name so a template asking for cities-demo doesn't pick up
+        # an existing customers-demo and vice versa.
         res = await session.execute(
             _select(_Dataset).where(_Dataset.connector == "csv").order_by(_Dataset.created_at.asc())
         )
         existing_demo = next(
-            (d for d in res.scalars().all() if "demo" in (d.name or "").lower()),
+            (d for d in res.scalars().all() if sample_basename in (d.name or "").lower().replace(" · ", "-")),
             None,
         )
         if existing_demo is None:
@@ -371,16 +436,15 @@ async def create_from_template(
 
             import polars as pl
 
-            sample_csv = repo / "samples" / "customers-demo.csv"
             if not sample_csv.exists():
-                raise HTTPException(500, "demo CSV missing on disk")
+                raise HTTPException(500, f"demo CSV {sample_basename}.csv missing on disk")
             connector = _connectors().get("csv")
             ds_id = str(ULID())
             up = upload_path(ds_id, sample_csv.name)
             up.write_bytes(sample_csv.read_bytes())
             d = _Dataset(
                 id=ds_id,
-                name="demo · customers",
+                name=f"demo · {sample_label.replace('demo · ', '')}",
                 connector="csv",
                 source_uri=f"file://{up}",
                 options={"delimiter": ",", "header": True},
@@ -464,6 +528,117 @@ async def compile_pipeline(
         "terminal": result.terminal,
         "sampleRows": sample_rows,
     }
+
+
+# Tokens that imply the DuckDB spatial extension. Used to decide whether
+# to LOAD spatial before executing the preview SQL — keep in sync with the
+# matching list on the frontend (`requiresSpatialExtension` in dispatcher.ts).
+_SPATIAL_TOKENS = (
+    "GEOMETRY",
+    "ST_DISTANCE", "ST_DWITHIN", "ST_CONTAINS", "ST_INTERSECTS", "ST_BUFFER",
+    "ST_POINT", "ST_X", "ST_Y", "ST_TRANSFORM", "ST_GEOMFROMTEXT", "ST_GEOMFROMWKB",
+    "ST_AREA", "ST_LENGTH", "ST_CENTROID", "ST_UNION",
+)
+
+
+def _requires_spatial(sql: str) -> bool:
+    upper = sql.upper()
+    return any(tok in upper for tok in _SPATIAL_TOKENS)
+
+
+def _ensure_spatial(con) -> None:
+    """Best-effort INSTALL + LOAD of the spatial extension.
+
+    On a fresh machine the first INSTALL needs internet — if that fails
+    we let the subsequent SQL execution surface the real error so the
+    user sees something concrete (rather than a silent fallback)."""
+    try:
+        con.execute("INSTALL spatial;")
+    except Exception as e:  # noqa: BLE001
+        log.warning("preview: INSTALL spatial failed (will try LOAD anyway): %s", e)
+    con.execute("LOAD spatial;")
+
+
+@router.post("/{pipeline_id}/preview")
+async def preview_pipeline(
+    pipeline_id: str,
+    sample_rows: int = 100_000,
+    preview_limit: int = 500,
+    terminal: str | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Run the pipeline on the backend DuckDB and return a sample for the live grid.
+
+    Used as a transparent fallback when DuckDB-WASM in the browser can't run
+    the SQL — the canonical case is the spatial extension (geographic /
+    GEOMETRY functions), which isn't bundled with the WASM build. Returns
+    rows in the same shape the frontend's local-preview path produces.
+    """
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    try:
+        p = Pipeline.model_validate(row.document)
+        validate(p)
+        param_errs = validate_params_against_manifests(p)
+        if param_errs:
+            raise HTTPException(400, "invalid params: " + "; ".join(param_errs))
+    except DagError as e:
+        raise HTTPException(400, str(e)) from e
+
+    try:
+        sql = compile_to_sql(p, terminal=terminal)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+    sample_clause = f"{sql} LIMIT {int(sample_rows)}" if sample_rows else sql
+    preview_sql = f"SELECT * FROM ({sample_clause}) AS __preview LIMIT {int(preview_limit)}"
+    count_sql = f"SELECT count(*) FROM ({sample_clause}) AS __preview"
+
+    def _run() -> dict[str, Any]:
+        import duckdb
+        import time
+
+        t0 = time.perf_counter()
+        con = duckdb.connect(database=":memory:")
+        try:
+            if _requires_spatial(sql):
+                _ensure_spatial(con)
+            cur = con.execute(preview_sql)
+            cols = [{"name": d[0], "type": str(d[1])} for d in cur.description]
+            rows_raw = cur.fetchall()
+            row_count = int(con.execute(count_sql).fetchone()[0])
+            elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        finally:
+            con.close()
+
+        # Coerce non-JSON-native values to strings — geometry blobs, decimals,
+        # dates, etc. The frontend grid renders strings fine and the user can
+        # see the actual values; numeric ops on these aren't expected from a
+        # preview anyway.
+        def _coerce(v: Any) -> Any:
+            if v is None or isinstance(v, (str, int, float, bool)):
+                return v
+            return str(v)
+
+        out_rows = [
+            {c["name"]: _coerce(v) for c, v in zip(cols, r)} for r in rows_raw
+        ]
+        return {
+            "columns": cols,
+            "rows": out_rows,
+            "rowCount": row_count,
+            "sampleRows": sample_rows,
+            "elapsedMs": elapsed_ms,
+        }
+
+    try:
+        return await asyncio.to_thread(_run)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log.exception("preview pipeline %s failed", pipeline_id)
+        raise HTTPException(500, f"preview failed: {e}") from e
 
 
 @router.get("/{pipeline_id}/python")

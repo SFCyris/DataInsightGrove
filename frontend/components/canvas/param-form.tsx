@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type { ParamSpec, StepManifest } from "@/lib/api/client";
 import { FilterBuilder } from "@/components/canvas/filter-builder";
+import { FixExpressionButton } from "@/components/canvas/fix-expression";
 
 interface Props {
   manifest: StepManifest;
@@ -139,6 +140,19 @@ function Field({ name, spec, value, onSet, upstreamColumns }: FieldProps) {
             onChange={(e) => onSet(name, e.target.value)}
             spellCheck={false}
           />
+          <div className="flex items-center justify-end mt-1">
+            <FixExpressionButton
+              expression={(value as string) ?? ""}
+              // The expression sees the upstream `in` port (or the
+              // configured columnFrom) — same set the FilterBuilder uses.
+              columns={(upstreamColumns[spec.columnFrom ?? "in"] ?? []).map((c) => ({
+                name: c,
+                type: "string", // detailed types aren't threaded here yet — future enhancement
+              }))}
+              kind={name === "predicate" ? "predicate" : "scalar"}
+              onApply={(next) => onSet(name, next)}
+            />
+          </div>
           {help}
         </div>
       );

@@ -59,6 +59,28 @@ def _validate_enum(v: Any, allowed: tuple[str, ...]) -> str:
     return v
 
 
+def _validate_string(v: Any, *, max_len: int = 1024, allow_empty: bool = True) -> str:
+    if v is None:
+        return "" if allow_empty else (_ for _ in ()).throw(ValueError("must not be empty"))
+    if not isinstance(v, str):
+        raise ValueError("must be a string")
+    if not allow_empty and not v.strip():
+        raise ValueError("must not be empty")
+    if len(v) > max_len:
+        raise ValueError(f"must be at most {max_len} characters")
+    return v
+
+
+def _validate_float(v: Any, *, lo: float = 0.0, hi: float = 2.0) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError) as e:
+        raise ValueError("must be a number") from e
+    if f < lo or f > hi:
+        raise ValueError(f"must be between {lo} and {hi}")
+    return f
+
+
 # Allow-list of editable settings. Anything outside this map is rejected.
 _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
     "input_dir": {
@@ -132,7 +154,79 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
         "type": "boolean",
         "validate": lambda v: bool(v),
     },
+    # ---- AI assistant settings -------------------------------------------
+    # Pluggable LLM provider for the explain / fix-expression / generate-
+    # connector features. See docs/proposals/AI_ASSISTANT.md for design.
+    # Keys grouped by ai_* prefix so the frontend can render them as one
+    # section. The api_key is masked on read — see _mask_secrets below.
+    "ai_enabled": {
+        "default": False,
+        "label": "Enable AI assistant",
+        "help": "Master switch. Off = no AI features in the UI. When on, requires a working endpoint + model below.",
+        "type": "boolean",
+        "validate": lambda v: bool(v),
+    },
+    "ai_provider": {
+        "default": "local",
+        "label": "AI provider",
+        "help": "Local = run an Ollama / llama.cpp / vLLM instance on your machine (recommended; privacy + free). OpenAI-compatible = bring your own API key for Anthropic, OpenAI, Groq, OpenRouter, etc.",
+        "type": "enum",
+        "options": ["local", "openai_compat", "disabled"],
+        "validate": lambda v: _validate_enum(v, ("local", "openai_compat", "disabled")),
+    },
+    "ai_endpoint": {
+        "default": "http://localhost:11434/v1",
+        "label": "Endpoint URL",
+        "help": "OpenAI-compatible /v1 base URL. Defaults to Ollama's loopback. For Anthropic use https://api.anthropic.com/v1; for OpenAI https://api.openai.com/v1.",
+        "type": "string",
+        "validate": lambda v: _validate_string(v, max_len=512, allow_empty=False),
+    },
+    "ai_model": {
+        "default": "gemma4:e4b",
+        "label": "Model",
+        "help": "Model identifier the provider expects. For Ollama: `ollama list` shows what you have pulled. Recommended local default: gemma4:e4b (~7 GB, 128K context). For Anthropic try claude-haiku-4-5; for OpenAI gpt-5-mini.",
+        "type": "string",
+        "validate": lambda v: _validate_string(v, max_len=128, allow_empty=False),
+    },
+    "ai_api_key": {
+        "default": "",
+        "label": "API key",
+        "help": "Bearer token. Local Ollama doesn't need one; OpenAI / Anthropic / Groq / etc. do. Stored in your local DIG database; never sent anywhere except your configured endpoint.",
+        "type": "secret",
+        "validate": lambda v: _validate_string(v, max_len=512, allow_empty=True),
+    },
+    "ai_max_tokens": {
+        "default": 4096,
+        "label": "Max output tokens",
+        "help": "Upper bound on AI response length per call. Higher = more verbose explanations but slower + more costly (for paid providers).",
+        "type": "integer",
+        "validate": lambda v: _validate_positive_int(v, lo=64, hi=131072),
+    },
+    "ai_temperature": {
+        "default": 0.0,
+        "label": "Temperature",
+        "help": "Randomness of AI output. 0 = deterministic (best for code generation). 0.7 = creative (best for natural-language explanations).",
+        "type": "float",
+        "validate": lambda v: _validate_float(v, lo=0.0, hi=2.0),
+    },
 }
+
+
+# Setting keys whose values must never be returned to the frontend in
+# clear text — masked to the first/last few characters in the GET path.
+_SECRET_KEYS = frozenset({"ai_api_key"})
+
+
+def _mask_secret(value: Any) -> str:
+    """Mask an API-key-shaped string. Returns "" for empty input,
+    otherwise something like 'sk-…abcd' that confirms a value is set
+    without revealing it."""
+    if not value:
+        return ""
+    s = str(value)
+    if len(s) <= 6:
+        return "•" * len(s)
+    return f"{s[:3]}…{s[-4:]}"
 
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -248,16 +342,26 @@ class SettingDescriptor(BaseModel):
     options: list[str] | None = None
 
 
+def _present_value(key: str, value: Any) -> Any:
+    """Mask secret-typed settings so the frontend never holds the
+    plaintext. The user can still SET the value (write-only), they
+    just can't read it back."""
+    if key in _SECRET_KEYS:
+        return _mask_secret(value)
+    return value
+
+
 @router.get("", response_model=list[SettingDescriptor])
 async def list_settings(session: AsyncSession = Depends(get_session)) -> list[SettingDescriptor]:
     rows = (await session.execute(select(Setting))).scalars().all()
     saved = {r.key: r.value for r in rows}
     out: list[SettingDescriptor] = []
     for key, spec in _SETTINGS_SPEC.items():
+        raw = saved.get(key, spec["default"])
         out.append(SettingDescriptor(
             key=key,
-            value=saved.get(key, spec["default"]),
-            default=spec["default"],
+            value=_present_value(key, raw),
+            default=_present_value(key, spec["default"]),
             label=spec["label"],
             help=spec["help"],
             type=spec["type"],
@@ -287,7 +391,9 @@ async def set_setting(
         existing.value = validated
     await session.commit()
     return SettingDescriptor(
-        key=key, value=validated, default=spec["default"],
+        key=key,
+        value=_present_value(key, validated),
+        default=_present_value(key, spec["default"]),
         label=spec["label"], help=spec["help"], type=spec["type"],
         options=spec.get("options"),
     )

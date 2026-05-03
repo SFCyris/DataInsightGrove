@@ -1,0 +1,36 @@
+{
+  "id": "pack_struct",
+  "version": "1.0.0",
+  "label": "📦 Pack into struct",
+  "description": "Combine multiple columns into a single struct column. Use to build cartesian / polar / geographic columns from the raw (x, y) / (lat, lon) inputs they're stored in.",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "required": true,
+      "help": "Name of the new struct column. The original component columns are preserved unless you also use Drop column afterwards."
+    },
+    "fields": {
+      "type": "array",
+      "label": "Struct fields",
+      "required": true,
+      "help": "Source columns in order. For cartesian2d use [x, y]; for cartesian3d [x, y, z]; for polar2d [r, theta]; for polar3d [r, theta, phi]; for geographic [lat, lon].",
+      "items": {
+        "type": "object",
+        "label": "field",
+        "properties": {
+          "fieldName": { "type": "string", "label": "Field name in the struct (e.g. 'x', 'r', 'lat')", "required": true },
+          "sourceColumn": { "type": "column_ref", "label": "Source column", "columnFrom": "in", "required": true }
+        }
+      }
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["struct", "pack", "spatial", "compose"]
+}

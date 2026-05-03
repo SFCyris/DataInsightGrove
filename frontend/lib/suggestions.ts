@@ -175,9 +175,128 @@ export function suggestForColumn(c: ColumnLike): Suggestion[] {
   return out;
 }
 
+// Spatial paired-column heuristics. The detectors look at the SET of
+// columns rather than each one in isolation — only place in the hint
+// engine that crosses column boundaries. Each suggestion uses the
+// `pack_then_cast` composite action — one click adds two steps:
+// `pack_struct` (build a struct from the source columns) followed by
+// `cast_type` to the spatial meta-type (geographic / cartesian / polar).
+
+const _LAT_NAMES = new Set(["lat", "latitude", "lat_deg", "lat_d"]);
+const _LON_NAMES = new Set(["lon", "lng", "long", "longitude", "lon_deg", "lng_deg"]);
+const _X_NAMES = new Set(["x", "x_coord", "px"]);
+const _Y_NAMES = new Set(["y", "y_coord", "py"]);
+const _Z_NAMES = new Set(["z", "z_coord", "pz"]);
+const _R_NAMES = new Set(["r", "rho", "radius"]);
+const _THETA_NAMES = new Set(["theta", "θ", "phi_xy", "angle"]);
+
+function _norm(name: string): string {
+  return name.toLowerCase().replace(/[\s\-]+/g, "_");
+}
+
+function _isNumericLike(t: string): boolean {
+  const m = t.toLowerCase();
+  return m.startsWith("int") || m === "bigint" || m === "double" ||
+    m === "float" || m === "float32" || m === "float64" || m.includes("decimal") ||
+    m === "percentage" || m === "currency" || m === "scientific";
+}
+
+export function suggestSpatialPairs(columns: ColumnLike[]): Suggestion[] {
+  const out: Suggestion[] = [];
+  const numericByName = new Map<string, ColumnLike>();
+  for (const c of columns) {
+    if (_isNumericLike(c.type)) numericByName.set(_norm(c.name), c);
+  }
+
+  // Look for lat/lon pair → suggest pack into geographic
+  const lat = [..._LAT_NAMES].find((n) => numericByName.has(n));
+  const lon = [..._LON_NAMES].find((n) => numericByName.has(n));
+  if (lat && lon) {
+    const latCol = numericByName.get(lat)!;
+    const lonCol = numericByName.get(lon)!;
+    out.push({
+      id: `spatial_geographic:${lat}+${lon}`,
+      severity: "info",
+      emoji: "🌍",
+      title: `Looks like geographic coordinates`,
+      body: `Columns ${latCol.name} + ${lonCol.name} look like a (lat, lon) pair. Pack into a struct and cast to 🌍 geographic to unlock distance / containment operations.`,
+      column: latCol.name,
+      action: {
+        kind: "pack_then_cast",
+        outputColumn: "location",
+        fields: [
+          { fieldName: "lat", sourceColumn: latCol.name },
+          { fieldName: "lon", sourceColumn: lonCol.name },
+        ],
+        targetType: "geographic",
+      },
+      applyLabel: "Pack & cast → 🌍 geographic",
+    });
+  }
+
+  // x/y pair → cartesian2d
+  const x = [..._X_NAMES].find((n) => numericByName.has(n));
+  const y = [..._Y_NAMES].find((n) => numericByName.has(n));
+  if (x && y) {
+    const z = [..._Z_NAMES].find((n) => numericByName.has(n));
+    const xCol = numericByName.get(x)!;
+    const yCol = numericByName.get(y)!;
+    const zCol = z ? numericByName.get(z)! : undefined;
+    const targetType = z ? "cartesian3d" : "cartesian2d";
+    out.push({
+      id: `spatial_cartesian:${x}+${y}${z ? "+" + z : ""}`,
+      severity: "info",
+      emoji: "📐",
+      title: `Looks like Cartesian coordinates`,
+      body: `Columns ${xCol.name} + ${yCol.name}${zCol ? ` + ${zCol.name}` : ""} look like a ${z ? "(x, y, z)" : "(x, y)"} point. Pack into a struct and cast to 📐 ${targetType}; convertible to polar or geographic via 🧭 convert_coordinates.`,
+      column: xCol.name,
+      action: {
+        kind: "pack_then_cast",
+        outputColumn: "point",
+        fields: [
+          { fieldName: "x", sourceColumn: xCol.name },
+          { fieldName: "y", sourceColumn: yCol.name },
+          ...(zCol ? [{ fieldName: "z", sourceColumn: zCol.name }] : []),
+        ],
+        targetType,
+      },
+      applyLabel: `Pack & cast → 📐 ${targetType}`,
+    });
+  }
+
+  // r/theta pair → polar2d
+  const r = [..._R_NAMES].find((n) => numericByName.has(n));
+  const th = [..._THETA_NAMES].find((n) => numericByName.has(n));
+  if (r && th) {
+    const rCol = numericByName.get(r)!;
+    const thCol = numericByName.get(th)!;
+    out.push({
+      id: `spatial_polar:${r}+${th}`,
+      severity: "info",
+      emoji: "🧭",
+      title: `Looks like polar coordinates`,
+      body: `Columns ${rCol.name} + ${thCol.name} look like a (r, θ) polar point (θ in radians). Pack into a struct and cast to 🧭 polar2d; lossless conversion to Cartesian via 🧭 convert_coordinates.`,
+      column: rCol.name,
+      action: {
+        kind: "pack_then_cast",
+        outputColumn: "point",
+        fields: [
+          { fieldName: "r", sourceColumn: rCol.name },
+          { fieldName: "theta", sourceColumn: thCol.name },
+        ],
+        targetType: "polar2d",
+      },
+      applyLabel: "Pack & cast → 🧭 polar2d",
+    });
+  }
+
+  return out;
+}
+
 export function suggestionsFromProfile(columns: ColumnLike[]): Suggestion[] {
   const all: Suggestion[] = [];
   for (const c of columns) all.push(...suggestForColumn(c));
+  all.push(...suggestSpatialPairs(columns));
   // Deterministic ordering: warn → tip → info; then by column name.
   const rank: Record<SuggestionSeverity, number> = { warn: 0, tip: 1, info: 2 };
   return all.sort((a, b) => rank[a.severity] - rank[b.severity] || a.column.localeCompare(b.column));

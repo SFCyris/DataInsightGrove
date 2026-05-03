@@ -72,6 +72,10 @@ interface Props {
   annotations?: Record<string, string>;
   /** Save callback for the drawer's annotation editor. */
   onSaveAnnotation?: (column: string, text: string) => Promise<void> | void;
+  /** False when the preview ran on the backend instead of in-browser
+   *  (e.g. spatial extension required). Drives a small status badge so the
+   *  user understands why this preview took longer than usual. */
+  ranLocally?: boolean;
 }
 
 // Default float formatter — locale-pinned to en-US to keep SSR + client
@@ -151,7 +155,7 @@ function logicalType(t: string): string {
 export function LiveGrid({
   columns, rows, totalRows, sampleRows, loading = false, elapsedMs,
   onColumnAction, onCellQuickFilter, emptyHint, highlights,
-  annotations, onSaveAnnotation,
+  annotations, onSaveAnnotation, ranLocally = true,
 }: Props) {
   const added = highlights?.added;
   const renamed = highlights?.renamed;
@@ -276,6 +280,14 @@ export function LiveGrid({
         {totalRows > previewCount && (
           <span className="text-[10px] text-muted-foreground">
             showing first {fmtInt(previewCount)} of {fmtInt(totalRows)}
+          </span>
+        )}
+        {!ranLocally && (
+          <span
+            className="text-[10px] px-2 py-0.5 rounded-full border border-sky-300/40 bg-sky-50/40 dark:bg-sky-900/10 text-sky-700 dark:text-sky-300"
+            title="This step needs the DuckDB spatial extension, which isn't available in the in-browser engine. Preview ran on the backend instead."
+          >
+            🌐 via backend
           </span>
         )}
         <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-300/40 bg-amber-50/40 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300">

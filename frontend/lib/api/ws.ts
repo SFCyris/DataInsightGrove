@@ -48,6 +48,13 @@ export function subscribe(
   let closed = false;
   let pingTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  // The initial open is deferred by one tick — in dev React Strict Mode
+  // mounts → cleans up → re-mounts every effect, which without this defer
+  // would open a WebSocket and immediately .close() it mid-handshake (the
+  // browser logs that as a "connection interrupted" warning). Holding the
+  // timer here lets the synchronous cleanup cancel the pending open before
+  // the socket is even constructed.
+  let initialOpenTimer: ReturnType<typeof setTimeout> | null = null;
   let attempt = 0;
   let everOpened = false;
 
@@ -125,12 +132,17 @@ export function subscribe(
     };
   };
 
-  open();
+  initialOpenTimer = setTimeout(() => {
+    initialOpenTimer = null;
+    open();
+  }, 0);
 
   return () => {
     closed = true;
+    if (initialOpenTimer) clearTimeout(initialOpenTimer);
     if (pingTimer) clearInterval(pingTimer);
     if (reconnectTimer) clearTimeout(reconnectTimer);
+    initialOpenTimer = null;
     pingTimer = null;
     reconnectTimer = null;
     try { ws?.close(); } catch { /* ignore */ }

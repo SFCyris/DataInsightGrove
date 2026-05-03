@@ -1,0 +1,40 @@
+{
+  "id": "json_extract",
+  "version": "1.0.0",
+  "label": "📦 Extract from JSON",
+  "description": "Pull a value out of a JSON column at the given path. e.g. '$.user.email' from {\"user\": {\"email\": \"alice@example.com\"}}.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": {
+      "type": "column_ref",
+      "label": "JSON column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "path": {
+      "type": "string",
+      "label": "JSON path",
+      "required": true,
+      "help": "JSONPath syntax. Examples: $.field, $.user.email, $.items[0].name. Use $ to refer to the root.",
+      "default": "$."
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "required": true
+    },
+    "asText": {
+      "type": "boolean",
+      "label": "Force text output",
+      "default": false,
+      "help": "Off (default): preserves the JSON type — numbers become numbers, booleans become booleans. On: always returns the value as a string (useful when the field's type is inconsistent across rows)."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["json", "extract", "path", "derive"]
+}

@@ -1,8 +1,8 @@
 {
   "id": "expectations",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "✅ Data quality expectations",
-  "description": "Assert data quality rules (column.unique, column.in [...], column.between, row_count.between, etc). Each violation surfaces in the run's artifacts panel; failures can optionally fail the run.",
+  "description": "Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between). Failures surface in the run's artifacts; optionally fail the run, fire a Slack-compatible webhook, or both. Per-rule severity (error|warning) controls run-failure semantics.",
   "category": "clean",
   "engine": { "primary": "polars", "browser": "none", "deterministic": true },
   "io": {
@@ -14,15 +14,28 @@
       "type": "array",
       "label": "Rules",
       "required": true,
-      "help": "List of objects: {kind, column?, args} where kind ∈ unique | not_null | between | in | regex_match | row_count_between."
+      "help": "List of {kind, column?, args, severity?, label?}. severity ∈ error | warning (default error). label is a human-readable name for the rule."
     },
     "fail_on_violation": {
       "type": "boolean",
-      "label": "Fail run on any violation",
+      "label": "Fail run on any error-severity violation",
       "default": false,
-      "help": "If true, the step raises an error and the run is marked failed when any rule reports a violation."
+      "help": "If true, the step raises and the run is marked failed when any error-severity rule fails. Warning-severity violations never fail the run."
+    },
+    "notify_webhook_url": {
+      "type": "string",
+      "label": "Notification webhook (optional)",
+      "default": "",
+      "help": "URL to POST a Slack-compatible payload when any rule fails. Works with Slack incoming webhooks, Discord, Mattermost, generic HTTP receivers."
+    },
+    "notify_on": {
+      "type": "enum",
+      "label": "When to notify",
+      "enumValues": ["never", "any_failure", "error_only"],
+      "default": "any_failure",
+      "help": "never: webhook is disabled. any_failure: any rule failure (warning or error). error_only: error-severity only."
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["dq", "data-quality", "expectations", "validation"]
+  "tags": ["dq", "data-quality", "expectations", "validation", "slack", "webhook"]
 }

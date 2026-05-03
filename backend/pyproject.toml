@@ -38,7 +38,8 @@ storage = [
   "alembic>=1.13",
 ]
 connectors = [
-  "openpyxl>=3.1",   # excel read
+  "openpyxl>=3.1",   # excel .xlsx fallback (used when fastexcel can't open a file)
+  "fastexcel>=0.13", # excel reader — Rust calamine, supports both .xlsx and legacy .xls
   "xlsxwriter>=3.2", # excel write — used by polars.DataFrame.write_excel
 ]
 jdbc = [
@@ -60,6 +61,17 @@ ml = [
   "umap-learn>=0.5",
   "statsmodels>=0.14",   # seasonal_decompose, classical forecasting
   "scipy>=1.11",         # used transitively by the others; pin so we know what we're getting
+]
+science = [
+  # Scientific / research file-format connectors. Each connector imports
+  # its heavy dep lazily inside read(), so connectors stay registered
+  # even without these installed — but reading a .h5 / .nc / .fits / .mat
+  # file then errors with a clear "pip install dig[science]" message.
+  "h5py>=3.10",          # hdf5 + matlab v7.3
+  "scipy>=1.11",         # matlab v7- (loadmat); shared with [ml]
+  "netCDF4>=1.6",        # netcdf classic + netcdf4
+  "xarray>=2024.0",      # netcdf high-level reader
+  "astropy>=6.0",        # fits (astronomy)
 ]
 dev = [
   "pytest>=8",

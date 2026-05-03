@@ -130,6 +130,32 @@ class Step(ABC):
         first = next(iter(input_schemas.values()))
         return dict(first)
 
+    def validation_sql(
+        self,
+        params: dict[str, Any],
+        inputs: dict[str, str],
+    ) -> str | None:
+        """Optional. Return a SQL SELECT that, given the same `inputs` map
+        the step's to_sql sees, produces ONE row of validation metrics.
+
+        Default: None — most steps don't have meaningful runtime metrics.
+        cast_type overrides this to count rows that became NULL post-cast
+        (precision loss / overflow / TRY_CAST failures).
+
+        The executor compiles the upstream CTE chain, appends this query,
+        runs it, and attaches the resulting row to the run's artifacts
+        under the originating node's id.
+
+        Conventions:
+          - The SELECT must reference only the input CTE aliases (not
+            the step's own output CTE — by definition the validation runs
+            on the input, comparing what would-be-cast against what was).
+          - Column aliases in the SELECT become the artifact field names.
+          - Return None to skip — the executor doesn't pay the cost of
+            an extra query for steps that don't need it.
+        """
+        return None
+
 
 def quote_ident(name: str) -> str:
     """Double-quote an identifier and escape embedded quotes — DuckDB-safe."""

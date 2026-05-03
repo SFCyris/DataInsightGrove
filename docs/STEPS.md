@@ -2,19 +2,22 @@
 
 This page documents every step DIG ships with. It is **auto-generated** from each step's `manifest.json` plus optional hand-written notes under `docs/_steps/<step_id>.md` — re-run `python scripts/gen-steps-doc.py` whenever you add or change a step.
 
-**46 steps** across ✂️ Shape (7), 🧼 Clean (8), 🪄 Derive (9), 🤝 Combine (3), 📊 Aggregate (5), 📤 Output (5).
+**54 steps** across ✂️ Shape (10), 🧼 Clean (8), 🪄 Derive (14), 🤝 Combine (3), 📊 Aggregate (5), 📤 Output (5).
 
 ## Index
 
 ### ✂️ Shape
 
 - [🔍 Filter rows](#filter-rows) — Keep rows where the predicate evaluates to true.
+- [📦 Pack into struct](#pack-into-struct) — Combine multiple columns into a single struct column.
 - [✏️ Rename columns](#rename-columns) — Rename one or more columns.
 - [↔️ Reorder columns](#reorder-columns) — Reorder the columns of the input.
 - [🎲 Sample rows](#sample-rows) — Take a random or head/tail sample of rows.
 - [📋 Select columns](#select-columns) — Keep only the chosen columns, in the chosen order.
 - [↕️ Sort rows](#sort-rows) — Order rows by one or more columns.
 - [✂️ Split column](#split-column) — Split a string column on a delimiter into N new columns (named col_1, col_2, …).
+- [💥 Unnest array](#unnest-array) — Explode an array column into rows — one row per element.
+- [📤 Unpack struct](#unpack-struct) — Explode a struct column into one column per field.
 
 ### 🧼 Clean
 
@@ -22,7 +25,7 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 - [🧽 Clean whitespace](#clean-whitespace) — Trim leading/trailing whitespace and optionally collapse runs of internal whitespace into a single space.
 - [🪢 Coalesce columns](#coalesce-columns) — First non-null wins.
 - [🪞 Deduplicate](#deduplicate) — Keep one row per group of duplicates.
-- [✅ Data quality expectations](#data-quality-expectations) — Assert data quality rules (column.
+- [✅ Data quality expectations](#data-quality-expectations) — Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between).
 - [🔤 Replace text](#replace-text) — Find-and-replace inside a string column.
 - [🎯 Round numeric](#round-numeric) — Round a numeric column to N decimal places.
 - [🆙 Uppercase string](#uppercase-string) — Convert a string column to uppercase.
@@ -30,13 +33,18 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 ### 🪄 Derive
 
 - [🆕 Add column](#add-column) — Add a new column with a typed default value.
+- [📏 Array length](#array-length) — Add a column with the length of an array column.
 - [📦 Bin numeric](#bin-numeric) — Bucket a numeric column into N equal-width bins, or into custom breakpoints.
 - [🧭 Convert coordinates](#convert-coordinates) — Lossless conversion between polar, Cartesian, and geographic coordinate systems.
 - [➕ Derive column](#derive-column) — Add a new column computed from a SQL expression over existing columns.
+- [🧠 Embed text (AI)](#embed-text-ai) — Add a vector column with embeddings of a text column.
 - [📅 Extract date parts](#extract-date-parts) — Pull year, month, day, day-of-week (etc.
 - [🎯 Extract pattern](#extract-pattern) — Extract a regex group from a string column into a new column.
+- [🌍 Geographic distance](#geographic-distance) — Compute great-circle distance (Haversine, in metres) between two lat/lon points.
+- [📦 Extract from JSON](#extract-from-json) — Pull a value out of a JSON column at the given path.
 - [🧮 Math equation](#math-equation) — Add a column computed from a math expression over existing columns.
 - [🌊 Rolling window](#rolling-window) — Add rolling-window aggregations (moving average, rolling sum, etc.
+- [🧭 Vector similarity](#vector-similarity) — Compute similarity / distance between two vector columns.
 - [📐 Z-score](#z-score) — Add a standardized (mean=0, std=1) version of a numeric column as a new column.
 
 ### 🤝 Combine
@@ -80,6 +88,24 @@ Tags: `filter` `where`
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `predicate` | expression | ✓ | — | Build conditions visually, or switch to SQL mode for full control. |
+
+
+### 📦 Pack into struct
+
+**ID:** `pack_struct` · **Version:** `1.0.0`
+
+Combine multiple columns into a single struct column. Use to build cartesian / polar / geographic columns from the raw (x, y) / (lat, lon) inputs they're stored in.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `struct` `pack` `spatial` `compose`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `outputColumn` | string | ✓ | — | Name of the new struct column. The original component columns are preserved unless you also use Drop column afterwards. |
+| `fields` | array | ✓ | — | Source columns in order. For cartesian2d use [x, y]; for cartesian3d [x, y, z]; for polar2d [r, theta]; for polar3d [r, theta, phi]; for geographic [lat, lon]. |
 
 
 ### ✏️ Rename columns
@@ -192,6 +218,44 @@ Tags: `string` `split`
 | `drop` | boolean |  | `False` | Drop the original column |
 
 
+### 💥 Unnest array
+
+**ID:** `unnest_array` · **Version:** `1.0.0`
+
+Explode an array column into rows — one row per element. The other columns are duplicated for each exploded row.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_grow · schema: modifies
+
+Tags: `array` `unnest` `explode` `shape`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `column` | column_ref | ✓ | — | Array column |
+| `outputColumn` | string |  | — | Defaults to the original column name if blank. |
+| `preserveNulls` | boolean |  | `True` | On (default): rows with NULL / empty arrays produce a single row with NULL in the output column. Off: those rows are dropped entirely. |
+
+
+### 📤 Unpack struct
+
+**ID:** `unpack_struct` · **Version:** `1.0.0`
+
+Explode a struct column into one column per field. Inverse of pack_struct.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `struct` `unpack` `explode` `spatial` `decompose`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `column` | column_ref | ✓ | — | Struct column |
+| `fields` | array | ✓ | — | Names of the struct fields to pull out as separate columns. The original struct column is dropped from the output. |
+| `outputPrefix` | string |  | `` | Optional. Prepended to each generated column name to avoid collisions with existing columns. |
+
+
 ---
 
 ## 🧼 Clean
@@ -274,20 +338,22 @@ Tags: `distinct` `unique` `clean`
 
 ### ✅ Data quality expectations
 
-**ID:** `expectations` · **Version:** `1.0.0`
+**ID:** `expectations` · **Version:** `1.1.0`
 
-Assert data quality rules (column.unique, column.in [...], column.between, row_count.between, etc). Each violation surfaces in the run's artifacts panel; failures can optionally fail the run.
+Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between). Failures surface in the run's artifacts; optionally fail the run, fire a Slack-compatible webhook, or both. Per-rule severity (error|warning) controls run-failure semantics.
 
 🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
 
-Tags: `dq` `data-quality` `expectations` `validation`
+Tags: `dq` `data-quality` `expectations` `validation` `slack` `webhook`
 
 **Parameters**
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `rules` | array | ✓ | — | List of objects: {kind, column?, args} where kind ∈ unique \| not_null \| between \| in \| regex_match \| row_count_between. |
-| `fail_on_violation` | boolean |  | `False` | If true, the step raises an error and the run is marked failed when any rule reports a violation. |
+| `rules` | array | ✓ | — | List of {kind, column?, args, severity?, label?}. severity ∈ error \| warning (default error). label is a human-readable name for the rule. |
+| `fail_on_violation` | boolean |  | `False` | If true, the step raises and the run is marked failed when any error-severity rule fails. Warning-severity violations never fail the run. |
+| `notify_webhook_url` | string |  | `` | URL to POST a Slack-compatible payload when any rule fails. Works with Slack incoming webhooks, Discord, Mattermost, generic HTTP receivers. |
+| `notify_on` | enum |  | `any_failure` | never: webhook is disabled. any_failure: any rule failure (warning or error). error_only: error-severity only. |
 
 **Use case + example**
 
@@ -397,6 +463,24 @@ Tags: `add` `new` `column` `default` `fill` `constant`
 | `reference` | column_ref |  | — | Only used when Position = before / after — ignored otherwise. |
 
 
+### 📏 Array length
+
+**ID:** `array_length` · **Version:** `1.0.0`
+
+Add a column with the length of an array column. Returns 0 for empty arrays and NULL for NULL arrays.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `array` `length` `count` `derive`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `column` | column_ref | ✓ | — | Array column |
+| `outputColumn` | string | ✓ | `length` | Output column name |
+
+
 ### 📦 Bin numeric
 
 **ID:** `bin_numeric` · **Version:** `1.0.0`
@@ -456,6 +540,28 @@ Tags: `derive` `compute`
 | `expression` | expression | ✓ | — | SQL expression, e.g. amount * 1.07 or upper(name) |
 
 
+### 🧠 Embed text (AI)
+
+**ID:** `embed_text` · **Version:** `1.0.0`
+
+Add a vector column with embeddings of a text column. Calls an OpenAI-compatible /v1/embeddings endpoint (works with OpenAI, Cohere via compat layer, Ollama, Together, vLLM, llama.cpp). Costs API credits for paid providers; free with a local Ollama embedding model.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `embedding` `vector` `ml` `openai` `ollama` `ai`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `textColumn` | column_ref | ✓ | — | Text column |
+| `outputColumn` | string | ✓ | `embedding` | Output vector column name |
+| `endpoint` | string | ✓ | `https://api.openai.com/v1/embeddings` | OpenAI: https://api.openai.com/v1/embeddings · Ollama: http://localhost:11434/v1/embeddings · Together / Groq / OpenRouter: see their docs. |
+| `model` | string | ✓ | `text-embedding-3-small` | OpenAI: text-embedding-3-small (1536d, cheap) or text-embedding-3-large (3072d). Ollama: nomic-embed-text (768d), mxbai-embed-large (1024d). Cohere: embed-english-v3.0. |
+| `apiKey` | string |  | `` | Bearer token. Local Ollama doesn't need one. The key is sent ONLY to the configured endpoint. |
+| `batchSize` | integer |  | `100` | Texts per API call. Lower = more requests + slower; higher = fewer requests but risks 'request too large' errors. OpenAI accepts up to 2048. |
+
+
 ### 📅 Extract date parts
 
 **ID:** `extract_date_parts` · **Version:** `1.0.0`
@@ -493,6 +599,47 @@ Tags: `string` `regex` `extract`
 | `pattern` | regex | ✓ | — | e.g. ([A-Z]{2}) — group 1 captures two uppercase letters |
 | `group` | integer |  | `1` | Capture group |
 | `as` | string | ✓ | — | New column name |
+
+
+### 🌍 Geographic distance
+
+**ID:** `geo_distance` · **Version:** `1.0.0`
+
+Compute great-circle distance (Haversine, in metres) between two lat/lon points. Add as a new column.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `spatial` `geographic` `distance` `haversine` `derive`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `lat1Column` | column_ref | ✓ | — | First point — latitude (degrees) |
+| `lon1Column` | column_ref | ✓ | — | First point — longitude (degrees) |
+| `lat2Column` | column_ref | ✓ | — | Second point — latitude (degrees) |
+| `lon2Column` | column_ref | ✓ | — | Second point — longitude (degrees) |
+| `outputColumn` | string | ✓ | `distance_m` | Name of the new column. Values are in metres on a sphere of radius 6,371,000 m (mean Earth radius). |
+
+
+### 📦 Extract from JSON
+
+**ID:** `json_extract` · **Version:** `1.0.0`
+
+Pull a value out of a JSON column at the given path. e.g. '$.user.email' from {"user": {"email": "alice@example.com"}}.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `json` `extract` `path` `derive`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `column` | column_ref | ✓ | — | JSON column |
+| `path` | string | ✓ | `$.` | JSONPath syntax. Examples: $.field, $.user.email, $.items[0].name. Use $ to refer to the root. |
+| `outputColumn` | string | ✓ | — | Output column name |
+| `asText` | boolean |  | `False` | Off (default): preserves the JSON type — numbers become numbers, booleans become booleans. On: always returns the value as a string (useful when the field's type is inconsistent across rows). |
 
 
 ### 🧮 Math equation
@@ -559,6 +706,26 @@ Tags: `time-series` `rolling` `moving-average` `smoothing`
 - **Row-based** (an integer like `7`) — windows over the previous N rows regardless of time. Faster but assumes evenly-sampled data.
 
 `min_periods` controls when the rolling output starts emitting a value — useful to avoid noisy values from the very first few observations.
+
+
+### 🧭 Vector similarity
+
+**ID:** `vector_similarity` · **Version:** `1.0.0`
+
+Compute similarity / distance between two vector columns. Cosine for embeddings (range [-1, 1]; 1 = identical), dot product for raw scoring, Euclidean / Manhattan for spatial distance.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `vector` `embedding` `similarity` `knn` `ml` `derive`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `leftColumn` | column_ref | ✓ | — | Left vector column |
+| `rightColumn` | column_ref | ✓ | — | Right vector column |
+| `metric` | enum | ✓ | `cosine` | cosine: angular similarity, best for embeddings (range [-1, 1]). dot: raw inner product (use when vectors are normalized). euclidean: L2 distance, lower = closer. manhattan: L1 distance. |
+| `outputColumn` | string | ✓ | `similarity` | Output column name |
 
 
 ### 📐 Z-score

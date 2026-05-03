@@ -488,7 +488,7 @@ Output columns follow the canonical order of the target system. The step is Pola
 
 ## Adding a new type
 
-The recipe lives in [`backend/dig/engine/meta_types.py`](../backend/dig/engine/meta_types.py) at the top of the file. In short:
+The procedure lives in [`backend/dig/engine/meta_types.py`](../backend/dig/engine/meta_types.py) at the top of the file. In short:
 
 1. Append a `TypeDescriptor` to the `TYPES` registry (id, label, base, sql_type, description, detector). Pick the precise SQL physical type — if DuckDB has one for your domain (`UUID`, `JSON`, `DECIMAL`, `HUGEINT`, `GEOMETRY`), use it.
 2. Write the detector function — input is the column profile dict, output is a `TypeCandidate` with score 0–1, optional `storage` override, or `None`.

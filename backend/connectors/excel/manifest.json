@@ -1,11 +1,11 @@
 {
   "id": "excel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "📑 Excel",
-  "description": "Read and write Microsoft Excel workbooks (.xlsx).",
+  "description": "Read and write Microsoft Excel workbooks. Reads both .xlsx (modern) and .xls (legacy binary) via the Rust calamine engine. Writes .xlsx only. Auto-detects whether the first row is a header.",
   "kind": "both",
   "uriSchemes": ["file"],
-  "fileExtensions": ["xlsx"],
+  "fileExtensions": ["xlsx", "xls"],
   "options": {
     "sheet": {
       "type": "string",
@@ -13,10 +13,17 @@
       "help": "Defaults to the first sheet."
     },
     "header": {
-      "type": "boolean",
-      "label": "First row is header",
-      "default": true
+      "type": "enum",
+      "label": "Header row",
+      "enumValues": ["auto", "yes", "no"],
+      "default": "auto",
+      "help": "auto: heuristically detect (data-like row 0 → no header). yes/no: force the choice. When no header, columns are named col_1, col_2, …"
+    },
+    "island_range": {
+      "type": "string",
+      "label": "Cell range (Excel A1)",
+      "help": "Optional. When set (e.g. 'B2:F50'), reads only that rectangle from the sheet. Used by the data-island picker to scope ingest to one of multiple disjoint tables on the same sheet. Leave blank to read the whole sheet."
     }
   },
-  "tags": ["spreadsheet"]
+  "tags": ["spreadsheet", "xlsx", "xls"]
 }

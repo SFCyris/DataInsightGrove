@@ -46,9 +46,25 @@ export default function DatasetsPage() {
             </h1>
           </div>
         </div>
-        <Link href="/" className={buttonVariants({ variant: "ghost" })}>
-          ← Home
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/datasets/from-rest"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            title="Import from a REST API — auth, pagination, JSONPath"
+          >
+            🌐 From REST API
+          </Link>
+          <Link
+            href="/connectors/new"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            title="AI: generate a connector folder from a URL"
+          >
+            ✨ Generate connector
+          </Link>
+          <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            ← Home
+          </Link>
+        </div>
       </motion.header>
 
       <UploadDropzone />

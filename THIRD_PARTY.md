@@ -23,7 +23,7 @@ If you find a missing or incorrect attribution, please open an issue at
 
 ## Summary
 
-- Total Python dependencies (transitive): **78**
+- Total Python dependencies (transitive): **79**
 - Total npm dependencies (production, transitive): **461**
 
 ### By license family
@@ -37,7 +37,7 @@ If you find a missing or incorrect attribution, please open an issue at
 | BlueOak | 0 | 2 |
 | CC-BY | 0 | 1 |
 | ISC | 0 | 58 |
-| MIT | 41 | 372 |
+| MIT | 42 | 372 |
 | Other / Unclear | 0 | 1 |
 | PSF | 2 | 1 |
 | Unlicense | 0 | 1 |
@@ -49,7 +49,7 @@ If you find a missing or incorrect attribution, please open an issue at
 
 ## MIT
 
-### MIT (Python, 41 packages)
+### MIT (Python, 42 packages)
 
 | Package | Version | License | Source / project URL |
 |---|---|---|---|
@@ -71,6 +71,7 @@ If you find a missing or incorrect attribution, please open an issue at
 | `anyio` | 4.13.0 | MIT | <https://anyio.readthedocs.io/en/latest/> |
 | `attrs` | 26.1.0 | MIT | <https://www.attrs.org/> |
 | `et_xmlfile` | 2.0.0 | MIT | <https://foss.heptapod.net/openpyxl/et_xmlfile> |
+| `fastexcel` | 0.20.1 | MIT License | <https://github.com/ToucanToco/fastexcel> |
 | `fonttools` | 4.62.1 | MIT | <http://github.com/fonttools/fonttools> |
 | `greenlet` | 3.5.0 | MIT AND PSF-2.0 | <https://greenlet.readthedocs.io> |
 | `h11` | 0.16.0 | MIT | <https://github.com/python-hyper/h11> |

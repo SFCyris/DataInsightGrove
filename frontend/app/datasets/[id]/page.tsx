@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api } from "@/lib/api/client";
+import { api, type Dataset } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DatasetGrid } from "@/components/grid/dataset-grid";
 import { ProfileCard } from "@/components/profile/profile-card";
+import { SheetPickerModal } from "@/components/sheet-picker-modal";
+import { IslandPickerModal } from "@/components/island-picker-modal";
 import { fmtInt } from "@/lib/format-number";
 
 function _datasetRefId(id: string): string {
@@ -157,6 +159,14 @@ export default function DatasetDetailPage({ params }: PageProps) {
         </div>
       )}
 
+      {dataset.data?.status === "awaiting_sheet_pick" && (
+        <AwaitingSheetPick dataset={dataset.data} onPicked={() => dataset.refetch()} />
+      )}
+
+      {dataset.data?.status === "awaiting_island_pick" && (
+        <AwaitingIslandPick dataset={dataset.data} onPicked={() => dataset.refetch()} />
+      )}
+
       {profile.data && profile.data.columns.length > 0 && (
         <motion.section
           {...fadeUp}
@@ -193,5 +203,67 @@ export default function DatasetDetailPage({ params }: PageProps) {
         </motion.section>
       )}
     </main>
+  );
+}
+
+/** Inline prompt + modal for an Excel dataset paused at the sheet-pick
+ *  step. Opens the same picker the upload flow uses. Useful when the
+ *  user dismissed the upload-time picker and is resuming from the
+ *  datasets list. */
+function AwaitingSheetPick({ dataset, onPicked }: { dataset: Dataset; onPicked: () => void }) {
+  const [open, setOpen] = useState(true);
+  const sheets = dataset.availableSheets ?? [];
+  return (
+    <>
+      <div className="text-sm border border-amber-300/50 bg-amber-50/40 dark:bg-amber-900/20 rounded-lg p-4 space-y-2">
+        <p className="font-medium">📑 Multi-sheet workbook — pick one to import</p>
+        <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+          Found {sheets.length} sheets in this Excel file. Pick which one to ingest;
+          the file is already on the server, no re-upload needed.
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setOpen(true)}>
+            📑 Pick sheet
+          </Button>
+        </div>
+      </div>
+      {open && (
+        <SheetPickerModal
+          dataset={dataset}
+          onPicked={() => { setOpen(false); onPicked(); }}
+          onCancel={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/** Same shape as AwaitingSheetPick but for the island-pick branch.
+ *  Triggered when the chosen sheet contains 2+ disjoint data tables. */
+function AwaitingIslandPick({ dataset, onPicked }: { dataset: Dataset; onPicked: () => void }) {
+  const [open, setOpen] = useState(true);
+  const islands = dataset.availableIslands ?? [];
+  return (
+    <>
+      <div className="text-sm border border-amber-300/50 bg-amber-50/40 dark:bg-amber-900/20 rounded-lg p-4 space-y-2">
+        <p className="font-medium">📐 Sheet has multiple data tables — pick which one to import</p>
+        <p className="text-xs text-amber-800/80 dark:text-amber-200/80">
+          Detected {islands.length} disjoint rectangles on{dataset.selectedSheet ? ` sheet "${dataset.selectedSheet}"` : " the sheet"}.
+          Each one looks like a standalone table; pick the range you want as this dataset.
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setOpen(true)}>
+            📐 Pick island
+          </Button>
+        </div>
+      </div>
+      {open && (
+        <IslandPickerModal
+          dataset={dataset}
+          onPicked={() => { setOpen(false); onPicked(); }}
+          onCancel={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }

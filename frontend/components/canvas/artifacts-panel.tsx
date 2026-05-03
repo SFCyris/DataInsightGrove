@@ -140,6 +140,44 @@ export function ArtifactsPanel({ runId, artifacts }: Props) {
               </div>
             );
           }
+          if (a.kind === "validation") {
+            // Per-step validation artifact (e.g. cast_type's precision check).
+            // Shape: {kind, label, node_id, step_id, metrics: {total, source_null, source_non_null, cast_failures, ...}}
+            const m = (a as { metrics?: Record<string, number> }).metrics ?? {};
+            const failures = Number(m.cast_failures ?? 0);
+            const total = Number(m.total ?? 0);
+            const stepId = String((a as { step_id?: string }).step_id ?? "step");
+            return (
+              <div
+                key={i}
+                className={[
+                  "rounded-lg border p-3 text-xs",
+                  failures > 0
+                    ? "border-amber-300/60 bg-amber-50/40 dark:bg-amber-900/20"
+                    : "border-emerald-300/60 bg-emerald-50/40 dark:bg-emerald-900/20",
+                ].join(" ")}
+              >
+                <p className="font-medium flex items-center gap-1.5 mb-1.5">
+                  <span aria-hidden>{failures > 0 ? "⚠️" : "✅"}</span>
+                  {stepId} validation
+                </p>
+                {failures > 0 ? (
+                  <p className="text-amber-800 dark:text-amber-200">
+                    <strong>{fmtInt(failures)}</strong> of {fmtInt(total)} rows lost data in the cast
+                    {Number(m.source_non_null ?? 0) > 0 && (
+                      <span className="opacity-70">
+                        {" "}({((failures / Number(m.source_non_null)) * 100).toFixed(1)}% of non-null inputs)
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-emerald-700 dark:text-emerald-300">
+                    All {fmtInt(total)} rows cast cleanly. {fmtInt(Number(m.source_non_null ?? 0))} non-null values, no precision loss.
+                  </p>
+                )}
+              </div>
+            );
+          }
           if (a.kind === "expectations") {
             type Result = { rule: { kind: string; column?: string }; passed?: boolean; violations?: number; nulls?: number; duplicates?: number; error?: string };
             const results = ((a as { results?: Result[] }).results ?? []);

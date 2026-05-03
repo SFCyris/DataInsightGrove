@@ -117,6 +117,7 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - 📝 [Pipeline format](docs/PIPELINE_FORMAT.md) — the portable JSON DAG
 - 🔌 [JDBC setup](docs/JDBC_SETUP.md) — Java + JAR install for the JDBC connector and `export_to_jdbc` step
 - 🎨 [UI guidelines](docs/UI_GUIDELINES.md) — emojis as iconography + motion principles
+- 🔤 [Glossary](docs/GLOSSARY.md) — what DIG means by Dataset, Pipeline, Step, Profile, Run, Hint, …
 - ⚖️ [Third-party notices](THIRD_PARTY.md) — full attribution + license texts for every dep (auto-generated)
 - ™️ [Trademark notice](TRADEMARK.md) — word marks DataInsightGrove™, DIG™ (the 🌳 emoji is generic Unicode and not claimed)
 

@@ -431,6 +431,69 @@ def execute(
             if arts:
                 artifacts[o.id] = arts
 
+        # Run per-step validation queries (cast precision, etc). Each step
+        # may opt in by overriding `validation_sql`; we compile the
+        # upstream CTE chain for that step's input and append the
+        # validation SELECT, then attach the result row as an artifact
+        # under a synthetic key. Best-effort — a failed validation logs
+        # but doesn't fail the run.
+        for node in topo_sort(p):
+            try:
+                step = steps().get(node.step)
+            except KeyError:
+                continue
+            inputs_for_node: dict[str, str] = {
+                port: quote_ident(ref.ref) for port, ref in node.inputs.items()
+            }
+            try:
+                vsql = step.validation_sql(node.params, inputs_for_node)
+            except Exception:
+                log.exception("validation_sql raised for node %s", node.id)
+                continue
+            if not vsql:
+                continue
+            # Compile the upstream chain — pick the first input's ref as the
+            # terminal CTE the validation reads from.
+            first_input = next(iter(node.inputs.values()), None)
+            if first_input is None:
+                continue
+            try:
+                upstream_sql = compile_to_sql(p, terminal=first_input.ref, overrides=materialized)
+            except Exception:
+                log.exception("validation upstream compile failed for node %s", node.id)
+                continue
+            # Splice: keep only the WITH clause from the upstream compile.
+            # compile_to_sql returns "WITH ... SELECT * FROM <terminal>";
+            # we need the WITH up to (but not including) the terminal SELECT,
+            # then our validation SELECT.
+            if not upstream_sql.lstrip().upper().startswith("WITH"):
+                # Single-dataset pipeline — wrap in a no-op WITH.
+                full_sql = vsql
+            else:
+                # Find " SELECT * FROM " marker that ends the WITH clause,
+                # keep everything up to that point, then append our SELECT.
+                marker = " SELECT * FROM "
+                idx = upstream_sql.rfind(marker)
+                if idx < 0:
+                    log.warning("could not splice validation for %s: no SELECT marker", node.id)
+                    continue
+                with_clause = upstream_sql[: idx + 1]
+                full_sql = f"{with_clause}{vsql}"
+            try:
+                row = con.execute(full_sql).fetchone()
+                cols = [d[0] for d in con.description]
+                metrics = dict(zip(cols, row))
+                artifacts.setdefault(f"_validation:{node.id}", []).append({
+                    "kind": "validation",
+                    "label": f"{step.id} validation",
+                    "node_id": node.id,
+                    "step_id": step.id,
+                    "metrics": {k: (int(v) if isinstance(v, (int, float)) and v == int(v) else v)
+                                for k, v in metrics.items()},
+                })
+            except Exception:
+                log.exception("validation query failed for node %s (sql: %s)", node.id, full_sql[:200])
+
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         return ExecutionResult(
             runId=run_id, outputs=outputs, rowCounts=row_counts, elapsedMs=elapsed_ms,

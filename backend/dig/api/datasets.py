@@ -79,6 +79,18 @@ class DatasetOut(BaseModel):
     fileSize: int | None = None
     columns: list[ColumnInfo] | None = None
     annotations: dict[str, str] | None = None
+    # Populated only when status == "awaiting_sheet_pick" — the list of
+    # sheet names found in a multi-sheet Excel workbook the user
+    # uploaded without specifying which sheet to ingest. Frontend reads
+    # this to render the picker; PUT /datasets/{id}/sheet resumes ingest.
+    availableSheets: list[str] | None = None
+    selectedSheet: str | None = None
+    # Populated only when status == "awaiting_island_pick" — the list of
+    # detected rectangular data islands on the chosen sheet. Each entry
+    # has range_a1, n_rows/n_cols, density, preview_first_row. Frontend
+    # renders a picker; PUT /datasets/{id}/island resumes ingest.
+    availableIslands: list[dict[str, Any]] | None = None
+    selectedIsland: str | None = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -98,6 +110,7 @@ class RowsPage(BaseModel):
 
 
 def _to_out(d: Dataset) -> DatasetOut:
+    opts = d.options or {}
     return DatasetOut(
         id=d.id,
         name=d.name,
@@ -110,6 +123,13 @@ def _to_out(d: Dataset) -> DatasetOut:
         fileSize=d.file_size,
         columns=[ColumnInfo(**c) for c in (d.columns or [])],
         annotations=d.annotations or {},
+        # Surface multi-sheet + multi-island metadata only — never the
+        # full options dict (which can contain credentials for REST/JDBC
+        # connectors).
+        availableSheets=opts.get("available_sheets") if isinstance(opts.get("available_sheets"), list) else None,
+        selectedSheet=opts.get("sheet") if isinstance(opts.get("sheet"), str) else None,
+        availableIslands=opts.get("available_islands") if isinstance(opts.get("available_islands"), list) else None,
+        selectedIsland=opts.get("island_range") if isinstance(opts.get("island_range"), str) else None,
         createdAt=d.created_at,
         updatedAt=d.updated_at,
     )
@@ -128,6 +148,101 @@ async def get_dataset(
     d = await session.get(Dataset, dataset_id)
     if d is None:
         raise HTTPException(404, "dataset not found")
+    return _to_out(d)
+
+
+class FromUriRequest(BaseModel):
+    name: str
+    connector_id: str
+    uri: str
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/from-uri", response_model=DatasetOut)
+async def create_dataset_from_uri(
+    body: FromUriRequest,
+    session: AsyncSession = Depends(get_session),
+) -> DatasetOut:
+    """Ingest a dataset from a URI without a file upload — for connectors
+    that pull from a remote source (REST APIs, JDBC, S3, …). The connector
+    is responsible for actually reading the data; the row + profile flow
+    is the same as upload_dataset.
+
+    Use this when the connector reads via a URL/URI rather than a local
+    file. The legacy POST /datasets endpoint stays for file-upload connectors.
+    """
+    if not body.name.strip():
+        raise HTTPException(400, "name is required")
+    if not body.uri.strip():
+        raise HTTPException(400, "uri is required")
+
+    try:
+        connector = connectors().get(body.connector_id)
+    except KeyError as e:
+        raise HTTPException(400, str(e)) from e
+
+    dataset_id = str(ULID())
+    d = Dataset(
+        id=dataset_id,
+        name=body.name.strip(),
+        connector=body.connector_id,
+        source_uri=body.uri.strip(),
+        options=body.options,
+        status="ingesting",
+    )
+    session.add(d)
+    await session.commit()
+
+    # Connectors that pull from a network source do real IO inside read()
+    # + collect(); both block. Push the whole materialize-and-profile chain
+    # off the event loop so concurrent API requests aren't starved.
+    import asyncio as _asyncio
+
+    def _ingest_sync() -> dict[str, Any]:
+        lf = connector.read(body.uri.strip(), body.options)
+        cached = cached_parquet_path(dataset_id)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        df = lf.collect()
+        # Global per-dataset size ceiling. AI-generated connectors could
+        # otherwise stream gigabytes into memory before write_parquet runs.
+        max_mb = int(os.environ.get("DIG_MAX_DATASET_MB", "1024"))
+        size_mb = df.estimated_size("mb")
+        if size_mb > max_mb:
+            raise RuntimeError(
+                f"ingested dataset is {size_mb:.0f} MB; exceeds DIG_MAX_DATASET_MB cap of {max_mb} MB",
+            )
+        df.write_parquet(cached, compression="zstd")
+        profile = profile_dataframe(pl.scan_parquet(cached))
+        return {
+            "storage_uri": f"file://{cached}",
+            "row_count": df.height,
+            "columns": profile["columns"],
+            "profile": profile,
+        }
+
+    try:
+        result = await _asyncio.to_thread(_ingest_sync)
+        d.storage_uri = result["storage_uri"]
+        d.row_count = result["row_count"]
+        d.columns = result["columns"]
+        d.profile = result["profile"]
+        d.status = "ready"
+    except Exception as e:
+        log.exception("from-uri ingest failed for %s", dataset_id)
+        d.status = "failed"
+        d.error = str(e)
+
+    # Best-effort terminal status persist. If the row update itself fails
+    # (DB drop, unique-constraint race) the dataset would be stuck in
+    # 'ingesting' forever — log loudly so the operator can clean up.
+    try:
+        await session.commit()
+    except Exception:
+        log.exception(
+            "from-uri: terminal status commit failed for dataset %s — row may be stuck in 'ingesting'",
+            dataset_id,
+        )
+        raise
     return _to_out(d)
 
 
@@ -194,6 +309,44 @@ async def upload_dataset(
     session.add(d)
     await session.commit()
 
+    # Multi-sheet Excel intercept: if the user uploaded a workbook with
+    # 2+ sheets and didn't pre-select one, pause here. Save the sheet
+    # list on the row + flip to status='awaiting_sheet_pick'. The
+    # frontend then prompts the user, calls PUT /datasets/{id}/sheet,
+    # and the rest of the ingest happens there.
+    if connector_id == "excel" and not opts.get("sheet"):
+        try:
+            from connectors.excel.connector import list_sheets as _list_sheets
+            sheets = _list_sheets(d.source_uri)
+        except Exception:
+            sheets = []
+        if len(sheets) > 1:
+            opts_with_sheets = dict(opts)
+            opts_with_sheets["available_sheets"] = sheets
+            d.options = opts_with_sheets
+            d.status = "awaiting_sheet_pick"
+            await session.commit()
+            return _to_out(d)
+
+    # Multi-island intercept: when the chosen sheet (single-sheet workbook
+    # OR sheet already specified) contains 2+ disjoint data islands AND
+    # the user hasn't pre-selected a range, pause + prompt. The detection
+    # is cheap (one full sheet read) and only fires when an Excel file
+    # genuinely has stacked / side-by-side tables.
+    if connector_id == "excel" and not opts.get("island_range"):
+        try:
+            from connectors.excel.connector import list_data_islands as _list_islands
+            islands = _list_islands(d.source_uri, opts.get("sheet"))
+        except Exception:
+            islands = []
+        if len(islands) > 1:
+            opts_with_islands = dict(opts)
+            opts_with_islands["available_islands"] = islands
+            d.options = opts_with_islands
+            d.status = "awaiting_island_pick"
+            await session.commit()
+            return _to_out(d)
+
     # Ingest + profile. Errors recorded on the row.
     try:
         lf = connector.read(d.source_uri, opts)
@@ -216,6 +369,152 @@ async def upload_dataset(
 
     await session.commit()
     return _to_out(d)
+
+
+class PickSheetRequest(BaseModel):
+    sheet: str
+
+
+@router.put("/{dataset_id}/sheet", response_model=DatasetOut)
+async def pick_sheet(
+    dataset_id: str,
+    body: PickSheetRequest,
+    session: AsyncSession = Depends(get_session),
+) -> DatasetOut:
+    """Resume ingestion of a multi-sheet Excel upload by picking which
+    sheet to materialise.
+
+    The dataset must be in status='awaiting_sheet_pick' (set by upload_dataset
+    when an Excel workbook with 2+ sheets is uploaded without an explicit
+    sheet option). Validates the chosen sheet exists in the saved
+    `options.available_sheets` list, then runs the same ingest+profile
+    pipeline as the single-sheet path.
+    """
+    d = await session.get(Dataset, dataset_id)
+    if d is None:
+        raise HTTPException(404, "dataset not found")
+    if d.status != "awaiting_sheet_pick":
+        raise HTTPException(
+            400,
+            f"dataset is in status {d.status!r}, not 'awaiting_sheet_pick' — "
+            "this endpoint only resumes a paused multi-sheet upload",
+        )
+
+    available = (d.options or {}).get("available_sheets") or []
+    if body.sheet not in available:
+        raise HTTPException(
+            400,
+            f"sheet {body.sheet!r} not in workbook (available: {available})",
+        )
+
+    # Stamp the chosen sheet into options so re-runs / re-profiles are deterministic.
+    new_opts = dict(d.options or {})
+    new_opts["sheet"] = body.sheet
+    new_opts.pop("available_sheets", None)
+    d.options = new_opts
+    d.status = "ingesting"
+    await session.commit()
+
+    try:
+        connector = connectors().get(d.connector)
+    except KeyError as e:
+        raise HTTPException(500, str(e)) from e
+
+    # After picking a sheet, the SAME multi-island detection runs on it.
+    # If the chosen sheet has 2+ disjoint tables, pause again at
+    # awaiting_island_pick so the user picks which one to ingest.
+    try:
+        from connectors.excel.connector import list_data_islands as _list_islands
+        islands = _list_islands(d.source_uri, body.sheet)
+    except Exception:
+        islands = []
+    if len(islands) > 1:
+        new_opts2 = dict(d.options or {})
+        new_opts2["available_islands"] = islands
+        d.options = new_opts2
+        d.status = "awaiting_island_pick"
+        await session.commit()
+        return _to_out(d)
+
+    # Same ingest body as upload_dataset above.
+    return await _ingest_dataset(d, connector, session)
+
+
+async def _ingest_dataset(d: Dataset, connector: Any, session: AsyncSession) -> DatasetOut:
+    """Run the canonical ingest+profile pipeline on an already-prepared
+    dataset row. Caller has already validated the connector + options."""
+    try:
+        lf = connector.read(d.source_uri, d.options)
+        cached = cached_parquet_path(d.id)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        df = lf.collect()
+        df.write_parquet(cached, compression="zstd")
+        d.storage_uri = f"file://{cached}"
+        d.row_count = df.height
+
+        profile = profile_dataframe(pl.scan_parquet(cached))
+        d.columns = profile["columns"]
+        d.profile = profile
+        d.status = "ready"
+        d.error = None
+    except Exception as e:
+        log.exception("ingest failed for %s", d.id)
+        d.status = "failed"
+        d.error = str(e)
+    await session.commit()
+    return _to_out(d)
+
+
+class PickIslandRequest(BaseModel):
+    """User-supplied range. Format: Excel A1, e.g. 'B2:F50'."""
+    range: str
+
+
+@router.put("/{dataset_id}/island", response_model=DatasetOut)
+async def pick_island(
+    dataset_id: str,
+    body: PickIslandRequest,
+    session: AsyncSession = Depends(get_session),
+) -> DatasetOut:
+    """Resume ingestion of an Excel upload paused at the island-pick step.
+
+    The dataset must be in status='awaiting_island_pick'. Validates the
+    chosen range against the saved `options.available_islands` list (so
+    the user can't sneak in an arbitrary range that bypasses the
+    detection — same anti-pattern as the sheet-pick endpoint), then runs
+    ingest+profile with `island_range` set on the connector options.
+    """
+    d = await session.get(Dataset, dataset_id)
+    if d is None:
+        raise HTTPException(404, "dataset not found")
+    if d.status != "awaiting_island_pick":
+        raise HTTPException(
+            400,
+            f"dataset is in status {d.status!r}, not 'awaiting_island_pick' — "
+            "this endpoint only resumes a paused multi-island upload",
+        )
+
+    available = (d.options or {}).get("available_islands") or []
+    valid_ranges = {i.get("range_a1") for i in available if isinstance(i, dict)}
+    if body.range not in valid_ranges:
+        raise HTTPException(
+            400,
+            f"range {body.range!r} not in detected islands "
+            f"(valid: {sorted(r for r in valid_ranges if r)})",
+        )
+
+    new_opts = dict(d.options or {})
+    new_opts["island_range"] = body.range
+    new_opts.pop("available_islands", None)
+    d.options = new_opts
+    d.status = "ingesting"
+    await session.commit()
+
+    try:
+        connector = connectors().get(d.connector)
+    except KeyError as e:
+        raise HTTPException(500, str(e)) from e
+    return await _ingest_dataset(d, connector, session)
 
 
 @router.get("/{dataset_id}/profile", response_model=DatasetProfile)

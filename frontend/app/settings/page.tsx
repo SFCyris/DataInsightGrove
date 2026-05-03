@@ -6,8 +6,8 @@ import { motion, useReducedMotion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { setSettings, useSettings, type Theme } from "@/lib/settings";
-import { api, API_BASE } from "@/lib/api/client";
-import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord } from "@/lib/api/client";
+import { api, aiApi, API_BASE } from "@/lib/api/client";
+import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord, AiProbeOut } from "@/lib/api/client";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { DirectoryPickerModal } from "@/components/directory-picker-modal";
 import { fmtInt } from "@/lib/format-number";
@@ -22,13 +22,14 @@ const SAMPLE_OPTIONS = [10_000, 50_000, 100_000, 500_000, 1_000_000];
 
 type SectionId =
   | "appearance" | "preview" | "storage" | "performance"
-  | "jdbc" | "webhooks" | "security" | "about";
+  | "ai" | "jdbc" | "webhooks" | "security" | "about";
 
 const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "appearance",  emoji: "🎨", label: "Appearance",       help: "Theme + motion (per browser)" },
   { id: "preview",     emoji: "🦆", label: "Browser preview",  help: "DuckDB-WASM behavior" },
   { id: "storage",     emoji: "📁", label: "Storage & paths",  help: "Where data lives" },
   { id: "performance", emoji: "⚡", label: "Performance",      help: "Concurrency + threads" },
+  { id: "ai",          emoji: "✨", label: "AI assistant",     help: "Local Ollama or BYOK provider" },
   { id: "jdbc",        emoji: "🔌", label: "JDBC drivers",     help: "Saved JAR + class registry" },
   { id: "webhooks",    emoji: "🔔", label: "Global webhooks",  help: "Fire on every run" },
   { id: "security",    emoji: "🔐", label: "Security & API",   help: "Endpoints + auth" },
@@ -110,6 +111,7 @@ export default function SettingsPage() {
         {section === "preview"     && <PreviewSection />}
         {section === "storage"     && <ServerSettingsSection filter={["input_dir", "output_dir", "run_history_days"]} title="📁 Storage & paths" />}
         {section === "performance" && <ServerSettingsSection filter={["default_sample_rows", "default_preview_limit", "max_concurrent_runs", "duckdb_threads", "log_level", "auto_detect_index", "auto_detect_timezone"]} title="⚡ Performance & detection" />}
+        {section === "ai"          && <AiSection />}
         {section === "jdbc"        && <JdbcSection />}
         {section === "webhooks"    && <WebhooksSection />}
         {section === "security"    && <SecuritySection />}
@@ -248,17 +250,46 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
       </Field>
     );
   }
-  // path / integer / string — text input with explicit save. Path-type
-  // settings additionally get a 📁 Browse button that opens the directory
-  // picker modal anchored on the current value.
+  // path / integer / float / string / secret — text input with explicit save.
+  // Path-type settings additionally get a 📁 Browse button.
+  // Secret-type values arrive masked from the backend (e.g. "sk-…abcd"); we
+  //   treat any user input as a NEW value to save, and show a placeholder
+  //   that confirms a value is set without revealing it.
+  const isSecret = setting.type === "secret";
+  const inputType = isSecret ? "password"
+    : setting.type === "integer" || setting.type === "float" ? "number"
+    : "text";
+  const placeholder = isSecret
+    ? (setting.value ? `Set: ${String(setting.value)} — type to replace` : "Not set")
+    : (setting.default ? String(setting.default) : "Default");
   return (
     <Field label={setting.label} hint={setting.help}>
       <div className="flex gap-2">
         <input
-          type={setting.type === "integer" ? "number" : "text"}
-          value={draft}
+          type={inputType}
+          step={setting.type === "float" ? "any" : undefined}
+          // Secret fields start blank — the backend's masked value is shown
+          // in the placeholder, never as the editable text. This avoids the
+          // user accidentally saving the masked stub as the real key.
+          value={isSecret ? draft : draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={setting.default ? String(setting.default) : "Default"}
+          placeholder={placeholder}
+          // Suppress browser + extension password-managers on this field.
+          // API keys aren't login credentials and shouldn't trigger Save /
+          // Generate / Manage Passwords UI. The four attributes cover
+          // every major manager:
+          //   autoComplete="off"   — Firefox built-in + Chrome
+          //   data-1p-ignore       — 1Password
+          //   data-lpignore        — LastPass
+          //   data-form-type=other — Bitwarden, Edge built-in
+          // Use a unique `name` so Firefox doesn't bleed credentials from
+          // adjacent forms (was offering the user's saved login email
+          // as if it were a username for this form).
+          name={isSecret ? `dig-secret-${setting.key}` : undefined}
+          autoComplete="off"
+          data-1p-ignore={isSecret ? "true" : undefined}
+          data-lpignore={isSecret ? "true" : undefined}
+          data-form-type={isSecret ? "other" : undefined}
           className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
         />
         {setting.type === "path" && (
@@ -273,16 +304,10 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
             </Button>
             <DirectoryPickerModal
               open={pickerOpen}
-              // Open at the current draft value (lets users browse from
-              // their in-progress edit, not just the saved value). Empty
-              // → backend defaults to $HOME.
               initialPath={draft || (setting.value as string) || ""}
               forLabel={setting.label.toLowerCase()}
               onClose={() => setPickerOpen(false)}
               onSelect={(picked) => {
-                // Picking commits the value directly — saves the round-trip
-                // through the Save button. The user can still hand-edit
-                // afterwards if they want to refine the path.
                 setDraft(picked);
                 onSave(setting.key, picked || null);
               }}
@@ -291,19 +316,233 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
         )}
         <Button
           size="sm"
-          variant={isDirty ? "default" : "ghost"}
-          disabled={!isDirty}
+          variant={isDirty || (isSecret && draft) ? "default" : "ghost"}
+          disabled={!isDirty && !(isSecret && draft)}
           onClick={() => {
             const value =
               setting.type === "integer"
                 ? draft === "" ? null : Number(draft)
-                : draft || null;
+                : setting.type === "float"
+                  ? draft === "" ? null : Number(draft)
+                  : draft || (isSecret ? "" : null);
             onSave(setting.key, value);
+            // After saving a secret, clear the input so the masked
+            // placeholder takes over again — visual confirmation it landed.
+            if (isSecret) setDraft("");
           }}
         >
           Save
         </Button>
       </div>
+    </Field>
+  );
+}
+
+// ---- Section: AI assistant -----------------------------------------------
+
+function AiSection() {
+  const qc = useQueryClient();
+  // Pull the existing settings store; the seven ai_* keys live alongside
+  // the rest of the server-side prefs. We render them with the same
+  // SettingRow component used by Storage / Performance / etc.
+  const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.listSettings });
+  const aiKeys = [
+    "ai_enabled", "ai_provider", "ai_endpoint", "ai_model",
+    "ai_api_key", "ai_max_tokens", "ai_temperature",
+  ];
+  const aiSettings = (settingsQ.data ?? []).filter((s) => aiKeys.includes(s.key));
+  aiSettings.sort((a, b) => aiKeys.indexOf(a.key) - aiKeys.indexOf(b.key));
+
+  // Pull the configured endpoint so we know whether to even try fetching
+  // the model list. Empty endpoint → don't poll (per user spec: "if no
+  // endpoint set, do nothing").
+  const endpointSetting = aiSettings.find((s) => s.key === "ai_endpoint");
+  const endpointValue = endpointSetting?.value ? String(endpointSetting.value) : "";
+
+  // Fetch the available models when an endpoint is configured. Re-fetches
+  // when the endpoint changes (settings query is invalidated on every
+  // save → the queryKey below picks up the new endpointValue). Silent on
+  // failure: the backend returns an empty list rather than raising, so
+  // the UI just falls back to the free-text input with no error.
+  const modelsQ = useQuery({
+    queryKey: ["ai-models", endpointValue],
+    queryFn: aiApi.listModels,
+    enabled: Boolean(endpointValue),
+    staleTime: 60_000,  // models don't change minute-to-minute
+    refetchOnWindowFocus: false,
+  });
+  const availableModels = modelsQ.data?.models ?? [];
+
+  const onSave = async (key: string, value: unknown) => {
+    try {
+      await api.setSetting(key, value);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      // Saving the endpoint should re-trigger the model fetch — invalidate
+      // explicitly so the new endpoint's models load right away rather
+      // than waiting for the next staleTime expiry.
+      if (key === "ai_endpoint" || key === "ai_api_key" || key === "ai_provider") {
+        qc.invalidateQueries({ queryKey: ["ai-models"] });
+      }
+      toast.success("Saved");
+    } catch (e) {
+      toast.error(`Save failed: ${(e as Error).message}`);
+    }
+  };
+
+  // Test connection — calls /ai/probe.
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<AiProbeOut | null>(null);
+  const onProbe = async () => {
+    setProbing(true);
+    setProbeResult(null);
+    try {
+      const result = await aiApi.probe();
+      setProbeResult(result);
+    } catch (e) {
+      setProbeResult({ ok: false, error: (e as Error).message });
+    } finally {
+      setProbing(false);
+    }
+  };
+
+  return (
+    <Page
+      title="✨ AI assistant"
+      lede="Optional. Pluggable LLM provider for natural-language pipeline help. Default = local (Ollama on your machine, fully private). Bring-your-own-key for Anthropic / OpenAI / Groq / etc."
+    >
+      <Card>
+        {settingsQ.isLoading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : aiSettings.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            ⚠️ AI settings not found on the backend. Restart the backend after a recent upgrade.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {aiSettings.map((s) =>
+              s.key === "ai_model" ? (
+                <ModelPickerRow
+                  key={s.key}
+                  setting={s}
+                  models={availableModels}
+                  isFetchingModels={modelsQ.isFetching}
+                  onSave={onSave}
+                />
+              ) : (
+                <SettingRow key={s.key} setting={s} onSave={onSave} />
+              ),
+            )}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <Field
+          label="Test connection"
+          hint="Sends a tiny ping to the configured endpoint with the configured model. Use after changing the endpoint, the model, or pulling a new local model."
+        >
+          <div className="flex items-center gap-3">
+            <Button onClick={onProbe} disabled={probing} variant="outline" size="sm">
+              {probing ? "⏳ Probing…" : "🔌 Test connection"}
+            </Button>
+            {probeResult && (
+              probeResult.ok ? (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  ✓ {probeResult.model ?? "model"} replied: <span className="font-mono">{probeResult.reply ?? "(empty)"}</span>
+                </span>
+              ) : (
+                <span className="text-xs text-rose-600 dark:text-rose-400">
+                  ✗ {probeResult.error ?? "Unknown error"}
+                </span>
+              )
+            )}
+          </div>
+        </Field>
+      </Card>
+
+      <Card>
+        <Field label="Quick start: local Ollama" hint="The recommended setup — runs on your machine, no cloud, no API key.">
+          <ol className="text-xs text-muted-foreground space-y-1 list-decimal pl-4">
+            <li>Install Ollama: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">brew install ollama</code> (macOS) or <a className="underline" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">ollama.com/download</a></li>
+            <li>Start the server: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">ollama serve</code> (or just open the Ollama app)</li>
+            <li>Pull a model: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">ollama pull gemma4:e4b</code> (~7&nbsp;GB, 128K context, edge-optimized)</li>
+            <li>Above: provider = <strong>local</strong>, endpoint stays at the default, model = <span className="font-mono">gemma4:e4b</span>, enable, then Test connection</li>
+          </ol>
+        </Field>
+      </Card>
+    </Page>
+  );
+}
+
+/**
+ * Custom row for the ai_model setting — text input + datalist of models
+ * fetched from the configured endpoint's /v1/models. The datalist works
+ * exactly like a normal text input: user can type anything (including
+ * model names not yet pulled locally), but autocomplete suggests known
+ * options. When no models are returned (endpoint unreachable, blank,
+ * or doesn't support /models), we silently fall back to plain text input.
+ */
+function ModelPickerRow({
+  setting, models, isFetchingModels, onSave,
+}: {
+  setting: SettingDescriptor;
+  models: string[];
+  isFetchingModels: boolean;
+  onSave: (key: string, value: unknown) => void;
+}) {
+  const [draft, setDraft] = useState<string>(
+    setting.value === null || setting.value === undefined ? "" : String(setting.value),
+  );
+  const isDirty = draft !== (setting.value === null || setting.value === undefined ? "" : String(setting.value));
+  const datalistId = `${setting.key}-models`;
+
+  return (
+    <Field label={setting.label} hint={setting.help}>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          list={datalistId}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={setting.default ? String(setting.default) : "Default"}
+          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
+          // Suppress browser password-manager autofill on this field. Firefox
+          // heuristically offers password-manager UI on text inputs that
+          // sit next to a type=password field (the API key below); the
+          // attributes below tell every major manager (Firefox built-in,
+          // 1Password, LastPass, Bitwarden) to leave this one alone.
+          name="dig-ai-model"
+          autoComplete="off"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-form-type="other"
+        />
+        {/* HTML5 datalist — browser shows the suggestions on focus / type.
+            When the array is empty (endpoint silent or unreachable) the
+            input behaves exactly like a plain text input, no extra UI. */}
+        <datalist id={datalistId}>
+          {models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <Button
+          size="sm"
+          variant={isDirty ? "default" : "ghost"}
+          disabled={!isDirty}
+          onClick={() => onSave(setting.key, draft || null)}
+        >
+          Save
+        </Button>
+      </div>
+      {/* Status line: shows what we found, lets the user understand
+          why the dropdown might be empty. */}
+      {isFetchingModels ? (
+        <p className="text-[10px] text-muted-foreground mt-1">⏳ Fetching available models from endpoint…</p>
+      ) : models.length > 0 ? (
+        <p className="text-[10px] text-muted-foreground mt-1">
+          ↓ {models.length} model{models.length === 1 ? "" : "s"} available at endpoint — type to filter, or pick from the dropdown
+        </p>
+      ) : null}
     </Field>
   );
 }

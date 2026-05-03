@@ -1,0 +1,58 @@
+{
+  "slug": "vector_similarity_demo",
+  "title": "🧭 Vector similarity",
+  "summary": "Compute cosine similarity + Euclidean distance between query and document embeddings. Shows the new vector_similarity step on toy 4-d embeddings; replace the dataset with real embeddings (e.g. sentence-transformers output) for production use.",
+  "tags": ["vector", "embedding", "ml", "intermediate"],
+  "needsSampleDataset": true,
+  "sampleDataset": "embeddings-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🧭 Vector similarity (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · embeddings" }
+    ],
+    "nodes": [
+      {
+        "id": "n_cosine",
+        "step": "vector_similarity",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } },
+        "outputs": ["out"],
+        "params": {
+          "leftColumn": "query_embedding",
+          "rightColumn": "doc_embedding",
+          "metric": "cosine",
+          "outputColumn": "cosine_sim"
+        },
+        "ui": { "x": 280, "y": 100, "label": "🧭 Cosine" }
+      },
+      {
+        "id": "n_dist",
+        "step": "vector_similarity",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_cosine" } },
+        "outputs": ["out"],
+        "params": {
+          "leftColumn": "query_embedding",
+          "rightColumn": "doc_embedding",
+          "metric": "euclidean",
+          "outputColumn": "distance"
+        },
+        "ui": { "x": 540, "y": 100, "label": "🧭 Euclidean" }
+      },
+      {
+        "id": "n_sort",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_dist" } },
+        "outputs": ["out"],
+        "params": { "by": [{ "column": "cosine_sim", "direction": "desc" }] },
+        "ui": { "x": 800, "y": 100, "label": "↕️ Best match first" }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "ranked", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

@@ -14,6 +14,13 @@ const STATUS_EMOJI: Record<string, string> = {
   ingesting: "⏳",
   failed: "❌",
   registering: "🟡",
+  awaiting_sheet_pick: "📑",
+  awaiting_island_pick: "📐",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  awaiting_sheet_pick: "pick a sheet",
+  awaiting_island_pick: "pick a table",
 };
 
 function fmtBytes(n: number | null | undefined): string {
@@ -71,7 +78,7 @@ export function DatasetCard({ d, index }: { d: Dataset; index: number }) {
                   : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
             )}
           >
-            {STATUS_EMOJI[d.status] ?? "❔"} {d.status}
+            {STATUS_EMOJI[d.status] ?? "❔"} {STATUS_LABEL[d.status] ?? d.status}
           </span>
         </div>
         <dl className="grid grid-cols-3 gap-3 text-xs text-muted-foreground tabular-nums pt-1">

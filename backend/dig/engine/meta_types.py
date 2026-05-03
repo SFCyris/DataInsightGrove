@@ -20,7 +20,7 @@ remaining candidates with score ≥ 0.5 are surfaced to the UI as
 could also be just a plain string" and re-cast at will.
 
 ──────────────────────────────────────────────────────────────────
-Adding a new meta-type — the recipe:
+Adding a new meta-type — the procedure:
 
   1. Append a TypeDescriptor to TYPES (id, label, base, sql_type, …)
   2. Write a detector function that returns a TypeCandidate or None.

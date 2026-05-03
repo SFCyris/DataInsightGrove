@@ -1,0 +1,56 @@
+{
+  "id": "embed_text",
+  "version": "1.0.0",
+  "label": "🧠 Embed text (AI)",
+  "description": "Add a vector column with embeddings of a text column. Calls an OpenAI-compatible /v1/embeddings endpoint (works with OpenAI, Cohere via compat layer, Ollama, Together, vLLM, llama.cpp). Costs API credits for paid providers; free with a local Ollama embedding model.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "textColumn": {
+      "type": "column_ref",
+      "label": "Text column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output vector column name",
+      "default": "embedding",
+      "required": true
+    },
+    "endpoint": {
+      "type": "string",
+      "label": "Embeddings endpoint",
+      "default": "https://api.openai.com/v1/embeddings",
+      "required": true,
+      "help": "OpenAI: https://api.openai.com/v1/embeddings · Ollama: http://localhost:11434/v1/embeddings · Together / Groq / OpenRouter: see their docs."
+    },
+    "model": {
+      "type": "string",
+      "label": "Model",
+      "default": "text-embedding-3-small",
+      "required": true,
+      "help": "OpenAI: text-embedding-3-small (1536d, cheap) or text-embedding-3-large (3072d). Ollama: nomic-embed-text (768d), mxbai-embed-large (1024d). Cohere: embed-english-v3.0."
+    },
+    "apiKey": {
+      "type": "string",
+      "label": "API key",
+      "default": "",
+      "help": "Bearer token. Local Ollama doesn't need one. The key is sent ONLY to the configured endpoint."
+    },
+    "batchSize": {
+      "type": "integer",
+      "label": "Batch size",
+      "default": 100,
+      "min": 1,
+      "max": 2048,
+      "help": "Texts per API call. Lower = more requests + slower; higher = fewer requests but risks 'request too large' errors. OpenAI accepts up to 2048."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["embedding", "vector", "ml", "openai", "ollama", "ai"]
+}
