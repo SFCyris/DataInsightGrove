@@ -37,6 +37,11 @@ let _recoverTimer: ReturnType<typeof setTimeout> | null = null;
 
 const POLL_MS_ONLINE = 5_000;
 const POLL_MS_DOWN = 1_500;
+// Slow safety-net poll while the tab is hidden. We rely on visibilitychange
+// for the prompt resume, but some hosts (headless preview, some background
+// states) never fire that event, so we still need a backstop poll instead
+// of waiting forever.
+const POLL_MS_HIDDEN = 60_000;
 const RECOVERED_VISIBLE_MS = 1_200;
 const PING_TIMEOUT_MS = 3_000;
 
@@ -93,26 +98,43 @@ async function ping(): Promise<boolean> {
 
 function scheduleNext(): void {
   if (_pollTimer) clearTimeout(_pollTimer);
-  const delay = _status === "online" ? POLL_MS_ONLINE : POLL_MS_DOWN;
+  const hidden = typeof document !== "undefined" && document.hidden;
+  // Hidden tabs poll slowly as a safety net: visibilitychange normally
+  // wakes us up promptly, but some hosts (headless preview, odd embed
+  // states) don't fire it reliably, so a slow background poll keeps the
+  // overlay from stalling on stale state.
+  const delay = hidden
+    ? POLL_MS_HIDDEN
+    : _status === "online"
+      ? POLL_MS_ONLINE
+      : POLL_MS_DOWN;
   _pollTimer = setTimeout(loop, delay);
 }
 
+// One-shot listener that wakes the loop the moment the tab becomes visible.
+// Re-attached after every hidden poll so it always points at the live state.
+function attachVisibilityWake(): void {
+  if (typeof document === "undefined") return;
+  const onVis = () => {
+    if (!document.hidden) {
+      document.removeEventListener("visibilitychange", onVis);
+      if (_pollTimer) clearTimeout(_pollTimer);
+      loop();
+    }
+  };
+  document.addEventListener("visibilitychange", onVis);
+}
+
 async function loop(): Promise<void> {
-  // Don't waste cycles polling a hidden tab — pause until visible. We DO
-  // schedule a quick re-check when the user comes back so the overlay
-  // catches up to actual state immediately.
-  if (typeof document !== "undefined" && document.hidden) {
-    const onVis = () => {
-      if (!document.hidden) {
-        document.removeEventListener("visibilitychange", onVis);
-        loop();
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return;
-  }
+  // Always ping — even on a hidden tab. The cadence is what we vary, not
+  // whether we check at all. (The previous behaviour of skipping the ping
+  // entirely on hidden tabs left the overlay stuck on its initial
+  // "connecting" state in any host where visibilitychange never fires.)
   const ok = await ping();
   transitionAfterPing(ok);
+  if (typeof document !== "undefined" && document.hidden) {
+    attachVisibilityWake();
+  }
   scheduleNext();
 }
 

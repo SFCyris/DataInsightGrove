@@ -1,0 +1,28 @@
+{
+  "id": "snowflake",
+  "version": "1.0.0",
+  "label": "❄️ Snowflake",
+  "description": "Reverse-ETL write to Snowflake. Connection URI is snowflake://<user>:<password>@<account>/<database>/<schema>?warehouse=<wh>&role=<role>. Requires `snowflake-connector-python[pandas]`.",
+  "kind": "sink",
+  "uriSchemes": ["snowflake"],
+  "options": {
+    "table": {
+      "type": "string",
+      "label": "Target table",
+      "required": true,
+      "help": "Will be uppercased per Snowflake's identifier conventions unless quoted."
+    },
+    "if_exists": {
+      "type": "enum",
+      "label": "Write mode (when table exists)",
+      "enumValues": ["append", "replace", "fail"],
+      "default": "append"
+    },
+    "auto_create_table": {
+      "type": "boolean",
+      "label": "Auto-create table if missing",
+      "default": true
+    }
+  },
+  "tags": ["warehouse", "sql", "reverse-etl"]
+}

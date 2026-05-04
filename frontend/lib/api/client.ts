@@ -177,6 +177,117 @@ export interface NodeStatus {
   error?: string;
 }
 
+// ---- Templates (public gallery) ----------------------------------------
+
+export interface GalleryTemplate {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  tags: string[];
+  needsSampleDataset: boolean;
+  sampleDatasetUrl: string | null;
+  authorHandle: string | null;
+  authorUrl: string | null;
+  isCurated: boolean;
+  visibility: "private" | "unlisted" | "public";
+  upvotes: number;
+  viewCount: number;
+  createdAt: string;
+}
+
+export interface GalleryTemplateDetail extends GalleryTemplate {
+  document: PipelineDocument;
+}
+
+// ---- Column lineage ----------------------------------------------------
+
+export interface ColumnLineageNode {
+  node_id: string;
+  is_dataset: boolean;
+  column: string;
+  label: string;
+  transform: string;
+  expression: string | null;
+}
+
+export interface ColumnLineageEdge {
+  from_node_id: string;
+  from_column: string;
+  to_node_id: string;
+  to_column: string;
+  transform: string;
+}
+
+export interface ColumnLineageGraph {
+  target_node_id: string;
+  target_column: string;
+  nodes: ColumnLineageNode[];
+  edges: ColumnLineageEdge[];
+}
+
+// ---- Pipeline history + diff -------------------------------------------
+
+export interface PipelineHistoryEntry {
+  id: string;
+  pipelineId: string;
+  etag: number;
+  changeSummary: string | null;
+  changeReason: string | null;
+  triggeredBy: "manual_save" | "run_start" | "import" | "ai_review_apply" | "restore";
+  documentHash: string;
+  runId: string | null;
+  createdAt: string;
+}
+
+export interface ParamDiffEntry {
+  key: string;
+  a_value: unknown;
+  b_value: unknown;
+  a_summary: string;
+  b_summary: string;
+}
+
+export interface StepDiffEntry {
+  kind: "added" | "removed" | "moved" | "param_changed" | "type_changed" | "unchanged";
+  node_id: string;
+  label: string;
+  step_type: string;
+  a_position: number | null;
+  b_position: number | null;
+  param_changes: ParamDiffEntry[];
+}
+
+export interface DatasetDiffEntry {
+  kind: "added" | "removed" | "options_changed" | "unchanged";
+  dataset_id: string;
+  label: string;
+  option_changes: ParamDiffEntry[];
+}
+
+export interface OutputDiffEntry {
+  kind: "added" | "removed" | "renamed" | "rewired" | "unchanged";
+  output_id: string;
+  name: string;
+  a_from: string | null;
+  b_from: string | null;
+}
+
+export interface PipelineDiffResult {
+  summary: string;
+  counts: {
+    added: number;
+    removed: number;
+    moved: number;
+    param_changed: number;
+    type_changed: number;
+  };
+  steps: StepDiffEntry[];
+  datasets: DatasetDiffEntry[];
+  outputs: OutputDiffEntry[];
+  metadata_changes: ParamDiffEntry[];
+}
+
 export interface ValidateResult {
   ok: boolean;
   errors: string[];
@@ -336,6 +447,64 @@ export const api = {
     }),
   deletePipeline: (id: string) =>
     request<void>(`/pipelines/${id}`, { method: "DELETE" }),
+  // ---- Templates (public gallery) ----
+  listGalleryTemplates: (visibility?: "public" | "unlisted", tag?: string) => {
+    const q = new URLSearchParams();
+    if (visibility) q.set("visibility", visibility);
+    if (tag) q.set("tag", tag);
+    const qs = q.toString();
+    return request<GalleryTemplate[]>(`/templates${qs ? "?" + qs : ""}`);
+  },
+  getGalleryTemplate: (slug: string) =>
+    request<GalleryTemplateDetail>(`/templates/${encodeURIComponent(slug)}`),
+  createGalleryTemplate: (body: {
+    pipelineId: string;
+    title: string;
+    summary?: string;
+    tags?: string[];
+    sampleDatasetUrl?: string;
+    needsSampleDataset?: boolean;
+    authorHandle?: string;
+    visibility?: "private" | "unlisted" | "public";
+  }) =>
+    request<GalleryTemplate>("/templates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  cloneGalleryTemplate: (slug: string) =>
+    request<{ pipelineId: string }>(
+      `/templates/${encodeURIComponent(slug)}/clone`,
+      { method: "POST" },
+    ),
+  // ---- Column lineage ----
+  getColumnLineage: (pipelineId: string, nodeId: string, column: string) =>
+    request<ColumnLineageGraph>(
+      `/pipelines/${pipelineId}/lineage/columns/${encodeURIComponent(nodeId)}/${encodeURIComponent(column)}`,
+    ),
+  // ---- History + diff ----
+  listPipelineHistory: (id: string, limit = 50) =>
+    request<PipelineHistoryEntry[]>(`/pipelines/${id}/history?limit=${limit}`),
+  getPipelineSnapshot: (id: string, snapshotId: string) =>
+    request<{
+      id: string;
+      pipelineId: string;
+      etag: number;
+      document: PipelineDocument;
+      changeSummary: string | null;
+      triggeredBy: string;
+      createdAt: string;
+    }>(`/pipelines/${id}/history/${snapshotId}`),
+  diffPipeline: (id: string, fromRef: string, toRef: string) =>
+    request<PipelineDiffResult>(`/pipelines/${id}/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromRef, toRef }),
+    }),
+  restorePipeline: (id: string, snapshotId: string) =>
+    request<PipelineDoc>(`/pipelines/${id}/restore/${snapshotId}`, {
+      method: "POST",
+    }),
   validatePipeline: (id: string) =>
     request<ValidateResult>(`/pipelines/${id}/validate`, { method: "POST" }),
   fetchCompile: (id: string, sampleRows?: number, terminal?: string, signal?: AbortSignal) => {
@@ -581,6 +750,29 @@ export interface AiExplainOut {
   model: string;
 }
 
+export type AiReviewSeverity = "info" | "warn" | "high";
+export type AiReviewCategory =
+  | "performance"
+  | "correctness"
+  | "quality"
+  | "lineage"
+  | "ergonomics";
+
+export interface AiReviewFinding {
+  severity: AiReviewSeverity;
+  category: AiReviewCategory;
+  title: string;
+  explanation: string;
+  affected_nodes: string[];
+  confidence: number;
+}
+
+export interface AiReviewOut {
+  findings: AiReviewFinding[];
+  model: string;
+  rawText: string | null;
+}
+
 export interface AiFixExpressionIn {
   expression: string;
   columns?: Array<{ name: string; type: string }>;
@@ -699,6 +891,8 @@ export const aiApi = {
     }),
   explainPipeline: (pipelineId: string) =>
     request<AiExplainOut>(`/ai/explain-pipeline/${pipelineId}`, { method: "POST" }),
+  reviewPipeline: (pipelineId: string) =>
+    request<AiReviewOut>(`/ai/review-pipeline/${pipelineId}`, { method: "POST" }),
   fixExpression: (body: AiFixExpressionIn) =>
     request<AiFixExpressionOut>("/ai/fix-expression", {
       method: "POST",

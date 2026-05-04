@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from dig.engine.step import Step, quote_ident
+from dig.engine.step import ColumnLineage, ColumnRef, Step, quote_ident
 
 
 class RenameColumnsStep(Step):
@@ -29,6 +29,23 @@ class RenameColumnsStep(Step):
         in_schema = input_schemas["in"]
         rename = {m["from"]: m["to"] for m in (params.get("mapping") or []) if m.get("from") and m.get("to")}
         return {rename.get(k, k): v for k, v in in_schema.items()}
+
+    def column_dependencies(self, input_schemas, params):
+        if "in" not in input_schemas:
+            return {}
+        in_cols = input_schemas["in"]
+        rename = {m["from"]: m["to"] for m in (params.get("mapping") or []) if m.get("from") and m.get("to")}
+        out: dict[str, ColumnLineage] = {}
+        for src_col in in_cols:
+            new_name = rename.get(src_col, src_col)
+            transform = "passthrough" if new_name == src_col else f"renamed from `{src_col}`"
+            out[new_name] = ColumnLineage(
+                sources=[ColumnRef(port="in", column=src_col)],
+                transform=transform,
+                expression=None,
+                is_passthrough=(new_name == src_col),
+            )
+        return out
 
 
 step = RenameColumnsStep(json.loads((Path(__file__).parent / "manifest.json").read_text()))

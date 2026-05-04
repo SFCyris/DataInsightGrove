@@ -4,6 +4,28 @@ import { useEffect, useSyncExternalStore } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
+export type ExpertiseLevel = "beginner" | "builder" | "engineer";
+
+export const EXPERTISE_RANK: Record<ExpertiseLevel, number> = {
+  beginner: 0,
+  builder: 1,
+  engineer: 2,
+};
+
+export const EXPERTISE_LABEL: Record<ExpertiseLevel, string> = {
+  beginner: "🌱 Beginner",
+  builder: "🪴 Builder",
+  engineer: "🌳 Engineer",
+};
+
+export const EXPERTISE_DESCRIPTION: Record<ExpertiseLevel, string> = {
+  beginner: "Curated 12-step library, plain-English AI, single-tab side panel.",
+  builder: "Full 51-step library, side-by-side diff, full AI features. Daily-driver mode.",
+  engineer: "Live SQL toggle, lineage graph, raw JSON, auto-review on save, dev ribbon.",
+};
+
+export const AUTO_PROMOTE_THRESHOLD = 25;
+
 export interface Settings {
   theme: Theme;
   /** DuckDB-WASM sample size for live preview (rows). */
@@ -12,6 +34,14 @@ export interface Settings {
   livePreview: boolean;
   /** Whether to show the dev-only debug ribbon (run timing, etc.). */
   devRibbon: boolean;
+  /** Progressive-disclosure mode — gates surface area and AI verbosity. */
+  expertiseLevel: ExpertiseLevel;
+  /** When false, the user picked manually; never auto-promote again. */
+  expertiseAuto: boolean;
+  /** Increments on step add / run / edit; auto-promotes Beginner→Builder when ≥25. */
+  actionCount: number;
+  /** Compact grid headers — hides inline sparklines + summary stats. */
+  compactHeaders: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -19,6 +49,10 @@ const DEFAULTS: Settings = {
   sampleRows: 100_000,
   livePreview: true,
   devRibbon: false,
+  expertiseLevel: "beginner",
+  expertiseAuto: true,
+  actionCount: 0,
+  compactHeaders: false,
 };
 
 const KEY = "dig.settings.v1";
@@ -106,6 +140,69 @@ function getServerSnapshot(): Settings {
 
 export function useSettings(): Settings {
   return useSyncExternalStore(subscribe, getSettings, getServerSnapshot);
+}
+
+/**
+ * Hook for progressive-disclosure mode gating.
+ *
+ * `level` is the current expertise mode.
+ * `isAtLeast(target)` returns true if the user is at or above the target tier.
+ * `setLevel(level)` switches mode manually (and disables auto-promotion).
+ *
+ * Use in components like:
+ *   const { isAtLeast } = useExpertise();
+ *   {isAtLeast("engineer") && <LiveSqlToggle />}
+ */
+export function useExpertise() {
+  const settings = useSettings();
+  const level = settings.expertiseLevel;
+  return {
+    level,
+    auto: settings.expertiseAuto,
+    actionCount: settings.actionCount,
+    isAtLeast(target: ExpertiseLevel): boolean {
+      return EXPERTISE_RANK[level] >= EXPERTISE_RANK[target];
+    },
+    isExactly(target: ExpertiseLevel): boolean {
+      return level === target;
+    },
+    setLevel(next: ExpertiseLevel) {
+      setSettings({ expertiseLevel: next, expertiseAuto: false });
+    },
+    setLevelKeepAuto(next: ExpertiseLevel) {
+      setSettings({ expertiseLevel: next });
+    },
+  };
+}
+
+/**
+ * Bumps the action counter and auto-promotes Beginner → Builder when the
+ * threshold is crossed (only if `expertiseAuto` is still true).
+ *
+ * Call from step-add, step-edit, run-start sites:
+ *   recordAction(2)  // step add
+ *   recordAction(3)  // run
+ *   recordAction(1)  // step edit
+ *
+ * Returns true if a promotion happened (caller may show a Sonner toast).
+ */
+export function recordAction(weight = 1): boolean {
+  ensureInit();
+  const next = current.actionCount + weight;
+  let promoted = false;
+  let nextLevel = current.expertiseLevel;
+  if (
+    current.expertiseAuto &&
+    current.expertiseLevel === "beginner" &&
+    next >= AUTO_PROMOTE_THRESHOLD
+  ) {
+    nextLevel = "builder";
+    promoted = true;
+  }
+  current = { ...current, actionCount: next, expertiseLevel: nextLevel };
+  persist();
+  notify();
+  return promoted;
 }
 
 /** Listen to system color-scheme changes when theme is 'system'. */

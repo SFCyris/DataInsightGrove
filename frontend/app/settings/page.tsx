@@ -5,7 +5,16 @@ import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { setSettings, useSettings, type Theme } from "@/lib/settings";
+import {
+  setSettings,
+  useSettings,
+  useExpertise,
+  type Theme,
+  type ExpertiseLevel,
+  EXPERTISE_LABEL,
+  EXPERTISE_DESCRIPTION,
+  AUTO_PROMOTE_THRESHOLD,
+} from "@/lib/settings";
 import { api, aiApi, API_BASE } from "@/lib/api/client";
 import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord, AiProbeOut } from "@/lib/api/client";
 import { buttonVariants, Button } from "@/components/ui/button";
@@ -21,11 +30,12 @@ const THEMES: { id: Theme; emoji: string; label: string }[] = [
 const SAMPLE_OPTIONS = [10_000, 50_000, 100_000, 500_000, 1_000_000];
 
 type SectionId =
-  | "appearance" | "preview" | "storage" | "performance"
+  | "appearance" | "expertise" | "preview" | "storage" | "performance"
   | "ai" | "jdbc" | "webhooks" | "security" | "about";
 
 const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "appearance",  emoji: "🎨", label: "Appearance",       help: "Theme + motion (per browser)" },
+  { id: "expertise",   emoji: "🌱", label: "Expertise mode",   help: "Beginner / Builder / Engineer" },
   { id: "preview",     emoji: "🦆", label: "Browser preview",  help: "DuckDB-WASM behavior" },
   { id: "storage",     emoji: "📁", label: "Storage & paths",  help: "Where data lives" },
   { id: "performance", emoji: "⚡", label: "Performance",      help: "Concurrency + threads" },
@@ -108,6 +118,7 @@ export default function SettingsPage() {
       {/* Section content */}
       <motion.section {...fadeUp} className="flex-1 overflow-y-auto p-8 max-w-4xl">
         {section === "appearance"  && <AppearanceSection />}
+        {section === "expertise"   && <ExpertiseSection />}
         {section === "preview"     && <PreviewSection />}
         {section === "storage"     && <ServerSettingsSection filter={["input_dir", "output_dir", "run_history_days"]} title="📁 Storage & paths" />}
         {section === "performance" && <ServerSettingsSection filter={["default_sample_rows", "default_preview_limit", "max_concurrent_runs", "duckdb_threads", "log_level", "auto_detect_index", "auto_detect_timezone"]} title="⚡ Performance & detection" />}
@@ -149,6 +160,74 @@ function AppearanceSection() {
           </div>
         </Field>
       </Card>
+    </Page>
+  );
+}
+
+// ---- Section: Expertise mode ---------------------------------------------
+
+const EXPERTISE_LEVELS: ExpertiseLevel[] = ["beginner", "builder", "engineer"];
+
+function ExpertiseSection() {
+  const { level, auto, actionCount, setLevel } = useExpertise();
+  const settings = useSettings();
+  return (
+    <Page
+      title="🌱 Expertise mode"
+      lede="DIG progressively reveals complexity as you grow. Switch any time — never a wizard, always reversible."
+    >
+      <Card>
+        <Field
+          label="Mode"
+          hint={
+            auto
+              ? `Auto-promotes to Builder after ${AUTO_PROMOTE_THRESHOLD} actions. You're at ${actionCount}.`
+              : "Auto-promotion is off — you're driving."
+          }
+        >
+          <div className="flex flex-col gap-2">
+            {EXPERTISE_LEVELS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setLevel(id)}
+                className={[
+                  "rounded-lg border px-4 py-3 text-left transition-colors",
+                  level === id
+                    ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-900/20"
+                    : "border-border hover:border-foreground/30",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">{EXPERTISE_LABEL[id]}</span>
+                  {level === id && (
+                    <span className="text-[10px] uppercase tracking-widest text-emerald-700 dark:text-emerald-400">
+                      Current
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  {EXPERTISE_DESCRIPTION[id]}
+                </p>
+              </button>
+            ))}
+          </div>
+        </Field>
+      </Card>
+      <Card>
+        <Field
+          label="Compact grid headers"
+          hint="Hide inline sparklines + summary stats in column headers. Useful on dense screens; stats remain available in the profile drawer."
+        >
+          <Toggle
+            on={settings.compactHeaders}
+            onChange={(on) => setSettings({ compactHeaders: on })}
+          />
+        </Field>
+      </Card>
+      <p className="text-xs text-muted-foreground mt-4 leading-relaxed">
+        Engineer mode unlocks the Live SQL toggle, lineage graph, raw JSON view, and auto-review on save. Beginner mode is forgiving — every advanced affordance has a "show me more" promote-for-this-session affordance, so you'll never hit a wall.
+      </p>
     </Page>
   );
 }

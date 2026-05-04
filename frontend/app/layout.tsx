@@ -25,6 +25,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
+import { SandboxBanner } from "@/components/sandbox-banner";
 
 export const metadata: Metadata = {
   // The literal ™ is fine in document.title — modern browsers render it cleanly.
@@ -80,7 +81,10 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
-        <Providers>{children}</Providers>
+        <Providers>
+          <SandboxBanner />
+          {children}
+        </Providers>
       </body>
     </html>
   );

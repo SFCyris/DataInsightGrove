@@ -20,6 +20,7 @@ from dig.api import datasets as datasets_api
 from dig.api import pipelines as pipelines_api
 from dig.api import schedules as schedules_api
 from dig.api import settings as settings_api
+from dig.api import templates as templates_api
 from dig.engine.registry import connectors, steps
 from dig.jobs.manager import jobs
 from dig.storage.db import init_db
@@ -193,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_api.fs_router)
     app.include_router(ai_api.router)
     app.include_router(schedules_api.router)
+    app.include_router(templates_api.router)
 
     # Serve in-repo docs as static files so the frontend's HelpLink components
     # can deep-link to specific sections of getting_started.md, etc.

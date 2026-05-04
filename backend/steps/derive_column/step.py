@@ -1,10 +1,29 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from dig.engine.step import Step, assert_safe_expr, quote_ident
+from dig.engine.step import ColumnLineage, ColumnRef, Step, assert_safe_expr, quote_ident
+
+
+_IDENT_RE = re.compile(r'"([^"]+)"|\b([A-Za-z_][A-Za-z0-9_]*)\b')
+
+
+def _extract_column_refs(expression: str, known_columns: set[str]) -> list[str]:
+    """Best-effort: pull column identifiers out of a SQL expression.
+
+    Matches double-quoted identifiers and bare identifiers, intersected with
+    the known schema. Doesn't try to be a full parser — false-positives are
+    fine (we'd report spurious deps), but false-negatives degrade lineage,
+    so we err on the side of recall."""
+    found: list[str] = []
+    for m in _IDENT_RE.finditer(expression):
+        ident = m.group(1) or m.group(2)
+        if ident in known_columns and ident not in found:
+            found.append(ident)
+    return found
 
 
 class DeriveColumnStep(Step):
@@ -27,6 +46,31 @@ class DeriveColumnStep(Step):
             # We don't statically evaluate the expression; downstream column type is unknown.
             s[name] = "unknown"
         return s
+
+    def column_dependencies(self, input_schemas, params):
+        if "in" not in input_schemas:
+            return {}
+        in_cols = input_schemas["in"]
+        out: dict[str, ColumnLineage] = {
+            c: ColumnLineage(
+                sources=[ColumnRef(port="in", column=c)],
+                transform="passthrough",
+                is_passthrough=True,
+            )
+            for c in in_cols
+        }
+        new_name = params.get("name")
+        expr = params.get("expression") or ""
+        if new_name:
+            refs = _extract_column_refs(expr, set(in_cols.keys()))
+            out[new_name] = ColumnLineage(
+                sources=[ColumnRef(port="in", column=c) for c in refs] or
+                        [ColumnRef(port="in", column=c) for c in in_cols.keys()][:0],
+                transform="derived from expression",
+                expression=expr if len(expr) <= 240 else expr[:237] + "…",
+                is_passthrough=False,
+            )
+        return out
 
 
 step = DeriveColumnStep(json.loads((Path(__file__).parent / "manifest.json").read_text()))

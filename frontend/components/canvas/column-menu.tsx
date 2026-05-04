@@ -34,7 +34,10 @@ export type ColumnAction =
       outputColumn: string;
       fields: Array<{ fieldName: string; sourceColumn: string }>;
       targetType: string;
-    };
+    }
+  // Trace this column's lineage back to its dataset roots. The editor
+  // opens the <LineagePanel /> drawer scoped to the focused node + column.
+  | { kind: "trace_lineage"; column: string };
 
 // Conservative fallback when the /types endpoint hasn't loaded (or the user
 // is offline). These mirror the IDs in backend/dig/engine/meta_types.py.
@@ -150,6 +153,10 @@ export function ColumnMenu({
         <Item
           label="🔍 Filter rows where this is NOT NULL"
           onClick={() => fire({ kind: "filter_notnull", column: columnName })}
+        />
+        <Item
+          label="🔗 Trace lineage…"
+          onClick={() => fire({ kind: "trace_lineage", column: columnName })}
         />
 
         <Sep />

@@ -51,6 +51,40 @@ class Pipeline(Base):
     )
 
 
+class PipelineHistory(Base):
+    """Snapshot of a pipeline document at a particular point in time.
+
+    Written on every save (deduped by document hash), on run start (so a run's
+    pipeline is locked-in even if the editor is mutated mid-run), and on
+    import. Powers the visual pipeline-diff feature.
+
+    Retention: keep DIG_PIPELINE_HISTORY_MAX (default 50) most-recent rows per
+    pipeline; older ones expire on next save.
+    """
+
+    __tablename__ = "pipeline_history"
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    pipeline_id: Mapped[str] = mapped_column(String(26), index=True)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    etag: Mapped[int] = mapped_column(Integer)
+    # Auto-generated 1-line ("added 2 steps, removed 1, changed 3 params").
+    change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free-text reason from the user, optional.
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # "manual_save" | "run_start" | "import" | "ai_review_apply" | "restore"
+    triggered_by: Mapped[str] = mapped_column(String(32), default="manual_save")
+    # SHA-256 of the canonical-JSON document. Lets us dedupe consecutive saves
+    # that don't actually change anything (e.g. opening a pipeline and saving
+    # without edits).
+    document_hash: Mapped[str] = mapped_column(String(64), index=True)
+    # When this snapshot was taken at run-start, the corresponding Run.id —
+    # so the diff endpoint can resolve `run:<run_id>` refs without searching
+    # for a needle that was never threaded into the document.
+    run_id: Mapped[str | None] = mapped_column(String(26), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
 class Run(Base):
     """Phase 2+."""
 
@@ -114,6 +148,45 @@ class JdbcDriver(Base):
     # "jdbc:oracle:thin:@//<host>:1521/<service>".
     url_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class Template(Base):
+    """User-owned shareable pipeline templates.
+
+    Distinct from the bundled `samples/templates/*.json` repo files (those
+    ship with DIG and never change at runtime). Templates here are pipelines
+    a user marked as shareable + a sample dataset URL, with a stable slug
+    that powers the public template-gallery feature.
+
+    Visibility semantics:
+      - "private"   — visible only to the user; not surfaced in /gallery.
+      - "unlisted"  — anyone with the link can open; not in /gallery search.
+      - "public"    — surfaced in /gallery search results.
+
+    `is_curated` is reserved for the official curated set (highlighted on
+    the gallery landing page); user-published templates start curated=false.
+    """
+
+    __tablename__ = "templates"
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    sample_dataset_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    needs_sample_dataset: Mapped[bool] = mapped_column(Boolean, default=False)
+    author_handle: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    author_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_curated: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility: Mapped[str] = mapped_column(String(16), default="unlisted")
+    upvotes: Mapped[int] = mapped_column(Integer, default=0)
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

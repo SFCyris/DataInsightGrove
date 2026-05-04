@@ -10,10 +10,11 @@ from dig.engine.connector import Connector
 
 
 class PostgresConnector(Connector):
-    """Read from PostgreSQL via Polars `read_database_uri`.
+    """Read from / write to PostgreSQL via Polars.
 
-    Requires a `connectorx` or `adbc-driver-postgresql` runtime. We let Polars
-    pick the available backend; raise a clear error if neither is present.
+    Reads use `read_database_uri` (connectorx or adbc-driver-postgresql at
+    runtime). Writes use `write_database` for Reverse-ETL — the
+    `export_to_db` step or any sink-mode pipeline output dispatches here.
     """
 
     def read(self, uri: str, options: dict[str, Any]) -> pl.LazyFrame:
@@ -42,6 +43,48 @@ class PostgresConnector(Connector):
             ) from e
 
         return df.lazy()
+
+    def write(self, frame: pl.DataFrame, uri: str, options: dict[str, Any]) -> None:
+        """Reverse-ETL write to a Postgres table.
+
+        Uses Polars.write_database. The URI must be a full postgresql:// URI;
+        auth happens via the URI's userinfo segment or a saved DIG Connection
+        (the executor resolves Connection IDs to URIs before this call).
+        """
+        if not (uri.startswith("postgres://") or uri.startswith("postgresql://")):
+            raise ValueError(
+                f"postgres connector: write URI must start with postgresql:// (got: {uri[:24]}…)"
+            )
+
+        table = (options.get("table") or "").strip()
+        schema = (options.get("schema") or "public").strip()
+        if_exists = (options.get("if_exists") or "append").lower()
+
+        if not table:
+            raise ValueError("postgres connector: write requires a 'table' option")
+        if if_exists not in ("append", "replace", "fail"):
+            raise ValueError(
+                f"postgres connector: if_exists must be append/replace/fail (got {if_exists!r})"
+            )
+
+        qualified = (
+            table
+            if "." in table
+            else f"{schema}.{table}" if schema else table
+        )
+
+        try:
+            frame.write_database(
+                table_name=qualified,
+                connection=uri,
+                if_table_exists=if_exists,
+            )
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "postgres connector: missing driver. Install one of "
+                "`adbc-driver-postgresql` or `connectorx` (e.g. "
+                "`pip install adbc-driver-postgresql`)."
+            ) from e
 
 
 _manifest_path = Path(__file__).parent / "manifest.json"

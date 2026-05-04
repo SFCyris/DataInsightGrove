@@ -156,7 +156,7 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
     },
     # ---- AI assistant settings -------------------------------------------
     # Pluggable LLM provider for the explain / fix-expression / generate-
-    # connector features. See docs/proposals/AI_ASSISTANT.md for design.
+    # connector features.
     # Keys grouped by ai_* prefix so the frontend can render them as one
     # section. The api_key is masked on read — see _mask_secrets below.
     "ai_enabled": {

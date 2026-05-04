@@ -18,13 +18,17 @@ from ulid import ULID
 from dig.engine.compile import compile_for_browser
 from dig.engine.compile_python import compile_to_notebook, compile_to_python, unsupported_steps
 from dig.engine.dag import DagError, infer_schemas, validate, validate_params_against_manifests
+from dig.engine.diff import diff_pipelines
 from dig.engine.executor import compile_to_sql
+from dig.engine.history import snapshot_pipeline
+from dig.engine.lineage import trace_column
 from dig.engine.pipeline import Pipeline
 from dig.engine.registry import steps
 from dig.jobs.hub import hub
 from dig.jobs.manager import jobs
 from dig.storage.db import get_session
 from dig.storage.models import Pipeline as PipelineRow
+from dig.storage.models import PipelineHistory
 from dig.storage.models import Run
 
 log = logging.getLogger(__name__)
@@ -148,6 +152,11 @@ async def create_pipeline(
     doc.setdefault("name", req.name)
     row = PipelineRow(id=pid, name=req.name, document=doc, etag=1)
     session.add(row)
+    # Snapshot the initial state so subsequent edits have a "previous" to
+    # diff against. Triggered_by mirrors import — both are "starting points."
+    await snapshot_pipeline(
+        session, pid, doc, 1, triggered_by="import"
+    )
     await session.commit()
     return _doc(row)
 
@@ -189,6 +198,10 @@ async def update_pipeline(
         row.name = str(name)
     row.document = doc
     row.etag = (row.etag or 0) + 1
+    # History snapshot (deduped by document hash — UI-coord-only saves no-op).
+    await snapshot_pipeline(
+        session, pipeline_id, doc, row.etag, triggered_by="manual_save"
+    )
     await session.commit()
     # broadcast (Phase 5 will use this for multi-session sync)
     await hub.publish(f"pipeline:{pipeline_id}", {"event": "changed", "etag": row.etag})
@@ -204,6 +217,200 @@ async def delete_pipeline(
         raise HTTPException(404, "pipeline not found")
     await session.delete(row)
     await session.commit()
+
+
+# ---- Pipeline history & diff ---------------------------------------------
+
+
+class HistoryEntry(BaseModel):
+    id: str
+    pipelineId: str
+    etag: int
+    changeSummary: str | None = None
+    changeReason: str | None = None
+    triggeredBy: str
+    documentHash: str
+    runId: str | None = None
+    createdAt: datetime
+
+
+class DiffRequest(BaseModel):
+    """Either side may name a snapshot id, "current" (live document), or
+    "run:<run_id>" (the snapshot taken when that run started)."""
+
+    fromRef: str = Field(default="previous")
+    toRef: str = Field(default="current")
+
+
+@router.get("/{pipeline_id}/history", response_model=list[HistoryEntry])
+async def list_pipeline_history(
+    pipeline_id: str,
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+) -> list[HistoryEntry]:
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    rows = (
+        await session.execute(
+            select(PipelineHistory)
+            .where(PipelineHistory.pipeline_id == pipeline_id)
+            .order_by(PipelineHistory.created_at.desc())
+            .limit(max(1, min(limit, 200)))
+        )
+    ).scalars().all()
+    return [
+        HistoryEntry(
+            id=r.id,
+            pipelineId=r.pipeline_id,
+            etag=r.etag,
+            changeSummary=r.change_summary,
+            changeReason=r.change_reason,
+            triggeredBy=r.triggered_by,
+            documentHash=r.document_hash,
+            runId=r.run_id,
+            createdAt=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/{pipeline_id}/history/{snapshot_id}")
+async def get_pipeline_snapshot(
+    pipeline_id: str,
+    snapshot_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    snap = await session.get(PipelineHistory, snapshot_id)
+    if snap is None or snap.pipeline_id != pipeline_id:
+        raise HTTPException(404, "snapshot not found")
+    return {
+        "id": snap.id,
+        "pipelineId": snap.pipeline_id,
+        "etag": snap.etag,
+        "document": snap.document,
+        "changeSummary": snap.change_summary,
+        "triggeredBy": snap.triggered_by,
+        "createdAt": snap.created_at.isoformat(),
+    }
+
+
+async def _resolve_pipeline_doc(
+    session: AsyncSession, pipeline_id: str, ref: str
+) -> dict[str, Any]:
+    """Resolve a side of the diff to a pipeline document.
+
+    Accepts: snapshot ULID, "current", "previous" (the snapshot before
+    "current"), or "run:<run_id>" (the snapshot taken when that run started).
+    """
+    if ref == "current":
+        row = await session.get(PipelineRow, pipeline_id)
+        if row is None:
+            raise HTTPException(404, "pipeline not found")
+        return row.document or {}
+
+    if ref == "previous":
+        # Snapshots are taken at save time, so the *latest* snapshot equals
+        # the current document. "Previous" means the one before that — fall
+        # back to the latest if there's only one (e.g. fresh import).
+        rows = (
+            await session.execute(
+                select(PipelineHistory)
+                .where(PipelineHistory.pipeline_id == pipeline_id)
+                .order_by(PipelineHistory.created_at.desc())
+                .limit(2)
+            )
+        ).scalars().all()
+        if len(rows) >= 2:
+            return rows[1].document
+        if rows:
+            return rows[0].document
+        return {}
+
+    if ref.startswith("run:"):
+        run_id = ref[4:]
+        # Resolve by the indexed `run_id` column on PipelineHistory.
+        # The previous shape searched `r.document.get("runId")`, but the
+        # snapshot writer never injected `runId` into the document — every
+        # `run:` ref silently fell back to the latest run-start snapshot.
+        rows = (
+            await session.execute(
+                select(PipelineHistory).where(
+                    PipelineHistory.pipeline_id == pipeline_id,
+                    PipelineHistory.run_id == run_id,
+                )
+            )
+        ).scalars().all()
+        if rows:
+            return rows[0].document
+        raise HTTPException(404, f"no run-start snapshot found for run {run_id}")
+
+    snap = await session.get(PipelineHistory, ref)
+    if snap is None or snap.pipeline_id != pipeline_id:
+        raise HTTPException(404, f"snapshot {ref} not found for this pipeline")
+    return snap.document
+
+
+@router.post("/{pipeline_id}/diff")
+async def diff_pipeline(
+    pipeline_id: str,
+    req: DiffRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Diff two pipeline document references (snapshot id / "current" / "run:")."""
+    a_doc = await _resolve_pipeline_doc(session, pipeline_id, req.fromRef)
+    b_doc = await _resolve_pipeline_doc(session, pipeline_id, req.toRef)
+    return diff_pipelines(a_doc, b_doc)
+
+
+@router.post("/{pipeline_id}/restore/{snapshot_id}", response_model=PipelineDoc)
+async def restore_pipeline(
+    pipeline_id: str,
+    snapshot_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> PipelineDoc:
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    snap = await session.get(PipelineHistory, snapshot_id)
+    if snap is None or snap.pipeline_id != pipeline_id:
+        raise HTTPException(404, "snapshot not found")
+    new_doc = dict(snap.document)
+    new_doc["id"] = pipeline_id
+    row.document = new_doc
+    row.etag = (row.etag or 0) + 1
+    await snapshot_pipeline(
+        session, pipeline_id, new_doc, row.etag, triggered_by="restore",
+        change_reason=f"Restored from snapshot {snapshot_id[-8:]}",
+    )
+    await session.commit()
+    await hub.publish(
+        f"pipeline:{pipeline_id}", {"event": "changed", "etag": row.etag}
+    )
+    return _doc(row)
+
+
+@router.get("/{pipeline_id}/lineage/columns/{node_id}/{column}")
+async def get_column_lineage(
+    pipeline_id: str,
+    node_id: str,
+    column: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Trace a column's ancestry back to its dataset roots.
+
+    Returns a graph (nodes + edges) showing every step + column that fed into
+    the target. Pure-structural — uses each step's `column_dependencies()`
+    declaration; works without running the pipeline.
+    """
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    try:
+        p = Pipeline.model_validate(row.document)
+    except Exception as e:
+        raise HTTPException(400, f"pipeline document is invalid: {e}") from e
+    return trace_column(p, node_id, column)
 
 
 @router.post("/{pipeline_id}/validate")
@@ -320,13 +527,18 @@ async def import_pipeline(
       - or a bare pipeline document `{"schemaVersion": 1, ...}`
     """
     # Size cap: a pipeline doc above 2 MB is almost certainly a runaway
-    # import. Configurable via DIG_MAX_PIPELINE_KB.
+    # import. Configurable via DIG_MAX_PIPELINE_KB. Use a fast structural
+    # estimate — counting nodes/datasets — and only re-serialize when that
+    # exceeds the cap, so we don't double-buffer the body on the happy path.
     max_kb = int(os.environ.get("DIG_MAX_PIPELINE_KB", "2048"))
-    body_size = len(json.dumps(body).encode())
-    if body_size > max_kb * 1024:
-        raise HTTPException(
-            413, f"pipeline document exceeds {max_kb} KB cap (got {body_size//1024} KB)",
-        )
+    rough_count = len(body.get("nodes") or []) + len(body.get("datasets") or [])
+    if rough_count > 2000 or len(str(body)) > max_kb * 1024:
+        body_size = len(json.dumps(body).encode())
+        if body_size > max_kb * 1024:
+            raise HTTPException(
+                413,
+                f"pipeline document exceeds {max_kb} KB cap (got {body_size // 1024} KB)",
+            )
 
     if "$dig" in body and "document" in body:
         name = body.get("name") or body.get("document", {}).get("name") or "Imported pipeline"
@@ -354,6 +566,11 @@ async def import_pipeline(
     new_doc["name"] = name
     row = PipelineRow(id=pid, name=name, document=new_doc, etag=1)
     session.add(row)
+    # Snapshot the imported document — first history entry so the user can
+    # always diff their later edits against the original import.
+    await snapshot_pipeline(
+        session, pid, new_doc, 1, triggered_by="import"
+    )
     await session.commit()
     return _doc(row)
 
@@ -699,7 +916,19 @@ async def start_run(
             raise HTTPException(400, "invalid params: " + "; ".join(param_errs))
     except DagError as e:
         raise HTTPException(400, str(e)) from e
+    # Submit first so we have the run_id to stamp on the snapshot.
+    # The window between submit() and snapshot+commit is microseconds and
+    # entirely on the API side — the worker doesn't depend on the snapshot
+    # row existing yet (only on the runs row, which submit() creates).
     run_id = await jobs.submit(p, sample_rows=req.sampleRows)
+    # Snapshot at run-start so we always have a "this is what ran" record,
+    # even if the editor mutates the pipeline mid-run. The `run_id` column
+    # is what the diff endpoint resolves `run:<id>` refs against.
+    await snapshot_pipeline(
+        session, pipeline_id, row.document, row.etag,
+        triggered_by="run_start", run_id=run_id,
+    )
+    await session.commit()
     # Use a fresh session so we see the row the JobManager just committed.
     from dig.storage.db import SessionLocal
 
@@ -782,8 +1011,11 @@ async def diff_runs(
 
     def _pick(r: Run) -> str:
         if output_id is not None:
+            # Match basename without extension exactly — `startswith` would
+            # collide between e.g. `out.parquet` and `out2.parquet`.
             for path in r.output_paths:
-                if os.path.basename(path).startswith(output_id):
+                stem = os.path.splitext(os.path.basename(path))[0]
+                if stem == output_id:
                     return path
         return r.output_paths[0]
 
@@ -927,8 +1159,11 @@ async def get_run_lineage(
         raise HTTPException(409, f"run not ready (status={r.status})")
     target = r.output_paths[0]
     if output_id is not None:
+        # Match basename without extension exactly — `startswith` would
+        # collide between e.g. `out.parquet` and `out2.parquet`.
         for path in r.output_paths:
-            if os.path.basename(path).startswith(output_id):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            if stem == output_id:
                 target = path
                 break
 
@@ -988,9 +1223,12 @@ async def get_run_lineage(
             else:
                 # row_number is 1-based in DuckDB; offset accordingly. Push the
                 # blocking collect off the event loop so concurrent requests
-                # don't stall.
+                # don't stall. Bind `lf`/`i` as defaults — without that, the
+                # next loop iteration reassigns `src_lf`/`idx` before the
+                # awaited coroutine runs and the lambda closes over the wrong
+                # values.
                 src_row_df = await asyncio.to_thread(
-                    lambda: src_lf.slice(int(idx) - 1, 1).collect()
+                    lambda lf=src_lf, i=idx: lf.slice(int(i) - 1, 1).collect()
                 )
                 if src_row_df.height == 0:
                     row = None
@@ -1032,10 +1270,13 @@ async def get_run_output(
     if not r.output_paths:
         raise HTTPException(409, f"run not ready (status={r.status})")
     # First output by default; output_id selects by parquet basename.
+    # Match basename without extension exactly — `startswith` would collide
+    # between e.g. `out.parquet` and `out2.parquet`.
     target = r.output_paths[0]
     if output_id is not None:
         for path in r.output_paths:
-            if os.path.basename(path).startswith(output_id):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            if stem == output_id:
                 target = path
                 break
     # Push parquet I/O off the event loop so other API calls don't stall.

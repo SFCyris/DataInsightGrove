@@ -319,6 +319,15 @@ export default function Home() {
                   </span>
                 )}
               </Link>
+              <Link
+                href="/gallery"
+                className={
+                  buttonVariants({ variant: "ghost", size: "lg" }) +
+                  " !text-zinc-200 hover:!bg-emerald-500/10"
+                }
+              >
+                🌳 Gallery
+              </Link>
             </div>
           </motion.section>
 

@@ -35,6 +35,30 @@ class PolarsContext:
 
 
 @dataclass
+class ColumnRef:
+    """One source column for column-level lineage.
+
+    `port` is the input port name on the consuming step ("in", "left",
+    "right"). `column` is the column name in the upstream node's output.
+    """
+    port: str
+    column: str
+
+
+@dataclass
+class ColumnLineage:
+    """Per-output-column dependency declaration.
+
+    Used by Step.column_dependencies() and the lineage tracer in
+    backend/dig/engine/lineage.py.
+    """
+    sources: list[ColumnRef]
+    transform: str  # "passthrough" | "renamed from X" | "derived from expression" | ...
+    expression: str | None = None
+    is_passthrough: bool = False
+
+
+@dataclass
 class PolarsResult:
     """Returned by Step.execute_polars().
 
@@ -129,6 +153,37 @@ class Step(ABC):
             return {}
         first = next(iter(input_schemas.values()))
         return dict(first)
+
+    def column_dependencies(
+        self,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, "ColumnLineage"]:
+        """Per-output-column dependency declaration.
+
+        Returns: { output_col_name: ColumnLineage(...) }
+
+        Default impl: identity — every output column depends on the same-named
+        input column in the first input port. This is correct for most
+        passthrough steps (filter_rows, sort_rows, deduplicate, etc.).
+
+        Steps that add, drop, rename, derive, or aggregate must override this
+        for the column lineage feature to give correct ancestry. Cheap to
+        write — typically 5-10 lines per step.
+        """
+        if not input_schemas:
+            return {}
+        port = next(iter(input_schemas.keys()))
+        cols = input_schemas[port]
+        return {
+            c: ColumnLineage(
+                sources=[ColumnRef(port=port, column=c)],
+                transform="passthrough",
+                expression=None,
+                is_passthrough=True,
+            )
+            for c in cols
+        }
 
     def validation_sql(
         self,

@@ -13,5 +13,5 @@ generate_connector. They build prompts, call the client, parse the
 response. Each is a pure function; the API endpoints in
 dig/api/ai.py wire them up.
 
-Design notes: docs/proposals/AI_ASSISTANT.md.
+Internal-only design notes maintained outside the public tree.
 """

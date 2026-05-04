@@ -1,0 +1,29 @@
+{
+  "id": "dbt",
+  "version": "1.0.0",
+  "label": "🔧 dbt",
+  "description": "Read a dbt model as a DIG dataset. Parses the dbt project's manifest.json and resolves the model's compiled SQL or its materialized table. The visual layer that completes dbt — exploration, ML feature derivation, scheduled custom outputs, all on top of your trusted dbt models.",
+  "kind": "source",
+  "uriSchemes": ["dbt"],
+  "options": {
+    "project_path": {
+      "type": "string",
+      "label": "dbt project directory",
+      "required": true,
+      "help": "Absolute path to the dbt project root (the folder containing dbt_project.yml). DIG reads target/manifest.json from this directory."
+    },
+    "model": {
+      "type": "string",
+      "label": "Model name",
+      "required": true,
+      "help": "Bare model name (e.g. dim_customers) or fully-qualified (my_marts.dim_customers)."
+    },
+    "target": {
+      "type": "string",
+      "label": "dbt target",
+      "default": "dev",
+      "help": "Which target from profiles.yml to read against. Defaults to 'dev'."
+    }
+  },
+  "tags": ["dbt", "warehouse", "modern-data-stack"]
+}

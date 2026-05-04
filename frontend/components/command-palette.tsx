@@ -7,7 +7,13 @@ import { motion, AnimatePresence } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
-import { setSettings, useSettings } from "@/lib/settings";
+import {
+  setSettings,
+  useSettings,
+  useExpertise,
+  EXPERTISE_LABEL,
+  type ExpertiseLevel,
+} from "@/lib/settings";
 import { fmtInt } from "@/lib/format-number";
 
 interface Action {
@@ -30,25 +36,32 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const router = useRouter();
   const settings = useSettings();
+  const expertise = useExpertise();
   const queryClient = useQueryClient();
 
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets, enabled: open });
   const pipelines = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines, enabled: open });
   const stepsQ = useQuery({ queryKey: ["steps"], queryFn: api.listSteps, enabled: open, staleTime: 60_000 });
 
-  // Open / close keybindings
+  // Open / close keybindings + ⌘⇧E mode cycle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        const order: ExpertiseLevel[] = ["beginner", "builder", "engineer"];
+        const next = order[(order.indexOf(expertise.level) + 1) % order.length];
+        expertise.setLevel(next);
+        toast.success(`Mode: ${EXPERTISE_LABEL[next]}`);
       } else if (e.key === "Escape" && open) {
         setOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, expertise]);
 
   const actions: Action[] = useMemo(() => {
     const out: Action[] = [];
@@ -120,6 +133,29 @@ export function CommandPalette() {
           toast.success("Refetching…");
         },
       },
+      {
+        id: "act:mode-cycle",
+        group: "Mode",
+        label: `Cycle expertise mode (current: ${EXPERTISE_LABEL[expertise.level]})`,
+        emoji: "🌱",
+        hint: "⌘⇧E",
+        run: () => {
+          const order: ExpertiseLevel[] = ["beginner", "builder", "engineer"];
+          const next = order[(order.indexOf(expertise.level) + 1) % order.length];
+          expertise.setLevel(next);
+          toast.success(`Mode: ${EXPERTISE_LABEL[next]}`);
+        },
+      },
+      ...(["beginner", "builder", "engineer"] as ExpertiseLevel[]).map((id) => ({
+        id: `act:mode-${id}`,
+        group: "Mode",
+        label: `Switch to ${EXPERTISE_LABEL[id]}`,
+        emoji: id === "beginner" ? "🌱" : id === "builder" ? "🪴" : "🌳",
+        run: () => {
+          expertise.setLevel(id);
+          toast.success(`Mode: ${EXPERTISE_LABEL[id]}`);
+        },
+      })),
     );
     for (const d of datasets.data ?? []) {
       out.push({
@@ -154,7 +190,7 @@ export function CommandPalette() {
       });
     }
     return out;
-  }, [datasets.data, pipelines.data, stepsQ.data, settings.theme, settings.livePreview, settings.sampleRows, router, queryClient]);
+  }, [datasets.data, pipelines.data, stepsQ.data, settings.theme, settings.livePreview, settings.sampleRows, expertise, router, queryClient]);
 
   const grouped = useMemo(() => {
     const out: Record<string, Action[]> = {};
@@ -228,6 +264,19 @@ export function CommandPalette() {
                 <span><kbd className="font-mono">↵</kbd> select</span>
                 <span><kbd className="font-mono">esc</kbd> close</span>
                 <span className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const order: ExpertiseLevel[] = ["beginner", "builder", "engineer"];
+                    const next = order[(order.indexOf(expertise.level) + 1) % order.length];
+                    expertise.setLevel(next);
+                    toast.success(`Mode: ${EXPERTISE_LABEL[next]}`);
+                  }}
+                  title="Cycle expertise mode (⌘⇧E)"
+                  className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/30 transition-colors"
+                >
+                  {EXPERTISE_LABEL[expertise.level]}
+                </button>
                 <span>⌘K to toggle</span>
               </footer>
             </Command>

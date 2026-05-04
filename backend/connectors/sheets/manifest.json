@@ -1,0 +1,29 @@
+{
+  "id": "sheets",
+  "version": "1.0.0",
+  "label": "📊 Google Sheets",
+  "description": "Reverse-ETL write to a Google Sheets spreadsheet. URI is sheets://<spreadsheet-id>?credentials=<service-account-json>. Requires `gspread` and a service-account JSON with editor access to the spreadsheet.",
+  "kind": "sink",
+  "uriSchemes": ["sheets"],
+  "options": {
+    "sheet": {
+      "type": "string",
+      "label": "Worksheet name",
+      "default": "Sheet1",
+      "help": "The tab name within the spreadsheet. Created if missing (when 'mode' is 'overwrite' or 'clear_first')."
+    },
+    "mode": {
+      "type": "enum",
+      "label": "Write mode",
+      "enumValues": ["append", "overwrite", "clear_first"],
+      "default": "overwrite",
+      "help": "'append' adds rows after the last; 'overwrite' replaces from row 1 (keeping any rows past the new data); 'clear_first' wipes the sheet then writes."
+    },
+    "include_header": {
+      "type": "boolean",
+      "label": "Include column headers",
+      "default": true
+    }
+  },
+  "tags": ["sheets", "reverse-etl"]
+}

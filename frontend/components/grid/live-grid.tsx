@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ColumnMenu, type ColumnAction } from "@/components/canvas/column-menu";
 import { ProfileDrawer } from "@/components/grid/profile-drawer";
+import { ColumnSparkline } from "@/components/grid/column-sparkline";
 import { fmtInt } from "@/lib/format-number";
 import { findIndexDuplicates, isValidForType } from "@/lib/meta-types";
+import { useSettings } from "@/lib/settings";
 
 const TYPE_EMOJI: Record<string, string> = {
   integer: "🔢", double: "🔢", string: "🅰️", date: "📅",
@@ -160,6 +162,8 @@ export function LiveGrid({
   const added = highlights?.added;
   const renamed = highlights?.renamed;
   const hovered = highlights?.hovered;
+  const settings = useSettings();
+  const showSparklines = !settings.compactHeaders;
   // Onboarding tooltip on first column ⋯ (one-time per browser).
   const [showOnboard, setShowOnboard] = useState(false);
   const firstChevronRef = useRef<HTMLButtonElement | null>(null);
@@ -518,6 +522,21 @@ export function LiveGrid({
                           ⋯
                         </button>
                       </div>
+                      {showSparklines && (
+                        <div
+                          className="mt-1 h-4 flex items-center"
+                          aria-hidden
+                          title={`Distribution of ${c.name}`}
+                        >
+                          <ColumnSparkline
+                            rows={renderedRows}
+                            column={c.name}
+                            type={logicalType(c.type)}
+                            width={84}
+                            height={14}
+                          />
+                        </div>
+                      )}
                     </th>
                   );
                 })}

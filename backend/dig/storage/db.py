@@ -65,8 +65,9 @@ async def init_db() -> None:
     # Additive patches — safe to re-run.
     patches: list[tuple[str, str, str]] = [
         # (table, column, "<col_name> <type>")
-        ("datasets", "annotations", "annotations JSON"),
-        ("runs",     "artifacts",   "artifacts JSON"),
+        ("datasets",         "annotations", "annotations JSON"),
+        ("runs",             "artifacts",   "artifacts JSON"),
+        ("pipeline_history", "run_id",      "run_id VARCHAR(26)"),
     ]
     async with engine.begin() as conn:
         for table, column, decl in patches:

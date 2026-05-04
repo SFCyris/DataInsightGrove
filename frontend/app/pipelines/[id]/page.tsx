@@ -20,6 +20,7 @@ import { subscribe } from "@/lib/api/ws";
 import { previewPipeline, type PreviewResult } from "@/lib/engine/dispatcher";
 import { humanizeSqlError } from "@/lib/humanize-sql-error";
 import { usePersistedState } from "@/lib/use-persisted-state";
+import { recordAction } from "@/lib/settings";
 import { Tour, type TourStep } from "@/components/tour/tour";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LiveGrid } from "@/components/grid/live-grid";
@@ -27,6 +28,12 @@ import { GraphCanvas } from "@/components/canvas/graph-canvas";
 import { PipelineStrip } from "@/components/canvas/pipeline-strip";
 import { QuickAddMenu } from "@/components/canvas/quick-add-menu";
 import { ExportMenu } from "@/components/canvas/export-menu";
+import { CompareButton } from "@/components/canvas/compare-button";
+import { ReviewPanel } from "@/components/canvas/review-panel";
+import { ShareDialog } from "@/components/canvas/share-dialog";
+import { LineagePanel } from "@/components/lineage-panel";
+import { SqlView } from "@/components/canvas/sql-view";
+import { useExpertise } from "@/lib/settings";
 import { ExplainPipelineButton } from "@/components/canvas/explain-pipeline";
 import { SuggestNextButton } from "@/components/canvas/suggest-next";
 import { LineageDrawer } from "@/components/canvas/lineage-drawer";
@@ -245,6 +252,9 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   // auto-firing was removed because the tour overlay swallowed clicks on
   // the Add-dataset dropdown.
   const [editorTourOpen, setEditorTourOpen] = useState(false);
+  const [lineagePanel, setLineagePanel] = useState<{ nodeId: string; column: string } | null>(null);
+  const [sqlViewOpen, setSqlViewOpen] = useState(false);
+  const expertise = useExpertise();
 
   useEffect(() => {
     if (pipeline.data) {
@@ -370,15 +380,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   }, [undo, redo]);
 
   // ---- Save (debounced) ----
+  const lastNodeCountRef = useRef<number>(0);
   const saveMutation = useMutation({
     mutationFn: async (next: PipelineDocument) => {
       if (etag == null) throw new Error("etag unset");
       return api.updatePipeline(pipelineId, next, etag);
     },
-    onSuccess: (resp) => {
+    onSuccess: (resp, variables) => {
       setEtag(resp.etag);
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      // Adaptive UI: bump action counter — heavier weight for step add,
+      // lighter for param edits. Auto-promotes Beginner → Builder at threshold.
+      const nodeCount = variables.nodes?.length ?? 0;
+      const weight = nodeCount > lastNodeCountRef.current ? 2 : 1;
+      lastNodeCountRef.current = nodeCount;
+      const promoted = recordAction(weight);
+      if (promoted) {
+        toast.success("🪴 You're a Builder now — full step library unlocked. ⌘⇧E to switch back.");
+      }
     },
     onError: (e: Error) => toast.error(`Save failed: ${e.message}`),
   });
@@ -744,6 +764,16 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const handleColumnAction = useCallback(
     (a: ColumnAction) => {
       if (!doc) return;
+      // Trace lineage doesn't add a step — it opens the lineage drawer
+      // scoped to the focused node + clicked column.
+      if (a.kind === "trace_lineage") {
+        if (!focusedId) {
+          toast.message("Select a step first to trace its column.");
+          return;
+        }
+        setLineagePanel({ nodeId: focusedId, column: a.column });
+        return;
+      }
       // Composite action: pack N source columns into a struct, then cast
       // that struct to a meta-type (geographic / cartesian2d / polar2d / …).
       // Two `insertStepAfter` calls chained: the second uses the new
@@ -998,6 +1028,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       setRunProgress({ status: r.status });
       setOutputPage(null);
       setRunHistoryRefresh((n) => n + 1);
+      // Adaptive UI: a run is +3 toward Builder promotion.
+      recordAction(3);
       toast.success(`▶️ Run queued (${r.id.slice(-8)})`);
       wsTeardown.current?.();
       wsTeardown.current = subscribe(
@@ -1256,6 +1288,20 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           }}
         />
         <ExplainPipelineButton pipelineId={pipelineId} />
+        <ReviewPanel pipelineId={pipelineId} />
+        <CompareButton pipelineId={pipelineId} />
+        <ShareDialog pipelineId={pipelineId} pipelineName={doc?.name ?? ""} />
+        {expertise.isAtLeast("engineer") && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setSqlViewOpen(true)}
+            title="View compiled SQL (⌘⇧S)"
+            aria-label="View compiled SQL"
+          >
+            { } SQL
+          </Button>
+        )}
         <ExportMenu pipelineId={pipelineId} />
 
         <Button
@@ -1609,6 +1655,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           Auto-firing was removed because the fixed-inset overlay swallowed
           clicks on the Add-dataset dropdown. */}
       <EditorTour open={editorTourOpen} onClose={() => setEditorTourOpen(false)} />
+
+      <LineagePanel
+        open={lineagePanel !== null}
+        pipelineId={pipelineId}
+        nodeId={lineagePanel?.nodeId ?? null}
+        column={lineagePanel?.column ?? null}
+        onClose={() => setLineagePanel(null)}
+        onJumpToNode={(nid) => {
+          setFocusedId(nid);
+          setLineagePanel(null);
+        }}
+      />
+
+      <SqlView
+        pipelineId={pipelineId}
+        open={sqlViewOpen}
+        onClose={() => setSqlViewOpen(false)}
+        terminal={focusedId}
+      />
     </main>
   );
 }

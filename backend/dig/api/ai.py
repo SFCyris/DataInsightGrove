@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dig.ai.client import AiError, chat as client_chat, list_models as client_list_models, probe as client_probe
 from dig.ai.config import load_config
 from dig.ai.features.explain import explain_pipeline
+from dig.ai.features.review import review_pipeline
 from dig.ai.features.fix_expression import fix_expression
 from dig.ai.features.generate_connector import (
     discard_pending as discard_pending_connector,
@@ -97,6 +98,21 @@ class ChatResponse(BaseModel):
 class ExplainOut(BaseModel):
     markdown: str
     model: str
+
+
+class ReviewFinding(BaseModel):
+    severity: str  # "info" | "warn" | "high"
+    category: str  # "performance" | "correctness" | "quality" | "lineage" | "ergonomics"
+    title: str
+    explanation: str
+    affected_nodes: list[str]
+    confidence: float
+
+
+class ReviewOut(BaseModel):
+    findings: list[ReviewFinding]
+    model: str
+    rawText: str | None = None
 
 
 class FixExpressionIn(BaseModel):
@@ -298,6 +314,54 @@ async def explain(
     except AiError as e:
         raise HTTPException(502, str(e)) from e
     return ExplainOut(markdown=markdown, model=cfg.model)
+
+
+@router.post("/review-pipeline/{pipeline_id}", response_model=ReviewOut)
+async def review(
+    pipeline_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> ReviewOut:
+    """Severity-ranked findings for a saved pipeline.
+
+    Reviews ordering, type mismatches, missing expectations, lineage
+    opportunities, and ergonomics. Returns typed JSON; the frontend
+    renders each finding as an actionable card.
+    """
+    cfg = await load_config(session)
+    if not cfg.enabled:
+        raise HTTPException(400, "AI is disabled — enable it in Settings → AI")
+
+    row = (await session.execute(
+        sa_select(PipelineRow).where(PipelineRow.id == pipeline_id),
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, f"pipeline {pipeline_id!r} not found")
+
+    doc = row.document or {}
+    catalog = [s.manifest for s in steps_registry().all()]
+
+    # Gather column profiles for each dataset referenced by the pipeline.
+    profiles: dict[str, Any] = {}
+    for ds in (doc.get("datasets") or []):
+        ds_id = ds.get("id")
+        if not ds_id:
+            continue
+        from dig.storage.models import Dataset as DatasetRow
+
+        ds_row = await session.get(DatasetRow, ds_id)
+        if ds_row and ds_row.profile:
+            profiles[ds_id] = ds_row.profile
+
+    try:
+        result = await review_pipeline(cfg, doc, catalog, profiles or None)
+    except AiError as e:
+        raise HTTPException(502, str(e)) from e
+
+    return ReviewOut(
+        findings=[ReviewFinding(**f) for f in result["findings"]],
+        model=result["model"],
+        rawText=result.get("rawText"),
+    )
 
 
 @router.post("/fix-expression", response_model=FixExpressionOut)

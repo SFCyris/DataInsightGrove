@@ -37,6 +37,16 @@ export function MatrixTreeBackground({
     const buildMask = () => {
       cols = Math.floor(W / cell);
       rows = Math.floor(H / cell);
+      // Guard against zero-sized canvas — happens when the component mounts
+      // before layout (e.g. headless / preview / hidden iframe) or during
+      // a transient resize to a 0-px viewport. getImageData on a 0×0 canvas
+      // throws IndexSizeError.
+      if (cols <= 0 || rows <= 0) {
+        mask = new Uint8Array(0);
+        drops = [];
+        speeds = [];
+        return;
+      }
       const off = document.createElement("canvas");
       off.width = cols;
       off.height = rows;
