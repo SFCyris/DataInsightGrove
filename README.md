@@ -4,7 +4,7 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 0.5.0 beta](https://img.shields.io/badge/version-0.5.0_beta-yellow)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 0.6.0 beta](https://img.shields.io/badge/version-0.5.0_beta-yellow)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 
 > 🧪 **Beta software (v0.5.0).** DIG works end-to-end and the architecture is stable, but the API surface, plugin contracts, and on-disk format may still shift before v1.0.0. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
