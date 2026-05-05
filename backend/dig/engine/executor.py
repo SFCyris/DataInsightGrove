@@ -230,7 +230,7 @@ def _run_one_output(
             input_frames[port] = _materialize_sql_to_polars(con, up_sql)
 
         ctx = PolarsContext(
-            run_id=run_id, out_dir=out_dir, pipeline_chain=pipeline_chain,
+            run_id=run_id, out_dir=out_dir, node_id=poly_node.id, pipeline_chain=pipeline_chain,
         )
         try:
             result = step.execute_polars(input_frames, poly_node.params, ctx)
@@ -296,16 +296,19 @@ def execute_subpipeline(
         async with SessionLocal() as session:
             return await session.get(PipelineRow, pipeline_id)
 
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're being called from inside a running loop (the JobManager
-            # thread offloads execute() via to_thread, so its loop is on the
-            # main thread, not here). Build a temp loop for the lookup.
-            row = asyncio.run_coroutine_threadsafe(_load(), loop).result()
-        else:
-            row = asyncio.run(_load())
-    except RuntimeError:
+    # We're inside a worker thread spawned by JobManager via `to_thread` —
+    # `asyncio.get_event_loop()` is deprecated here (3.10+) and raises in
+    # 3.12+, and opening a fresh loop via `asyncio.run` strands the aiosqlite
+    # engine on the wrong loop. Use the main loop captured by JobManager.
+    from dig.jobs.manager import main_loop as _main_loop
+
+    api_loop = _main_loop()
+    if api_loop is not None and api_loop.is_running():
+        row = asyncio.run_coroutine_threadsafe(_load(), api_loop).result()
+    else:
+        # Fallback for direct callers (tests, scripts) where no JobManager
+        # has run a submit yet. A fresh loop is fine here because no other
+        # coroutine has registered against `SessionLocal`'s engine.
         row = asyncio.run(_load())
 
     if row is None:
@@ -405,7 +408,7 @@ def execute(
                     up_sql = f"{up_sql} LIMIT {int(sample_rows)}"
                 input_frames[port] = _materialize_sql_to_polars(con, up_sql)
             ctx = PolarsContext(
-                run_id=run_id, out_dir=out_dir, pipeline_chain=_pipeline_chain,
+                run_id=run_id, out_dir=out_dir, node_id=node.id, pipeline_chain=_pipeline_chain,
             )
             try:
                 res = step.execute_polars(input_frames, node.params, ctx)

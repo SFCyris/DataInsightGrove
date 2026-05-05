@@ -29,6 +29,7 @@ from dig.ai.features.explain import explain_pipeline
 from dig.ai.features.review import review_pipeline
 from dig.ai.features.fix_expression import fix_expression
 from dig.ai.features.generate_connector import (
+    _pending_dir as _pending_connector_dir,
     discard_pending as discard_pending_connector,
     generate_connector,
     install_pending as install_pending_connector,
@@ -36,11 +37,13 @@ from dig.ai.features.generate_connector import (
     stage_pending as stage_pending_connector,
 )
 from dig.ai.features.generate_step import (
+    _pending_step_dir,
     discard_pending_step,
     generate_step,
     install_pending_step,
     stage_pending_step,
 )
+from dig.ai.safety import lint_plugin_python
 from dig.ai.features.suggest_next import suggest_next_step
 from pathlib import Path as _Path
 from dig.engine.registry import steps as steps_registry
@@ -341,16 +344,26 @@ async def review(
     catalog = [s.manifest for s in steps_registry().all()]
 
     # Gather column profiles for each dataset referenced by the pipeline.
-    profiles: dict[str, Any] = {}
-    for ds in (doc.get("datasets") or []):
-        ds_id = ds.get("id")
-        if not ds_id:
-            continue
-        from dig.storage.models import Dataset as DatasetRow
+    # Single IN-clause query — the previous form did one round-trip per
+    # dataset which was an obvious N+1 (a 12-dataset pipeline → 13 SQLite
+    # round-trips for one review request).
+    from dig.storage.models import Dataset as DatasetRow
 
-        ds_row = await session.get(DatasetRow, ds_id)
-        if ds_row and ds_row.profile:
-            profiles[ds_id] = ds_row.profile
+    ds_ids = [
+        ds.get("id")
+        for ds in (doc.get("datasets") or [])
+        if ds.get("id")
+    ]
+    profiles: dict[str, Any] = {}
+    if ds_ids:
+        rows = (
+            await session.execute(
+                sa_select(DatasetRow).where(DatasetRow.id.in_(ds_ids))
+            )
+        ).scalars().all()
+        for ds_row in rows:
+            if ds_row.profile:
+                profiles[ds_row.id] = ds_row.profile
 
     try:
         result = await review_pipeline(cfg, doc, catalog, profiles or None)
@@ -452,8 +465,30 @@ async def install_connector_endpoint(body: InstallConnectorIn) -> dict[str, Any]
     """Move a staged connector from plugins/_pending/connectors/<id>/ to
     the live plugins/connectors/ directory. The connector becomes
     available on the next registry refresh (next API restart, OR if
-    the registry exposes a hot-reload, immediately)."""
+    the registry exposes a hot-reload, immediately).
+
+    Server-side re-lints the staged code before promoting; the frontend
+    `safe_to_install` flag is advisory and a direct API call would
+    otherwise bypass the gate, leading to RCE on next registry scan.
+    """
     try:
+        pending_dir = _pending_connector_dir(_REPO_ROOT, body.connector_id)
+        py_path = pending_dir / "connector.py"
+        if not py_path.exists():
+            raise HTTPException(404, f"pending connector {body.connector_id!r} not found")
+        issues = lint_plugin_python(py_path.read_text())
+        if issues:
+            raise HTTPException(
+                400,
+                {
+                    "error": "lint_failed",
+                    "message": "Refusing to install — staged code has lint issues.",
+                    "issues": [
+                        {"line": i.line, "col": i.col, "rule": i.rule, "message": i.message}
+                        for i in issues
+                    ],
+                },
+            )
         path = install_pending_connector(_REPO_ROOT, body.connector_id)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e
@@ -469,7 +504,10 @@ async def install_connector_endpoint(body: InstallConnectorIn) -> dict[str, Any]
 @router.delete("/pending-connector/{connector_id}")
 async def discard_connector_endpoint(connector_id: str) -> dict[str, Any]:
     """Delete a staged connector without installing it."""
-    discard_pending_connector(_REPO_ROOT, connector_id)
+    try:
+        discard_pending_connector(_REPO_ROOT, connector_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     return {"ok": True, "discarded": connector_id}
 
 
@@ -548,8 +586,30 @@ async def generate_step_endpoint(
 
 @router.post("/install-step")
 async def install_step_endpoint(body: InstallStepIn) -> dict[str, Any]:
-    """Move plugins/_pending/steps/<id>/ → plugins/steps/<id>/."""
+    """Move plugins/_pending/steps/<id>/ → plugins/steps/<id>/.
+
+    Server-side re-lints the staged code before promoting (same reason
+    as install-connector — the frontend `safe_to_install` flag can be
+    bypassed by a direct API call).
+    """
     try:
+        pending_dir = _pending_step_dir(_REPO_ROOT, body.step_id)
+        py_path = pending_dir / "step.py"
+        if not py_path.exists():
+            raise HTTPException(404, f"pending step {body.step_id!r} not found")
+        issues = lint_plugin_python(py_path.read_text())
+        if issues:
+            raise HTTPException(
+                400,
+                {
+                    "error": "lint_failed",
+                    "message": "Refusing to install — staged code has lint issues.",
+                    "issues": [
+                        {"line": i.line, "col": i.col, "rule": i.rule, "message": i.message}
+                        for i in issues
+                    ],
+                },
+            )
         path = install_pending_step(_REPO_ROOT, body.step_id)
     except FileNotFoundError as e:
         raise HTTPException(404, str(e)) from e

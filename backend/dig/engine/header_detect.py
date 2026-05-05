@@ -27,13 +27,37 @@ import polars as pl
 
 # Patterns that say "this string is data, not a column name".
 _NUMERIC_RE = re.compile(r"^-?\d+(?:[,.]\d+)?(?:[eE][+-]?\d+)?$")
+# Year names like `2024` are common pivot-export headers — they shouldn't
+# get classified as numeric data on the row-0 side. We carve them out with
+# a separate pattern so `_looks_like_header` can keep them as candidate
+# header tokens while still rejecting longer numeric strings (`2024.5`,
+# `1234567`) as data.
+_BARE_YEAR_RE = re.compile(r"^(19|20)\d{2}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$")
 _BOOL_RE = re.compile(r"^(true|false|yes|no|y|n)$", re.IGNORECASE)
 
 
-def _looks_like_data(s: Any) -> bool:
+def _strip_thousands_separators(s: str) -> str:
+    """Strip `,` only when used as a thousands separator (i.e. between
+    digit triples). The naive `.replace(",", "")` matched `'1,2,3'` —
+    a literal CSV cell with commas — and called it numeric data."""
+    if "," not in s:
+        return s
+    # Match `<digit><,><3 digits>` repeating. If the whole string is shaped
+    # like `1,234,567(.89)?`, strip the commas; otherwise leave as-is.
+    if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?", s):
+        return s.replace(",", "")
+    return s
+
+
+def _looks_like_data(s: Any, *, allow_year: bool = True) -> bool:
     """True if the string parses as numeric / date / boolean — i.e. it
-    looks like a data value, not a column name."""
+    looks like a data value, not a column name.
+
+    `allow_year=False` excludes bare 4-digit years (`2024`) — used when
+    we're testing row 0 for header-shape, since pivot-export headers
+    commonly look like that.
+    """
     if s is None:
         return False
     if isinstance(s, (int, float, bool)):
@@ -41,8 +65,10 @@ def _looks_like_data(s: Any) -> bool:
     s_str = str(s).strip()
     if not s_str:
         return False
+    if not allow_year and _BARE_YEAR_RE.match(s_str):
+        return False
     return bool(
-        _NUMERIC_RE.match(s_str.replace(",", ""))
+        _NUMERIC_RE.match(_strip_thousands_separators(s_str))
         or _DATE_RE.match(s_str)
         or _BOOL_RE.match(s_str),
     )
@@ -55,7 +81,9 @@ def _looks_like_header(s: Any) -> bool:
     s_str = str(s).strip()
     if not s_str:
         return False
-    if _looks_like_data(s_str):
+    # Bare 4-digit years are valid pivot-table headers, so don't reject them
+    # as "data" when scoring header-shape.
+    if _looks_like_data(s_str, allow_year=False):
         return False
     # Field-name shape: not too long, no commas/quotes, mostly identifier chars.
     if len(s_str) > 100:
@@ -63,13 +91,16 @@ def _looks_like_header(s: Any) -> bool:
     return True
 
 
+_DATA_FRAC_THRESHOLD = 0.7  # "rows 1+ look data-shaped" requires this fraction
+
+
 def detect_header(sample_no_header: pl.DataFrame, *, threshold: float = 0.5) -> bool:
     """Given a sample read WITHOUT a header, return True if row 0 looks
     like a header. Vote per-column; majority wins.
 
-    A column votes "header" when row 0 looks header-shaped AND a meaningful
-    fraction (>50%) of rows 1+ look data-shaped. Columns where both row 0
-    and rows 1+ are strings (no signal) abstain rather than vote.
+    A column votes "header" when row 0 looks header-shaped AND ≥70% of
+    rows 1+ look data-shaped. Columns where both row 0 and rows 1+ are
+    strings (no signal) abstain rather than vote.
     """
     if sample_no_header.height < 2 or sample_no_header.width == 0:
         return False
@@ -88,14 +119,17 @@ def detect_header(sample_no_header: pl.DataFrame, *, threshold: float = 0.5) -> 
         if not rest:
             abstentions += 1
             continue
-        first_is_data = _looks_like_data(first)
+        # Bare-year column names (`2024`) are common in pivot exports; treat
+        # them as header candidates by skipping the numeric-as-data check
+        # for row 0 specifically.
+        first_is_data = _looks_like_data(first, allow_year=False)
         first_is_header = _looks_like_header(first)
         rest_data_frac = sum(1 for v in rest if _looks_like_data(v)) / len(rest)
 
-        if first_is_header and rest_data_frac > 0.7 and not first_is_data:
+        if first_is_header and rest_data_frac > _DATA_FRAC_THRESHOLD and not first_is_data:
             # row-0 reads as a name, rest reads as numbers/dates → header
             header_votes += 1
-        elif first_is_data and rest_data_frac > 0.7:
+        elif first_is_data and rest_data_frac > _DATA_FRAC_THRESHOLD:
             # row-0 is data, rest is data → no header for this column
             pass
         else:

@@ -230,7 +230,15 @@ def _is_country(s: str) -> bool:
 
 def _topvalues_pattern_score(top_values: list[dict], predicate: Callable[[Any], bool]) -> tuple[float, int, int]:
     """For string-pattern detectors: count-weighted fraction of top values
-    matching `predicate`. Returns (score, valid_rows, total_rows)."""
+    matching `predicate`. Returns (score, valid_rows, total_rows).
+
+    `total_rows` is the count of *top-K rows inspected* (not the column's
+    full row count). For high-cardinality columns where every value is
+    unique, the top-K covers <0.001% of the column — a 100% match on those
+    K values is not a reliable signal that the rest of the column matches
+    too. Callers should multiply this score by a coverage factor when the
+    column's distinct count exceeds top-K (see `_coverage_penalty`).
+    """
     valid_rows = 0
     total_rows = 0
     for tv in top_values or []:
@@ -244,6 +252,29 @@ def _topvalues_pattern_score(top_values: list[dict], predicate: Callable[[Any], 
     if total_rows == 0:
         return (0.0, 0, 0)
     return (valid_rows / total_rows, valid_rows, total_rows)
+
+
+def _coverage_penalty(profile: dict[str, Any], inspected_rows: int) -> float:
+    """Multiplier in [0.5, 1.0] reflecting what fraction of non-null rows
+    were actually inspected by a top-K pattern check. Caps at 0.5 even
+    when coverage is near zero — a strong pattern in the top-K is *some*
+    evidence, just not as much as full-column coverage.
+
+    Why a soft floor instead of full proportional scaling: some columns
+    (URLs, UUIDs) are inherently high-cardinality and the top-K is the
+    best evidence available; demanding full coverage would suppress every
+    such detection. The floor lets the detector fire with reduced
+    confidence rather than silently miss.
+    """
+    sampled = profile.get("sampledRows") or 0
+    nulls = profile.get("nullCount") or 0
+    non_null = max(0, sampled - nulls)
+    if non_null <= 0 or inspected_rows <= 0:
+        return 0.5
+    coverage = inspected_rows / non_null
+    if coverage >= 0.95:
+        return 1.0
+    return max(0.5, 0.5 + 0.5 * coverage)
 
 
 def _name_match(col_name: str | None, keywords: tuple[str, ...]) -> bool:
@@ -356,14 +387,22 @@ def _detect_timezone(p: dict[str, Any]) -> TypeCandidate | None:
 
 def _string_pattern_detector(type_id: str, predicate: Callable[[str], bool],
                              reason_word: str, threshold: float = 0.85, max_score: float = 0.95):
-    """Factory for "is the column N% of values matching this regex?" detectors."""
+    """Factory for "is the column N% of values matching this regex?" detectors.
+
+    Score is multiplied by `_coverage_penalty` so a 100% match on a top-K
+    that covers <1% of the column produces a softer signal than a 100%
+    match on a top-K that covers most of the column.
+    """
     def detect(p: dict[str, Any]) -> TypeCandidate | None:
         if p.get("type") != "string":
             return None
         score, _, total = _topvalues_pattern_score(p.get("topValues") or [], predicate)
         if score >= threshold and total > 0:
-            return TypeCandidate(type_id, min(score, max_score),
-                                 f"{int(score*100)}% of values are {reason_word}-shaped")
+            penalty = _coverage_penalty(p, total)
+            adjusted = score * penalty
+            reason_suffix = "" if penalty >= 1.0 else f" (top-K coverage: {int(penalty*100)}%)"
+            return TypeCandidate(type_id, min(adjusted, max_score),
+                                 f"{int(score*100)}% of top values are {reason_word}-shaped{reason_suffix}")
         return None
     return detect
 
@@ -374,8 +413,11 @@ def _detect_hex(p: dict[str, Any]) -> TypeCandidate | None:
         return None
     score, _, total = _topvalues_pattern_score(p.get("topValues") or [], _is_hex)
     if score >= 0.85 and total > 0:
-        return TypeCandidate("hex", min(score, 0.95),
-                             f"{int(score*100)}% of values are hex-formatted")
+        penalty = _coverage_penalty(p, total)
+        adjusted = score * penalty
+        reason_suffix = "" if penalty >= 1.0 else f" (top-K coverage: {int(penalty*100)}%)"
+        return TypeCandidate("hex", min(adjusted, 0.95),
+                             f"{int(score*100)}% of top values are hex-formatted{reason_suffix}")
     return None
 
 

@@ -501,10 +501,27 @@ class GlobalWebhookOut(GlobalWebhookIn):
     id: str
 
 
+_HEADER_SECRET_KEYS = {"authorization", "x-api-key", "x-auth-token", "cookie"}
+
+
+def _mask_webhook_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
+    if not headers:
+        return headers
+    return {
+        k: (_mask_secret(v) if k.lower() in _HEADER_SECRET_KEYS else v)
+        for k, v in headers.items()
+    }
+
+
 def _webhook_to_out(w: GlobalWebhook) -> GlobalWebhookOut:
+    # Mask the HMAC signing secret and any auth-shaped headers on read.
+    # The settings endpoints use the same masking pattern for the AI api_key
+    # (see _mask_secret above); webhooks were missed in the original wiring.
     return GlobalWebhookOut(
-        id=w.id, label=w.label, url=w.url, on=w.on, secret=w.secret,
-        headers=w.headers, enabled=w.enabled,
+        id=w.id, label=w.label, url=w.url, on=w.on,
+        secret=_mask_secret(w.secret) if w.secret else None,
+        headers=_mask_webhook_headers(w.headers),
+        enabled=w.enabled,
     )
 
 
@@ -549,8 +566,21 @@ async def update_webhook(
     w.label = body.label
     w.url = body.url
     w.on = body.on
-    w.secret = body.secret
-    w.headers = body.headers
+    # If the inbound `secret` looks like the masked form returned by GET
+    # (contains the masking ellipsis), keep the existing secret rather than
+    # overwriting it. Same for auth-shaped headers. Lets the UI round-trip
+    # the row without round-tripping the secret in plaintext.
+    if body.secret is None or "…" not in (body.secret or ""):
+        w.secret = body.secret
+    if body.headers is not None:
+        merged: dict[str, str] = dict(body.headers)
+        existing = w.headers or {}
+        for k, v in merged.items():
+            if k.lower() in _HEADER_SECRET_KEYS and v and "…" in v:
+                merged[k] = existing.get(k, v)
+        w.headers = merged
+    else:
+        w.headers = body.headers
     w.enabled = body.enabled
     await session.commit()
     return _webhook_to_out(w)

@@ -88,7 +88,10 @@ export function DatasetGrid({ datasetId, columns, totalRows }: Props) {
   );
 
   return (
-    <div className="h-[640px] w-full">
+    // `relative` so the loading overlay positions against this box; without
+    // it the absolute overlay anchored to the viewport and blocked unrelated
+    // UI until the grid mounted.
+    <div className="relative h-[640px] w-full">
       <AgGridReact
         theme={lightTheme}
         columnDefs={colDefs}

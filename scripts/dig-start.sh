@@ -100,13 +100,19 @@ if [[ ! -d "$REPO_ROOT/frontend/node_modules" ]]; then
   exit 1
 fi
 
-# Refuse to start if anything is already listening on the requested ports.
+# Refuse to start if anything is already LISTENING on the requested ports.
+# `-sTCP:LISTEN` matters — without the filter, lingering CLOSED / TIME_WAIT /
+# CLOSE_WAIT sockets (e.g. left by a recently-killed dev process or a client
+# that connected and hung up) trigger a spurious "port already in use" error
+# even though nothing is actually serving. The other dig-* scripts
+# (dig-stop, dig-restart, dig-restart-web) already filter to LISTEN — keep
+# this one consistent.
 if command -v lsof >/dev/null 2>&1; then
-  if lsof -ti tcp:"$API_PORT" >/dev/null 2>&1; then
+  if lsof -ti tcp:"$API_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     err "[dig start] port $API_PORT already in use. Stop it first or pass --api-port N."
     exit 2
   fi
-  if lsof -ti tcp:"$WEB_PORT" >/dev/null 2>&1; then
+  if lsof -ti tcp:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     err "[dig start] port $WEB_PORT already in use. Stop it first or pass --web-port N."
     exit 2
   fi

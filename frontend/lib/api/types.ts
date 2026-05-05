@@ -113,6 +113,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/datasets/from-uri": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Dataset From Uri
+         * @description Ingest a dataset from a URI without a file upload — for connectors
+         *     that pull from a remote source (REST APIs, JDBC, S3, …). The connector
+         *     is responsible for actually reading the data; the row + profile flow
+         *     is the same as upload_dataset.
+         *
+         *     Use this when the connector reads via a URL/URI rather than a local
+         *     file. The legacy POST /datasets endpoint stays for file-upload connectors.
+         */
+        post: operations["create_dataset_from_uri_datasets_from_uri_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/datasets/{dataset_id}/sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pick Sheet
+         * @description Resume ingestion of a multi-sheet Excel upload by picking which
+         *     sheet to materialise.
+         *
+         *     The dataset must be in status='awaiting_sheet_pick' (set by upload_dataset
+         *     when an Excel workbook with 2+ sheets is uploaded without an explicit
+         *     sheet option). Validates the chosen sheet exists in the saved
+         *     `options.available_sheets` list, then runs the same ingest+profile
+         *     pipeline as the single-sheet path.
+         */
+        put: operations["pick_sheet_datasets__dataset_id__sheet_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/datasets/{dataset_id}/island": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Pick Island
+         * @description Resume ingestion of an Excel upload paused at the island-pick step.
+         *
+         *     The dataset must be in status='awaiting_island_pick'. Validates the
+         *     chosen range against the saved `options.available_islands` list (so
+         *     the user can't sneak in an arbitrary range that bypasses the
+         *     detection — same anti-pattern as the sheet-pick endpoint), then runs
+         *     ingest+profile with `island_range` set on the connector options.
+         */
+        put: operations["pick_island_datasets__dataset_id__island_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/datasets/{dataset_id}/profile": {
         parameters: {
             query?: never;
@@ -218,7 +297,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Pipelines */
+        /**
+         * List Pipelines
+         * @description Paginated newest-first list. Default page is 100; max 500.
+         *
+         *     The previous form returned every row and computed counts by parsing
+         *     each `document` blob — fine for a hobby corpus, OOM-y for any larger
+         *     install. Pagination is mandatory; the home page asks for the first
+         *     page, the dropdown switcher asks for `?limit=10&offset=0`, etc.
+         */
         get: operations["list_pipelines_pipelines_get"];
         put?: never;
         /** Create Pipeline */
@@ -248,6 +335,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pipelines/{pipeline_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pipeline History */
+        get: operations["list_pipeline_history_pipelines__pipeline_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/history/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Pipeline Snapshot */
+        get: operations["get_pipeline_snapshot_pipelines__pipeline_id__history__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Diff Pipeline
+         * @description Diff two pipeline document references (snapshot id / "current" / "run:").
+         */
+        post: operations["diff_pipeline_pipelines__pipeline_id__diff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/restore/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Pipeline */
+        post: operations["restore_pipeline_pipelines__pipeline_id__restore__snapshot_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/lineage/columns/{node_id}/{column}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Column Lineage
+         * @description Trace a column's ancestry back to its dataset roots.
+         *
+         *     Returns a graph (nodes + edges) showing every step + column that fed into
+         *     the target. Pure-structural — uses each step's `column_dependencies()`
+         *     declaration; works without running the pipeline.
+         */
+        get: operations["get_column_lineage_pipelines__pipeline_id__lineage_columns__node_id___column__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pipelines/{pipeline_id}/validate": {
         parameters: {
             query?: never;
@@ -257,7 +439,23 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Validate Pipeline */
+        /**
+         * Validate Pipeline
+         * @description Validate the pipeline + report per-node compile status.
+         *
+         *     Response shape:
+         *       {
+         *         ok: bool,
+         *         errors: [str, ...],
+         *         schemas: { node_id: { col: type, ... }, ... },
+         *         nodeStatus: { node_id: { ok: bool, error?: str } }
+         *       }
+         *
+         *     `nodeStatus` lets the editor mark broken steps in red — typical case is
+         *     "user added a step that referenced a column dropped/renamed by an
+         *     earlier step." The frontend pill turns red and the tooltip shows the
+         *     specific compile error.
+         */
         post: operations["validate_pipeline_pipelines__pipeline_id__validate_post"];
         delete?: never;
         options?: never;
@@ -378,6 +576,31 @@ export interface paths {
          *     Defaults to the last node in topological order.
          */
         post: operations["compile_pipeline_pipelines__pipeline_id__compile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Pipeline
+         * @description Run the pipeline on the backend DuckDB and return a sample for the live grid.
+         *
+         *     Used as a transparent fallback when DuckDB-WASM in the browser can't run
+         *     the SQL — the canonical case is the spatial extension (geographic /
+         *     GEOMETRY functions), which isn't bundled with the WASM build. Returns
+         *     rows in the same shape the frontend's local-preview path produces.
+         */
+        post: operations["preview_pipeline_pipelines__pipeline_id__preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -730,10 +953,466 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description Read the resolved AI config — api_key is masked.
+         */
+        get: operations["get_config_ai_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Models Endpoint
+         * @description List the models available at the configured endpoint.
+         *
+         *     Calls GET {endpoint}/models on the configured provider. Always returns
+         *     200 with possibly-empty `models` — the frontend uses an empty list as
+         *     "couldn't fetch, fall back to free-text input". Never raises so the
+         *     settings page can poll silently.
+         */
+        get: operations["list_models_endpoint_ai_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Provider
+         * @description Ping the configured AI provider. Powers the "Test connection" button.
+         *
+         *     Always returns 200 — failures land in the response body so the UI
+         *     can show a friendly error without parsing HTTP statuses.
+         */
+        post: operations["probe_provider_ai_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description Generic chat-completions proxy. The frontend never holds the API
+         *     key — every LLM call routes through this endpoint.
+         */
+        post: operations["chat_ai_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/explain-pipeline/{pipeline_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explain
+         * @description Generate a Markdown explanation of a saved pipeline. Reads the
+         *     pipeline doc + the live step manifest catalog, asks the LLM.
+         */
+        post: operations["explain_ai_explain_pipeline__pipeline_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/review-pipeline/{pipeline_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review
+         * @description Severity-ranked findings for a saved pipeline.
+         *
+         *     Reviews ordering, type mismatches, missing expectations, lineage
+         *     opportunities, and ergonomics. Returns typed JSON; the frontend
+         *     renders each finding as an actionable card.
+         */
+        post: operations["review_ai_review_pipeline__pipeline_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/fix-expression": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fix Expression Endpoint
+         * @description Suggest a corrected SQL expression.
+         */
+        post: operations["fix_expression_endpoint_ai_fix_expression_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/probe-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Probe Endpoint
+         * @description Fetch a URL once and return its shape — status, content-type, JSON
+         *     structure preview. Used by the Generate Connector wizard so the user
+         *     can verify their URL works before committing AI tokens to generating
+         *     a connector around it.
+         */
+        post: operations["probe_endpoint_ai_probe_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/generate-connector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Connector Endpoint
+         * @description Ask the LLM to generate a connector folder, run the safety lint,
+         *     stage the result in plugins/_pending/. Returns the generated content
+         *     + lint findings; the user reviews and explicitly installs.
+         */
+        post: operations["generate_connector_endpoint_ai_generate_connector_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/install-connector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Connector Endpoint
+         * @description Move a staged connector from plugins/_pending/connectors/<id>/ to
+         *     the live plugins/connectors/ directory. The connector becomes
+         *     available on the next registry refresh (next API restart, OR if
+         *     the registry exposes a hot-reload, immediately).
+         *
+         *     Server-side re-lints the staged code before promoting; the frontend
+         *     `safe_to_install` flag is advisory and a direct API call would
+         *     otherwise bypass the gate, leading to RCE on next registry scan.
+         */
+        post: operations["install_connector_endpoint_ai_install_connector_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/pending-connector/{connector_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard Connector Endpoint
+         * @description Delete a staged connector without installing it.
+         */
+        delete: operations["discard_connector_endpoint_ai_pending_connector__connector_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/suggest-next-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Next Endpoint
+         * @description Suggest the next step(s) to add to a pipeline given a goal.
+         */
+        post: operations["suggest_next_endpoint_ai_suggest_next_step_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/generate-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Step Endpoint
+         * @description Ask the LLM to generate a step plugin folder, lint it, stage it
+         *     in plugins/_pending/steps/. The user reviews + explicitly installs.
+         */
+        post: operations["generate_step_endpoint_ai_generate_step_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/install-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Step Endpoint
+         * @description Move plugins/_pending/steps/<id>/ → plugins/steps/<id>/.
+         *
+         *     Server-side re-lints the staged code before promoting (same reason
+         *     as install-connector — the frontend `safe_to_install` flag can be
+         *     bypassed by a direct API call).
+         */
+        post: operations["install_step_endpoint_ai_install_step_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/pending-step/{step_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard Step Endpoint
+         * @description Delete a staged step without installing.
+         */
+        delete: operations["discard_step_endpoint_ai_pending_step__step_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Schedules
+         * @description List all DIG-managed crontab entries.
+         */
+        get: operations["list_schedules_schedules_get"];
+        put?: never;
+        /**
+         * Add Schedule
+         * @description Add or replace a schedule for a pipeline.
+         */
+        post: operations["add_schedule_schedules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedules/{pipeline_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Schedule
+         * @description Remove all crontab entries for the given pipeline.
+         */
+        delete: operations["remove_schedule_schedules__pipeline_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description List user-owned templates. Defaults to public + unlisted with curated first.
+         */
+        get: operations["list_templates_templates_get"];
+        put?: never;
+        /**
+         * Create Template
+         * @description Share a pipeline as a template. Strips secrets before storage.
+         */
+        post: operations["create_template_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template */
+        get: operations["get_template_templates__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{slug}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone Template
+         * @description Materialize a template into a new pipeline owned by the caller.
+         */
+        post: operations["clone_template_templates__slug__clone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AiConfigOut
+         * @description Resolved AI config for display. api_key is masked.
+         */
+        AiConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Provider */
+            provider: string;
+            /** Endpoint */
+            endpoint: string;
+            /** Model */
+            model: string;
+            /** Has Api Key */
+            has_api_key: boolean;
+            /** Max Tokens */
+            max_tokens: number;
+            /** Temperature */
+            temperature: number;
+        };
         /** AnnotationsUpdate */
         AnnotationsUpdate: {
             /** Annotations */
@@ -757,6 +1436,38 @@ export interface components {
              * @default {}
              */
             options: string;
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /** Role */
+            role: string;
+            /** Content */
+            content: string;
+        };
+        /** ChatRequest */
+        ChatRequest: {
+            /** Messages */
+            messages: components["schemas"]["ChatMessage"][];
+            /**
+             * Response Format
+             * @description Pass 'json_object' to request structured JSON output.
+             */
+            response_format?: string | null;
+            /** Temperature */
+            temperature?: number | null;
+            /** Max Tokens */
+            max_tokens?: number | null;
+        };
+        /** ChatResponse */
+        ChatResponse: {
+            /** Text */
+            text: string;
+            /** Model */
+            model: string;
+            /** Usage */
+            usage?: {
+                [key: string]: number;
+            } | null;
         };
         /** ColumnInfo */
         ColumnInfo: {
@@ -795,6 +1506,59 @@ export interface components {
             /** Candidates */
             candidates?: components["schemas"]["TypeCandidate"][];
         };
+        /** ColumnLineageEdgeOut */
+        ColumnLineageEdgeOut: {
+            /** From Node Id */
+            from_node_id: string;
+            /** From Column */
+            from_column: string;
+            /** To Node Id */
+            to_node_id: string;
+            /** To Column */
+            to_column: string;
+            /** Transform */
+            transform: string;
+        };
+        /** ColumnLineageNodeOut */
+        ColumnLineageNodeOut: {
+            /** Node Id */
+            node_id: string;
+            /** Is Dataset */
+            is_dataset: boolean;
+            /** Column */
+            column: string;
+            /** Label */
+            label: string;
+            /** Transform */
+            transform: string;
+            /** Expression */
+            expression?: string | null;
+        };
+        /** ColumnLineageOut */
+        ColumnLineageOut: {
+            /** Target Node Id */
+            target_node_id: string;
+            /** Target Column */
+            target_column: string;
+            /** Nodes */
+            nodes: components["schemas"]["ColumnLineageNodeOut"][];
+            /** Edges */
+            edges: components["schemas"]["ColumnLineageEdgeOut"][];
+        };
+        /** CompileOut */
+        CompileOut: {
+            /** Sql */
+            sql: string;
+            /** Files */
+            files?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Needs Spatial
+             * @default false
+             */
+            needs_spatial: boolean;
+        };
         /** CreatePipelineRequest */
         CreatePipelineRequest: {
             /** Name */
@@ -803,6 +1567,47 @@ export interface components {
             document?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** CreateTemplateRequest */
+        CreateTemplateRequest: {
+            /** Pipelineid */
+            pipelineId: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /** Sampledataseturl */
+            sampleDatasetUrl?: string | null;
+            /**
+             * Needssampledataset
+             * @default false
+             */
+            needsSampleDataset: boolean;
+            /** Authorhandle */
+            authorHandle?: string | null;
+            /** Authorurl */
+            authorUrl?: string | null;
+            /**
+             * Visibility
+             * @default unlisted
+             */
+            visibility: string;
+        };
+        /** DatasetDiffOut */
+        DatasetDiffOut: {
+            /** Kind */
+            kind: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Label */
+            label: string;
+            /** Option Changes */
+            option_changes?: components["schemas"]["ParamDiffOut"][];
         };
         /** DatasetOut */
         DatasetOut: {
@@ -830,25 +1635,15 @@ export interface components {
             annotations?: {
                 [key: string]: string;
             } | null;
-            /** Forward-patched until next `pnpm gen:api` after backend restart.
-             *  Populated only when status === 'awaiting_sheet_pick' for a
-             *  multi-sheet Excel upload. */
+            /** Availablesheets */
             availableSheets?: string[] | null;
+            /** Selectedsheet */
             selectedSheet?: string | null;
-            /** Populated only when status === 'awaiting_island_pick'. Each
-             *  island carries top_row/bottom_row/left_col/right_col, n_rows,
-             *  n_cols, range_a1 (Excel A1 string), preview_first_row, density. */
-            availableIslands?: Array<{
-                top_row: number;
-                bottom_row: number;
-                left_col: number;
-                right_col: number;
-                n_rows: number;
-                n_cols: number;
-                range_a1: string;
-                preview_first_row: (string | null)[];
-                density: number;
-            }> | null;
+            /** Availableislands */
+            availableIslands?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Selectedisland */
             selectedIsland?: string | null;
             /**
              * Createdat
@@ -872,6 +1667,82 @@ export interface components {
             /** Columns */
             columns: components["schemas"]["ColumnInfo"][];
         };
+        /**
+         * DiffRequest
+         * @description Either side may name a snapshot id, "current" (live document), or
+         *     "run:<run_id>" (the snapshot taken when that run started).
+         */
+        DiffRequest: {
+            /**
+             * Fromref
+             * @default previous
+             */
+            fromRef: string;
+            /**
+             * Toref
+             * @default current
+             */
+            toRef: string;
+        };
+        /** ExplainOut */
+        ExplainOut: {
+            /** Markdown */
+            markdown: string;
+            /** Model */
+            model: string;
+        };
+        /** FixExpressionIn */
+        FixExpressionIn: {
+            /** Expression */
+            expression: string;
+            /**
+             * Columns
+             * @description List of {name, type} for the expression's available columns.
+             */
+            columns?: {
+                [key: string]: string;
+            }[];
+            /**
+             * Intent
+             * @description Optional plain-English description of what the user wants the expression to do.
+             */
+            intent?: string | null;
+            /**
+             * Error
+             * @description Optional DuckDB error message from a failed validation.
+             */
+            error?: string | null;
+            /**
+             * Kind
+             * @description 'predicate' (filter_rows) or 'scalar' (derive_column) — affects expected result type.
+             * @default predicate
+             */
+            kind: string;
+        };
+        /** FixExpressionOut */
+        FixExpressionOut: {
+            /** Fixed */
+            fixed: string;
+            /** Explanation */
+            explanation: string;
+            /** Confidence */
+            confidence: string;
+            /** Model */
+            model: string;
+        };
+        /** FromUriRequest */
+        FromUriRequest: {
+            /** Name */
+            name: string;
+            /** Connector Id */
+            connector_id: string;
+            /** Uri */
+            uri: string;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            };
+        };
         /** FsBrowseOut */
         FsBrowseOut: {
             /** Path */
@@ -891,6 +1762,81 @@ export interface components {
             name: string;
             /** Is Dir */
             is_dir: boolean;
+        };
+        /** GenerateConnectorIn */
+        GenerateConnectorIn: {
+            /** Url */
+            url: string;
+            /** Intent */
+            intent?: string | null;
+            /** Sample Shape */
+            sample_shape?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Auth Kind
+             * @default none
+             */
+            auth_kind: string;
+        };
+        /** GenerateStepIn */
+        GenerateStepIn: {
+            /** Description */
+            description: string;
+            /** Schema Hint */
+            schema_hint?: {
+                [key: string]: string;
+            };
+        };
+        /** GeneratedConnectorOut */
+        GeneratedConnectorOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Manifest */
+            manifest: {
+                [key: string]: unknown;
+            };
+            /** Connector Py */
+            connector_py: string;
+            /** Lint Issues */
+            lint_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Model */
+            model: string;
+            /** Pending Path */
+            pending_path: string;
+            /** Safe To Install */
+            safe_to_install: boolean;
+        };
+        /** GeneratedStepOut */
+        GeneratedStepOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Manifest */
+            manifest: {
+                [key: string]: unknown;
+            };
+            /** Step Py */
+            step_py: string;
+            /** Lint Issues */
+            lint_issues: {
+                [key: string]: unknown;
+            }[];
+            /** Model */
+            model: string;
+            /** Pending Path */
+            pending_path: string;
+            /** Safe To Install */
+            safe_to_install: boolean;
         };
         /** GlobalWebhookIn */
         GlobalWebhookIn: {
@@ -954,6 +1900,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** HistoryEntry */
+        HistoryEntry: {
+            /** Id */
+            id: string;
+            /** Pipelineid */
+            pipelineId: string;
+            /** Etag */
+            etag: number;
+            /** Changesummary */
+            changeSummary?: string | null;
+            /** Changereason */
+            changeReason?: string | null;
+            /** Triggeredby */
+            triggeredBy: string;
+            /** Documenthash */
+            documentHash: string;
+            /** Runid */
+            runId?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /** InstallConnectorIn */
+        InstallConnectorIn: {
+            /** Connector Id */
+            connector_id: string;
+        };
+        /** InstallStepIn */
+        InstallStepIn: {
+            /** Step Id */
+            step_id: string;
+        };
         /** JdbcDriverIn */
         JdbcDriverIn: {
             /** Name */
@@ -982,6 +1962,76 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** ModelsOut */
+        ModelsOut: {
+            /** Models */
+            models: string[];
+            /** Endpoint */
+            endpoint: string;
+        };
+        /** NodeStatusOut */
+        NodeStatusOut: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** OutputDiffOut */
+        OutputDiffOut: {
+            /** Kind */
+            kind: string;
+            /** Output Id */
+            output_id: string;
+            /** Name */
+            name: string;
+            /** A From */
+            a_from?: string | null;
+            /** B From */
+            b_from?: string | null;
+        };
+        /** ParamDiffOut */
+        ParamDiffOut: {
+            /** Key */
+            key: string;
+            /** A Value */
+            a_value?: unknown;
+            /** B Value */
+            b_value?: unknown;
+            /** A Summary */
+            a_summary: string;
+            /** B Summary */
+            b_summary: string;
+        };
+        /**
+         * PickIslandRequest
+         * @description User-supplied range. Format: Excel A1, e.g. 'B2:F50'.
+         */
+        PickIslandRequest: {
+            /** Range */
+            range: string;
+        };
+        /** PickSheetRequest */
+        PickSheetRequest: {
+            /** Sheet */
+            sheet: string;
+        };
+        /** PipelineDiffOut */
+        PipelineDiffOut: {
+            /** Summary */
+            summary: string;
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Steps */
+            steps: components["schemas"]["StepDiffOut"][];
+            /** Datasets */
+            datasets: components["schemas"]["DatasetDiffOut"][];
+            /** Outputs */
+            outputs: components["schemas"]["OutputDiffOut"][];
+            /** Metadata Changes */
+            metadata_changes: components["schemas"]["ParamDiffOut"][];
+        };
         /**
          * PipelineDoc
          * @description API envelope: id, etag, and the pipeline document.
@@ -1005,6 +2055,24 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+        };
+        /**
+         * PipelineExportOut
+         * @description Self-contained `.dig.json` envelope written by `/pipelines/{id}/export`.
+         */
+        PipelineExportOut: {
+            /** $Dig */
+            $dig: string;
+            /** Exportedat */
+            exportedAt: string;
+            /** Etag */
+            etag: number;
+            /** Name */
+            name: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
         };
         /** PipelineSummary */
         PipelineSummary: {
@@ -1030,6 +2098,68 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+        };
+        /** PreviewOut */
+        PreviewOut: {
+            /** Columns */
+            columns: {
+                [key: string]: unknown;
+            }[];
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Rowcount */
+            rowCount?: number | null;
+            /** Samplerows */
+            sampleRows?: number | null;
+            /**
+             * Fellbacktobackend
+             * @default false
+             */
+            fellBackToBackend: boolean;
+        };
+        /** ProbeOut */
+        ProbeOut: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Reply */
+            reply?: string | null;
+        };
+        /** ProbeUrlIn */
+        ProbeUrlIn: {
+            /** Url */
+            url: string;
+            /** Auth Header */
+            auth_header?: string | null;
+        };
+        /** ReviewFinding */
+        ReviewFinding: {
+            /** Severity */
+            severity: string;
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /** Explanation */
+            explanation: string;
+            /** Affected Nodes */
+            affected_nodes: string[];
+            /** Confidence */
+            confidence: number;
+        };
+        /** ReviewOut */
+        ReviewOut: {
+            /** Findings */
+            findings: components["schemas"]["ReviewFinding"][];
+            /** Model */
+            model: string;
+            /** Rawtext */
+            rawText?: string | null;
         };
         /** RowsPage */
         RowsPage: {
@@ -1079,6 +2209,41 @@ export interface components {
             /** Samplerows */
             sampleRows?: number | null;
         };
+        /** RunsDiffOut */
+        RunsDiffOut: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Added */
+            added?: unknown[];
+            /** Dropped */
+            dropped?: unknown[];
+            /** Changed */
+            changed?: unknown[];
+            /** Joinkey */
+            joinKey?: string | null;
+        };
+        /** ScheduleAddRequest */
+        ScheduleAddRequest: {
+            /** Pipeline Id */
+            pipeline_id: string;
+            /** Cron */
+            cron: string;
+            /** Sample Rows */
+            sample_rows?: number | null;
+        };
+        /** ScheduleEntry */
+        ScheduleEntry: {
+            /** Pipeline Id */
+            pipeline_id: string;
+            /** Cron */
+            cron: string;
+            /** Sample Rows */
+            sample_rows?: number | null;
+            /** Raw */
+            raw: string;
+        };
         /** SettingDescriptor */
         SettingDescriptor: {
             /** Key */
@@ -1100,6 +2265,151 @@ export interface components {
         SettingValue: {
             /** Value */
             value?: unknown | null;
+        };
+        /** SnapshotOut */
+        SnapshotOut: {
+            /** Id */
+            id: string;
+            /** Pipelineid */
+            pipelineId: string;
+            /** Etag */
+            etag: number;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Changesummary */
+            changeSummary?: string | null;
+            /** Changereason */
+            changeReason?: string | null;
+            /** Triggeredby */
+            triggeredBy: string;
+            /** Documenthash */
+            documentHash: string;
+            /** Runid */
+            runId?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
+        /** StepDiffOut */
+        StepDiffOut: {
+            /** Kind */
+            kind: string;
+            /** Node Id */
+            node_id: string;
+            /** Label */
+            label: string;
+            /** Step Type */
+            step_type: string;
+            /** A Position */
+            a_position?: number | null;
+            /** B Position */
+            b_position?: number | null;
+            /** Param Changes */
+            param_changes?: components["schemas"]["ParamDiffOut"][];
+        };
+        /** SuggestNextIn */
+        SuggestNextIn: {
+            /** Pipeline Id */
+            pipeline_id: string;
+            /**
+             * Focused Node Id
+             * @description Node id whose schema is used as the 'currently visible' state. None = no focus, suggestions are about adding a first transform after the dataset.
+             */
+            focused_node_id?: string | null;
+            /**
+             * Focused Schema
+             * @description Map of column-name → logical-type at the focused node.
+             */
+            focused_schema?: {
+                [key: string]: string;
+            };
+            /** Goal */
+            goal: string;
+        };
+        /** SuggestNextOut */
+        SuggestNextOut: {
+            /** Suggestions */
+            suggestions: {
+                [key: string]: unknown;
+            }[];
+            /** Model */
+            model: string;
+        };
+        /** TemplateDetailOut */
+        TemplateDetailOut: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string | null;
+            /** Tags */
+            tags: string[];
+            /** Needs Sample Dataset */
+            needs_sample_dataset: boolean;
+            /** Sample Dataset Url */
+            sample_dataset_url?: string | null;
+            /** Author Handle */
+            author_handle?: string | null;
+            /** Author Url */
+            author_url?: string | null;
+            /** Is Curated */
+            is_curated: boolean;
+            /** Visibility */
+            visibility: string;
+            /** Upvotes */
+            upvotes: number;
+            /** View Count */
+            view_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+        };
+        /** TemplateOut */
+        TemplateOut: {
+            /** Id */
+            id: string;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string | null;
+            /** Tags */
+            tags: string[];
+            /** Needs Sample Dataset */
+            needs_sample_dataset: boolean;
+            /** Sample Dataset Url */
+            sample_dataset_url?: string | null;
+            /** Author Handle */
+            author_handle?: string | null;
+            /** Author Url */
+            author_url?: string | null;
+            /** Is Curated */
+            is_curated: boolean;
+            /** Visibility */
+            visibility: string;
+            /** Upvotes */
+            upvotes: number;
+            /** View Count */
+            view_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * TypeCandidate
@@ -1131,6 +2441,23 @@ export interface components {
             };
             /** Expectedetag */
             expectedEtag?: number | null;
+        };
+        /** ValidateOut */
+        ValidateOut: {
+            /** Ok */
+            ok: boolean;
+            /** Errors */
+            errors: string[];
+            /** Schemas */
+            schemas: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Nodestatus */
+            nodeStatus: {
+                [key: string]: components["schemas"]["NodeStatusOut"];
+            };
         };
         /** ValidationError */
         ValidationError: {
@@ -1331,6 +2658,109 @@ export interface operations {
             };
         };
     };
+    create_dataset_from_uri_datasets_from_uri_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FromUriRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pick_sheet_datasets__dataset_id__sheet_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PickSheetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pick_island_datasets__dataset_id__island_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PickIslandRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_profile_datasets__dataset_id__profile_get: {
         parameters: {
             query?: never;
@@ -1494,7 +2924,10 @@ export interface operations {
     };
     list_pipelines_pipelines_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1508,6 +2941,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1640,6 +3082,171 @@ export interface operations {
             };
         };
     };
+    list_pipeline_history_pipelines__pipeline_id__history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pipeline_snapshot_pipelines__pipeline_id__history__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_pipeline_pipelines__pipeline_id__diff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineDiffOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_pipeline_pipelines__pipeline_id__restore__snapshot_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineDoc"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_column_lineage_pipelines__pipeline_id__lineage_columns__node_id___column__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+                node_id: string;
+                column: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColumnLineageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_pipeline_pipelines__pipeline_id__validate_post: {
         parameters: {
             query?: never;
@@ -1657,9 +3264,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ValidateOut"];
                 };
             };
             /** @description Validation Error */
@@ -1690,9 +3295,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PipelineExportOut"];
                 };
             };
             /** @description Validation Error */
@@ -1815,9 +3418,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CompileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_pipeline_pipelines__pipeline_id__preview_post: {
+        parameters: {
+            query?: {
+                sample_rows?: number;
+                preview_limit?: number;
+                terminal?: string | null;
+            };
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -2050,9 +3686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RunsDiffOut"];
                 };
             };
             /** @description Validation Error */
@@ -2501,6 +4135,680 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FsBrowseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_ai_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiConfigOut"];
+                };
+            };
+        };
+    };
+    list_models_endpoint_ai_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsOut"];
+                };
+            };
+        };
+    };
+    probe_provider_ai_probe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeOut"];
+                };
+            };
+        };
+    };
+    chat_ai_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    explain_ai_explain_pipeline__pipeline_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplainOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_ai_review_pipeline__pipeline_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fix_expression_endpoint_ai_fix_expression_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FixExpressionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixExpressionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_endpoint_ai_probe_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeUrlIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_connector_endpoint_ai_generate_connector_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateConnectorIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedConnectorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_connector_endpoint_ai_install_connector_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallConnectorIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_connector_endpoint_ai_pending_connector__connector_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connector_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_next_endpoint_ai_suggest_next_step_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestNextIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestNextOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_step_endpoint_ai_generate_step_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateStepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratedStepOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_step_endpoint_ai_install_step_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallStepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_step_endpoint_ai_pending_step__step_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                step_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_schedules_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleEntry"][];
+                };
+            };
+        };
+    };
+    add_schedule_schedules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_schedule_schedules__pipeline_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_templates_templates_get: {
+        parameters: {
+            query?: {
+                visibility?: string | null;
+                tag?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_template_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_template_templates__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clone_template_templates__slug__clone_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */

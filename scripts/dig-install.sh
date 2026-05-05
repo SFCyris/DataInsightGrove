@@ -85,9 +85,17 @@ if [[ -n "$PERSIST_API_PORT$PERSIST_WEB_PORT$PERSIST_API_HOST$PERSIST_WEB_HOST$P
   fi
 fi
 
+# Step counter — the rebuild stage is conditional, so the numbering needs
+# to reflect what's actually running rather than always showing /4 with a
+# gap. Increment STEP_NO before each header.
+TOTAL_STEPS=3
+[[ "$REBUILD" -eq 1 && "$CHECK_ONLY" -ne 1 ]] && TOTAL_STEPS=4
+STEP_NO=0
+step() { STEP_NO=$((STEP_NO + 1)); info "[$STEP_NO/$TOTAL_STEPS] $*"; }
+
 # ---- 1. Prerequisite checks ------------------------------------------------
 
-info "[1/4] checking prerequisites…"
+step "checking prerequisites…"
 
 # python3 ≥ 3.11
 PY="$(command -v python3 || command -v python || true)"
@@ -112,26 +120,91 @@ fi
 PNPM_VERSION="$(pnpm --version 2>/dev/null || echo '?')"
 ok "  ✓ pnpm $PNPM_VERSION ($(command -v pnpm))"
 
-# Optional but useful: report Java if --jdbc was requested.
+# Java + cmake — required for the [jdbc] extra (JPype1 has no prebuilt wheels
+# on macOS arm64 and most modern Linux, so pip falls back to building from
+# source which needs both a real JDK and CMake).
+#
+# Subtle macOS gotcha that bit a real user: `/usr/bin/java` is a STUB shipped
+# by the OS that exits with status 1 and prints "Unable to locate a Java
+# Runtime" when no JDK is installed. `command -v java` succeeds against the
+# stub, but every subsequent `java -version` call fails. The fix is to
+# actually run `java -version` and inspect both the exit code AND the
+# message text — the stub's "Unable to locate" text is the tell.
 if [[ "$WITH_JDBC" -eq 1 ]]; then
+  jdbc_blocked=0
+
+  java_present=0
   if command -v java >/dev/null 2>&1; then
-    JAVA_VERSION="$(java -version 2>&1 | head -n1)"
-    ok "  ✓ java present — $JAVA_VERSION"
-  else
-    warn "  ⚠ --jdbc requested but \`java\` not on PATH."
-    warn "    JPype1 wheels work without a JDK at install time, but the JDBC connector"
-    warn "    needs a JRE 8+ at runtime. Install one before using jdbc:// datasets."
+    JAVA_OUT="$(java -version 2>&1 || true)"
+    JAVA_RC="$?"
+    if [[ "$JAVA_RC" -eq 0 ]] && ! grep -qiE "Unable to locate a Java Runtime|No Java runtime present" <<< "$JAVA_OUT"; then
+      JAVA_VERSION="$(printf '%s\n' "$JAVA_OUT" | head -n1)"
+      ok "  ✓ java works — $JAVA_VERSION"
+      java_present=1
+    fi
   fi
+  if [[ "$java_present" -eq 0 ]]; then
+    err "  ✗ --jdbc requires a working JDK ≥ 8 on PATH."
+    err "    \`java -version\` failed (or hit the macOS Java stub at /usr/bin/java)."
+    case "$(uname -s)" in
+      Darwin)
+        err "    Install one of:"
+        err "      brew install --cask temurin             # Eclipse Temurin (recommended)"
+        err "      brew install openjdk@17 && sudo ln -sfn \$(brew --prefix)/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk"
+        ;;
+      Linux)
+        err "    Install one of:"
+        err "      sudo apt install -y default-jdk         # Debian / Ubuntu"
+        err "      sudo dnf install -y java-17-openjdk-devel  # Fedora / RHEL"
+        ;;
+      *)
+        err "    Install a JDK 8+ for your platform and re-run."
+        ;;
+    esac
+    jdbc_blocked=1
+  fi
+
   if ! command -v cmake >/dev/null 2>&1; then
-    warn "  ⚠ cmake not on PATH — JPype1 may need to build from source."
-    warn "    On macOS: brew install cmake. On Debian/Ubuntu: apt install cmake."
+    err "  ✗ --jdbc requires cmake (JPype1 builds from source on macOS arm64 / modern Linux)."
+    case "$(uname -s)" in
+      Darwin) err "    brew install cmake" ;;
+      Linux)  err "    sudo apt install -y cmake   # Debian / Ubuntu";;
+      *)      err "    Install cmake for your platform and re-run." ;;
+    esac
+    jdbc_blocked=1
+  else
+    ok "  ✓ cmake $(cmake --version | head -n1 | awk '{print $3}')"
+  fi
+
+  # Apache Ant — JPype1's CMakeLists.txt does `find_program(ANT_EXECUTABLE ant)`
+  # to build its embedded jar. Without Ant the cmake configure step fails
+  # AFTER passing the Java + cmake checks, which is the most-frustrating
+  # failure mode (you fix one prereq, re-run, hit the next). Detect early.
+  if ! command -v ant >/dev/null 2>&1; then
+    err "  ✗ --jdbc requires Apache Ant (JPype1's build invokes \`ant\` to compile its embedded JAR)."
+    case "$(uname -s)" in
+      Darwin) err "    brew install ant" ;;
+      Linux)  err "    sudo apt install -y ant   # Debian / Ubuntu" ;;
+      *)      err "    Install Apache Ant for your platform and re-run." ;;
+    esac
+    jdbc_blocked=1
+  else
+    ok "  ✓ ant $(ant -version 2>/dev/null | awk '{print $4}')"
+  fi
+
+  if [[ "$jdbc_blocked" -eq 1 ]]; then
+    err ""
+    err "  Aborting before any install runs. Re-run \`./scripts/dig-install.sh\` (without"
+    err "  --jdbc) for a working core install — JDBC is opt-in and not needed for any"
+    err "  built-in step."
+    exit 1
   fi
 fi
 
 # ---- 2. Optional rebuild — wipe everything ---------------------------------
 
 if [[ "$REBUILD" -eq 1 && "$CHECK_ONLY" -ne 1 ]]; then
-  info "[2/4] --rebuild requested — wiping previous install…"
+  step "--rebuild requested — wiping previous install…"
   # Stop running services FIRST so we're not pulling node_modules out from
   # under a live `pnpm dev` (or `dig-api` uvicorn) process. Without this,
   # Next's Turbopack cache gets corrupted because the dev server holds
@@ -162,7 +235,7 @@ fi
 
 # ---- 3. Backend ------------------------------------------------------------
 
-info "[3/4] backend (.venv + Python deps)…"
+step "backend (.venv + Python deps)…"
 
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
   if [[ -d "$BACKEND_DIR/.venv" ]]; then
@@ -210,7 +283,7 @@ fi
 
 # ---- 4. Frontend -----------------------------------------------------------
 
-info "[4/4] frontend (pnpm install)…"
+step "frontend (pnpm install)…"
 
 if [[ "$CHECK_ONLY" -eq 1 ]]; then
   if [[ -d "$FRONTEND_DIR/node_modules" ]]; then

@@ -136,7 +136,10 @@ function LineageBody({
   // Build an adjacency view: for each node, list its inbound edges (sources).
   const inboundByTarget = new Map<string, typeof data.edges>();
   for (const e of data.edges) {
-    const k = `${e.to_node_id} ${e.to_column}`;
+    // Use SOH () as the separator — column names containing spaces
+    // are legal in DuckDB (e.g. quoted `"order id"`) and a space-separated
+    // key would collide with an unrelated `node id` + multi-word column.
+    const k = `${e.to_node_id}${e.to_column}`;
     if (!inboundByTarget.has(k)) inboundByTarget.set(k, []);
     inboundByTarget.get(k)!.push(e);
   }
@@ -155,7 +158,7 @@ function LineageBody({
   while (stack.length > 0) {
     const { nodeId, column, depth } = stack.pop()!;
     if (depth > MAX_DEPTH) continue;
-    const k = `${nodeId} ${column}`;
+    const k = `${nodeId}${column}`;
     if (visited.has(k)) continue;
     visited.add(k);
     const node = data.nodes.find((n) => n.node_id === nodeId && n.column === column);

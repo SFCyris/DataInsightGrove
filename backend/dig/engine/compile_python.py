@@ -89,6 +89,34 @@ def _polars_for_node(step_id: str, params: dict[str, Any], inputs: dict[str, str
             f"pl.SQLContext(t={inputs['in']}).execute("
             f"f'SELECT *, ({expr}) AS \"{new}\" FROM t').lazy()"
         )
+    if step_id == "convert_units":
+        # Linear conversion to a category-base unit:
+        #   x_b = ((x_a * factor_a + offset_a) - offset_b) / factor_b
+        # All non-temperature categories have offset=0 so the constants
+        # collapse to a single multiplier; temperature is the only family
+        # that needs the full form.
+        from dig.engine.unit_conversions import conversion_factors
+        col = params.get("column") or ""
+        from_u = params.get("from_unit") or ""
+        to_u = params.get("to_unit") or ""
+        out = (params.get("output_column") or "").strip() or col
+        try:
+            fa, oa, fb, ob = conversion_factors(from_u, to_u)
+        except ValueError:
+            # Bad params — emit a TODO comment so the user notices when
+            # they run the exported script. Don't crash codegen.
+            return f"{inputs['in']}  # TODO: convert_units {from_u!r} -> {to_u!r} (unit pair invalid)"
+        if oa == 0.0 and ob == 0.0:
+            ratio = fa / fb
+            if ratio == 1.0:
+                expr = f"pl.col({col!r})"
+            else:
+                expr = f"(pl.col({col!r}) * {ratio!r})"
+        else:
+            expr = (
+                f"((pl.col({col!r}) * {fa!r} + {oa!r}) - {ob!r}) / {fb!r}"
+            )
+        return f"{inputs['in']}.with_columns({expr}.alias({out!r}))"
     if step_id == "add_column":
         # Build a typed-default expression. Polars accepts pl.lit(...) for
         # the literal and .cast(pl.Type) to coerce — same UX as the SQL
@@ -191,27 +219,12 @@ def _polars_for_node(step_id: str, params: dict[str, Any], inputs: dict[str, str
             else:
                 agg_exprs.append(f"pl.col({col!r}).{fn}().alias({alias!r})")
         return f"{inputs['in']}.group_by({by!r}).agg([{', '.join(agg_exprs)}])"
-    if step_id == "rename_columns":
-        mapping = {m["from"]: m["to"] for m in (params.get("mapping") or [])}
-        return f"{inputs['in']}.rename({mapping!r})"
-    if step_id == "cast_type":
-        col = params.get("column")
-        target = (params.get("targetType") or "string").lower()
-        pl_type = {"integer": "Int64", "double": "Float64", "string": "Utf8",
-                   "boolean": "Boolean", "date": "Date"}.get(target, "Utf8")
-        return f"{inputs['in']}.with_columns(pl.col({col!r}).cast(pl.{pl_type}))"
-    if step_id == "deduplicate":
-        cols = params.get("columns") or None
-        keep = params.get("keep", "first")
-        if cols:
-            return f"{inputs['in']}.unique(subset={cols!r}, keep={keep!r})"
-        return f"{inputs['in']}.unique(keep={keep!r})"
-    if step_id == "sample_rows":
-        n = params.get("n")
-        seed = params.get("seed", 42)
-        if n is not None:
-            return f"{inputs['in']}.collect().sample(n={int(n)}, seed={int(seed)}).lazy()"
-        return inputs["in"]
+    # NOTE: `rename_columns`, `cast_type`, `deduplicate`, `sample_rows` are
+    # all handled above. A second copy of these branches used to live here
+    # with parameter names that drifted from the live step manifests
+    # (`column`/`targetType` instead of `casts`); they were unreachable but
+    # would silently activate via reordering or paste — removed to avoid
+    # the trap.
     if step_id == "rolling":
         # Limited form — single window. Multiple windows not codegen'd.
         wins = params.get("windows") or []

@@ -16,10 +16,24 @@ import { motion, AnimatePresence } from "motion/react";
 type LogicalType = "string" | "integer" | "double" | "boolean" | "date" | "datetime" | "unknown";
 
 interface Condition {
+  /** Stable per-instance key so AnimatePresence and React reconciliation
+   * can identify the same row across re-orders. Index keys had this caused
+   * input/focus state to attach to the wrong row when a non-last
+   * condition was removed.
+   */
+  key: string;
   column: string;
   op: string;
   value: string;
   value2?: string; // for "between"
+}
+
+let _condSeq = 0;
+function _newCondKey(): string {
+  // Time-prefixed counter — collision-free within a single page session and
+  // stable across re-renders (we never recompute on render).
+  _condSeq += 1;
+  return `c${Date.now().toString(36)}_${_condSeq}`;
 }
 
 interface Props {
@@ -230,12 +244,12 @@ function parseSql(
   for (const p of stripped) {
     const c = parseOneCondition(p);
     if (!c) return null;
-    conds.push(c);
+    conds.push({ key: _newCondKey(), ...c });
   }
   return { conds, joiner };
 }
 
-function parseOneCondition(s: string): Condition | null {
+function parseOneCondition(s: string): Omit<Condition, "key"> | null {
   // Identifier: "col" or col
   const idRe = /^("([^"]|"")+"|[A-Za-z_][A-Za-z0-9_]*)\s*/;
   const m = s.match(idRe);
@@ -335,7 +349,7 @@ export function FilterBuilder({ columns, columnTypes = {}, value, onChange }: Pr
   });
   const [conds, setConds] = useState<Condition[]>(() => {
     if (initial && initial.conds.length > 0) return initial.conds;
-    return [{ column: columns[0] ?? "", op: "eq", value: "" }];
+    return [{ key: _newCondKey(), column: columns[0] ?? "", op: "eq", value: "" }];
   });
   const [joiner, setJoiner] = useState<"AND" | "OR">(initial?.joiner ?? "AND");
 
@@ -360,7 +374,7 @@ export function FilterBuilder({ columns, columnTypes = {}, value, onChange }: Pr
   const addCond = () => {
     setConds((cs) => [
       ...cs,
-      { column: columns[0] ?? "", op: "eq", value: "" },
+      { key: _newCondKey(), column: columns[0] ?? "", op: "eq", value: "" },
     ]);
   };
   const removeCond = (idx: number) => {
@@ -409,7 +423,7 @@ export function FilterBuilder({ columns, columnTypes = {}, value, onChange }: Pr
           const noValue = "noValue" in opDef ? opDef.noValue : ["is_null", "is_not_null"].includes(opDef.id);
           return (
             <motion.div
-              key={idx}
+              key={c.key}
               layout
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}

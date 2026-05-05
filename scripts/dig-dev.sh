@@ -9,12 +9,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 if [[ ! -d backend/.venv ]]; then
-  echo "backend/.venv missing — run 'make backend-setup' first." >&2
+  echo "backend/.venv missing — run './scripts/dig-install.sh' first." >&2
   exit 1
 fi
 
 if [[ ! -d frontend/node_modules ]]; then
-  echo "frontend/node_modules missing — run 'pnpm install' from the repo root first." >&2
+  echo "frontend/node_modules missing — run './scripts/dig-install.sh' first." >&2
   exit 1
 fi
 

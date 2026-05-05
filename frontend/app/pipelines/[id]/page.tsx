@@ -234,6 +234,12 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const undoStack = useRef<PipelineDocument[]>([]);
   const redoStack = useRef<PipelineDocument[]>([]);
   const lastSnapshot = useRef<string>("");
+  // Mirror stack lengths into state so the toolbar Undo/Redo buttons can
+  // re-render their `disabled` attribute. Reading from refs alone made the
+  // buttons stay greyed out until some unrelated state change triggered a
+  // render.
+  const [undoLen, setUndoLen] = useState(0);
+  const [redoLen, setRedoLen] = useState(0);
 
   // Right panel tab
   // Default to params: a focused-step user almost always wants to edit it,
@@ -256,8 +262,14 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const [sqlViewOpen, setSqlViewOpen] = useState(false);
   const expertise = useExpertise();
 
+  // Track whether we've already seeded state for this pipeline. Without this,
+  // every WS-triggered refetch (which mints a new `pipeline.data` reference)
+  // re-runs the seed and clobbers the user's current focus + clears undo /
+  // redo mid-edit. Seed once per pipelineId; thereafter let updates flow
+  // through the event handlers, not this effect.
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (pipeline.data) {
+    if (pipeline.data && seededFor.current !== pipelineId) {
       const seed =
         Object.keys(pipeline.data.document).length === 0
           ? emptyDoc(pipelineId, "Untitled")
@@ -267,10 +279,17 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       setDirty(false);
       undoStack.current = [];
       redoStack.current = [];
+      setUndoLen(0);
+      setRedoLen(0);
       lastSnapshot.current = JSON.stringify(seed);
       // Default focus = last node, else the dataset
       const lastNode = seed.nodes[seed.nodes.length - 1];
       setFocusedId(lastNode?.id ?? seed.datasets[0]?.id ?? null);
+      seededFor.current = pipelineId;
+    } else if (pipeline.data && seededFor.current === pipelineId) {
+      // Subsequent refetches: keep doc/focus state, just refresh etag so
+      // optimistic mutations align with the server's view.
+      setEtag(pipeline.data.etag);
     }
   }, [pipeline.data, pipelineId]);
 
@@ -332,6 +351,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           if (undoStack.current.length > 80) undoStack.current.shift();
           redoStack.current = [];
           lastSnapshot.current = snap;
+          setUndoLen(undoStack.current.length);
+          setRedoLen(0);
         }
       }
       return next;
@@ -347,6 +368,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       redoStack.current.push(cur);
       lastSnapshot.current = JSON.stringify(prev);
       setDirty(true);
+      setUndoLen(undoStack.current.length);
+      setRedoLen(redoStack.current.length);
       return prev;
     });
   }, []);
@@ -358,6 +381,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       undoStack.current.push(cur);
       lastSnapshot.current = JSON.stringify(next);
       setDirty(true);
+      setUndoLen(undoStack.current.length);
+      setRedoLen(redoStack.current.length);
       return next;
     });
   }, []);
@@ -1128,10 +1153,10 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         <SaveIndicator dirty={dirty} pending={saveMutation.isPending} />
         <span className="text-[11px] text-muted-foreground/60 tabular-nums">v{etag}</span>
 
-        <Button size="sm" variant="ghost" onClick={undo} disabled={undoStack.current.length === 0} title="Undo (⌘Z)">
+        <Button size="sm" variant="ghost" onClick={undo} disabled={undoLen === 0} title="Undo (⌘Z)">
           ↩️
         </Button>
-        <Button size="sm" variant="ghost" onClick={redo} disabled={redoStack.current.length === 0} title="Redo (⌘⇧Z)">
+        <Button size="sm" variant="ghost" onClick={redo} disabled={redoLen === 0} title="Redo (⌘⇧Z)">
           ↪️
         </Button>
 

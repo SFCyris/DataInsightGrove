@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -156,7 +156,11 @@ export function useSettings(): Settings {
 export function useExpertise() {
   const settings = useSettings();
   const level = settings.expertiseLevel;
-  return {
+  // Memoize so consumers' `useEffect`/`useMemo` deps that include the
+  // returned object stay referentially stable across renders. Without this
+  // every render created a new object, re-attaching downstream listeners
+  // (most visibly: command-palette's global keydown handler).
+  return useMemo(() => ({
     level,
     auto: settings.expertiseAuto,
     actionCount: settings.actionCount,
@@ -172,7 +176,7 @@ export function useExpertise() {
     setLevelKeepAuto(next: ExpertiseLevel) {
       setSettings({ expertiseLevel: next });
     },
-  };
+  }), [level, settings.expertiseAuto, settings.actionCount]);
 }
 
 /**

@@ -226,7 +226,10 @@ class ForecastStep(Step):
         fig.autofmt_xdate()
         fig.tight_layout()
 
-        out_path = ctx.out_dir / f"{self.id}.png"
+        # Use node_id, not step-class id — multiple `forecast` nodes in the
+        # same pipeline would otherwise overwrite each other's PNG.
+        slug = ctx.node_id or self.id
+        out_path = ctx.out_dir / f"{slug}.png"
         fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
         plt.close(fig)
 

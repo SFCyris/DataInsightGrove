@@ -35,14 +35,25 @@ def csv_path(tmp_path) -> Path:
 
 @pytest.fixture(autouse=True)
 def fresh_db(tmp_path, monkeypatch):
-    """Use a per-test SQLite so test pipelines don't pollute the dev DB."""
+    """Use a per-test SQLite so test pipelines don't pollute the dev DB.
+
+    Patch the db module's engine in-place — reloading the module would
+    create a fresh Base class with empty metadata, leaving any test that
+    runs afterward with no tables registered against the new Base.
+    """
     db = tmp_path / "test.sqlite"
     monkeypatch.setenv("DIG_DB_PATH", str(db))
-    # Re-import db module to pick up the env var
-    import importlib
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
     from dig.storage import db as db_mod
-    importlib.reload(db_mod)
-    asyncio.get_event_loop().run_until_complete(db_mod.init_db())
+    new_url = f"sqlite+aiosqlite:///{db}"
+    db_mod.engine = create_async_engine(new_url, future=True, connect_args={"timeout": 30})
+    db_mod.SessionLocal = async_sessionmaker(db_mod.engine, expire_on_commit=False)
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(db_mod.init_db())
+    finally:
+        loop.close()
     yield
 
 

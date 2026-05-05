@@ -32,11 +32,24 @@ NESTED_DTYPES = (pl.List, pl.Struct)
 def _logical_type(dtype: pl.DataType) -> str:
     if dtype in BOOL_DTYPES:
         return "boolean"
+    # Decimal columns are numeric — without this they fell through to
+    # "string" and lost min/max/mean/std plus the `currency` detector
+    # (which checks for `double|integer`). Real-data financial CSVs ingest
+    # as Decimal whenever a `decimal` polars dtype is preserved.
+    if isinstance(dtype, pl.Decimal):
+        return "double"
     if any(dtype == d or isinstance(dtype, d) for d in NUMERIC_DTYPES):
         return "integer" if dtype in (pl.Int8, pl.Int16, pl.Int32, pl.Int64,
                                       pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64) else "double"
-    if any(isinstance(dtype, d) for d in TEMPORAL_DTYPES):
-        return "datetime" if isinstance(dtype, (pl.Datetime, pl.Time)) else "date"
+    # Order matters: Duration is in TEMPORAL_DTYPES but is neither a date
+    # nor a datetime; treat it explicitly so its values aren't mis-formatted
+    # as dates (a 5-second duration would render as "1970-01-01 00:00:05").
+    if isinstance(dtype, pl.Duration):
+        return "duration"
+    if isinstance(dtype, (pl.Datetime, pl.Time)):
+        return "datetime"
+    if isinstance(dtype, pl.Date):
+        return "date"
     if dtype in STRING_DTYPES:
         return "string"
     if any(isinstance(dtype, d) for d in NESTED_DTYPES):
@@ -72,7 +85,12 @@ def profile_dataframe(
     for col in columns:
         aggs.extend([
             pl.col(col).null_count().alias(f"_null:{col}"),
-            pl.col(col).n_unique().alias(f"_distinct:{col}"),
+            # `n_unique` counts NULL as a distinct value — for an all-null
+            # column it returns 1 even though there are zero non-null
+            # distinct values. Drop nulls first so the count reflects
+            # actual distinct values; the smart-pick UI and the
+            # `distinctCount/non_null` math downstream depend on this.
+            pl.col(col).drop_nulls().n_unique().alias(f"_distinct:{col}"),
         ])
         dtype = schema[col]
         if any(dtype == d or isinstance(dtype, d) for d in NUMERIC_DTYPES):

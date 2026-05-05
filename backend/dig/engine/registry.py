@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
+import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +60,16 @@ def _load_module(folder: Path, file: str, mod_name: str) -> Any:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load module spec for {file_path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # `module_from_spec` doesn't insert into `sys.modules`, but exec_module
+    # may rely on the module being importable by name (e.g., dataclasses).
+    # Insert it now and pop on failure so a half-loaded module doesn't
+    # poison subsequent reload attempts after the user fixes their code.
+    sys.modules[mod_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(mod_name, None)
+        raise
     return module
 
 
@@ -122,20 +133,33 @@ class ConnectorRegistry:
 
 
 _connectors: ConnectorRegistry | None = None
+_connectors_lock = threading.Lock()
 
 
 def connectors() -> ConnectorRegistry:
     global _connectors
+    # Double-checked locking — avoid taking the lock on the hot path once the
+    # registry is initialized. Without the lock, two threads racing here
+    # both saw `_connectors is None`, both built a registry, and the
+    # _base_dir mutation hack made the second thread's scan() use whatever
+    # base_dir was current mid-mutation in the first.
     if _connectors is None:
-        repo = Path(__file__).resolve().parents[3]
-        _connectors = ConnectorRegistry(repo / "backend" / "connectors")
-        _connectors.scan()
-        # Also scan user plugins/connectors/ if present.
-        user_dir = repo / "plugins" / "connectors"
-        if user_dir.exists():
-            _connectors._base_dir = user_dir  # noqa: SLF001
-            _connectors.scan()
-            _connectors._base_dir = repo / "backend" / "connectors"  # restore
+        with _connectors_lock:
+            if _connectors is None:
+                repo = Path(__file__).resolve().parents[3]
+                reg = ConnectorRegistry(repo / "backend" / "connectors")
+                reg.scan()
+                # Also scan user plugins/connectors/ if present. Use a
+                # separate registry instance scoped to that dir, then merge —
+                # the previous form mutated `_base_dir` in place which races
+                # under any concurrent reader.
+                user_dir = repo / "plugins" / "connectors"
+                if user_dir.exists():
+                    user_reg = ConnectorRegistry(user_dir)
+                    user_reg.scan()
+                    for c in user_reg.all():
+                        reg._by_id[c.id] = c  # noqa: SLF001
+                _connectors = reg
     return _connectors
 
 
@@ -197,18 +221,22 @@ class StepRegistry:
 
 
 _steps: StepRegistry | None = None
+_steps_lock = threading.Lock()
 
 
 def steps() -> StepRegistry:
     global _steps
     if _steps is None:
-        repo = Path(__file__).resolve().parents[3]
-        _steps = StepRegistry(repo / "backend" / "steps")
-        _steps.scan()
-        # Also scan user plugins/steps/ if present.
-        user_dir = repo / "plugins" / "steps"
-        if user_dir.exists():
-            _steps._base_dir = user_dir  # noqa: SLF001
-            _steps.scan()
-            _steps._base_dir = repo / "backend" / "steps"  # restore
+        with _steps_lock:
+            if _steps is None:
+                repo = Path(__file__).resolve().parents[3]
+                reg = StepRegistry(repo / "backend" / "steps")
+                reg.scan()
+                user_dir = repo / "plugins" / "steps"
+                if user_dir.exists():
+                    user_reg = StepRegistry(user_dir)
+                    user_reg.scan()
+                    for s in user_reg.all():
+                        reg._by_id[s.id] = s  # noqa: SLF001
+                _steps = reg
     return _steps

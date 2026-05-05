@@ -185,17 +185,23 @@ def _resolve_dbt_target_uri(
         )
 
     adapter = target_cfg.get("type")
+    # `urllib.parse.quote` on user/password — without this, a password
+    # containing `@`, `:`, `/`, or `#` produces a URI that parses to the
+    # wrong host or schema and either silently routes credentials to the
+    # wrong endpoint or fails with a confusing parse error.
+    from urllib.parse import quote as _qs
+
     if adapter in ("postgres", "redshift"):
         host = target_cfg.get("host")
         port = target_cfg.get("port", 5432)
-        user = target_cfg.get("user")
-        password = target_cfg.get("password") or target_cfg.get("pass") or ""
+        user = _qs(str(target_cfg.get("user") or ""), safe="")
+        password = _qs(str(target_cfg.get("password") or target_cfg.get("pass") or ""), safe="")
         dbname = target_cfg.get("dbname") or target_cfg.get("database")
         return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
     if adapter == "snowflake":
         account = target_cfg.get("account")
-        user = target_cfg.get("user")
-        password = target_cfg.get("password", "")
+        user = _qs(str(target_cfg.get("user") or ""), safe="")
+        password = _qs(str(target_cfg.get("password") or ""), safe="")
         database = target_cfg.get("database")
         schema = target_cfg.get("schema", "PUBLIC")
         warehouse = target_cfg.get("warehouse")

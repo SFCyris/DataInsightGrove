@@ -55,13 +55,28 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 ## Quickstart
 
 ```bash
-make setup        # one-time: backend venv + pnpm install
+./install.sh
+```
+
+That's it. The guided installer detects what's already on your machine (Homebrew, Python, pnpm, optional JDBC tooling, project deps), prints what it's about to do, asks once before changing anything, then finishes with DIG running. Re-run any time to verify or repair the environment — already-installed tools are reported as ✓ and skipped.
+
+Open [http://localhost:3000](http://localhost:3000) and click **🌱 Try with sample data**.
+
+<details>
+<summary><strong>Other entry points</strong> (power users / CI / day-to-day)</summary>
+
+```bash
+make setup        # one-time: backend venv + pnpm install (assumes prereqs are present)
 make start        # detached, writes PID file, prints URLs
 make status       # is it up? where?
 make stop         # graceful TERM, escalates to KILL after 5s
+make dev          # foreground mode (Ctrl-C to stop)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and click **🌱 Try with sample data**.
+`./install.sh` flags: `-y` accept defaults, `--jdbc` / `--no-jdbc` skip the JDBC prompt, `--no-start` finish without starting, `--rebuild` nuke `.venv` + `node_modules` first, `--non-interactive` for CI (= `-y --no-start`).
+
+For the same operations split into separate primitives, see [`scripts/dig-bootstrap.sh`](scripts/dig-bootstrap.sh) (system tools) and [`scripts/dig-install.sh`](scripts/dig-install.sh) (project deps).
+</details>
 
 **Custom ports**:
 

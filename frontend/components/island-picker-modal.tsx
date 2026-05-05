@@ -7,6 +7,20 @@ import { api, ApiError, type Dataset } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { fmtInt } from "@/lib/format-number";
 
+/**
+ * Island shape produced by `dig.engine.data_islands`. The OpenAPI emits this
+ * as `Record<string, unknown>` because the backend types the field as
+ * `dict[str, Any]`; we narrow at the consumer so the rest of the component
+ * stays strongly typed. Keep in sync with backend/dig/engine/data_islands.py.
+ */
+interface IslandPreview {
+  range_a1: string;
+  n_rows: number;
+  n_cols: number;
+  density: number;
+  preview_first_row: Array<string | null>;
+}
+
 interface Props {
   /** The just-uploaded dataset in `awaiting_island_pick` status. */
   dataset: Dataset;
@@ -27,7 +41,7 @@ interface Props {
  * then pick an island (if multi-island). One-island sheets skip both.
  */
 export function IslandPickerModal({ dataset, onPicked, onCancel }: Props) {
-  const islands = dataset.availableIslands ?? [];
+  const islands = (dataset.availableIslands ?? []) as unknown as IslandPreview[];
   const [picked, setPicked] = useState<string>(islands[0]?.range_a1 ?? "");
   const [submitting, setSubmitting] = useState(false);
 

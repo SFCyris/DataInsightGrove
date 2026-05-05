@@ -28,6 +28,12 @@ class PolarsContext:
     """Per-run context handed to Polars-engine steps."""
     run_id: str
     out_dir: Path
+    # The node_id (per-pipeline DAG identifier) of the step currently
+    # executing. Steps that write side-effect artifacts (charts, exports)
+    # should use this — not `step.id` (which is the step-class id, shared
+    # across nodes) — when picking a filename, otherwise two `forecast`
+    # nodes in the same pipeline silently overwrite each other's PNG.
+    node_id: str = ""
     # Ancestor chain of pipeline IDs currently being executed — populated when
     # a sub-pipeline step recursively calls back into the executor. Used to
     # detect cycles (a sub-pipeline that references its own ancestor).

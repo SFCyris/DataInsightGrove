@@ -223,7 +223,7 @@ export default function Home() {
               </p>
             </div>
             <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.05]">
-              Self-hosted. Plugin-first. Yours.<br />
+              DataInsight Grove<br />
               <span className="text-emerald-200/80">Data preparation for the rest of us.</span>
             </h1>
           </motion.header>

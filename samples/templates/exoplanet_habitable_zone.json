@@ -1,0 +1,109 @@
+{
+  "slug": "exoplanet_habitable_zone",
+  "title": "🪐 Exoplanet habitable-zone candidates",
+  "summary": "Filter the synthetic exoplanet catalog down to high-quality habitable-zone candidates: SNR > 10, drop false_positives, replace -1 sentinels with NULL, then derive habitable-zone + Earth-like flags. The classic 'science-ready' shape for a candidate catalog.",
+  "tags": ["astronomy", "exoplanets", "science", "intermediate"],
+  "needsSampleDataset": true,
+  "sampleDataset": "astronomy-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🪐 Exoplanet habitable-zone candidates (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · astronomy" }
+    ],
+    "nodes": [
+      {
+        "id": "n_quality",
+        "step": "filter_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } },
+        "outputs": ["out"],
+        "params": { "predicate": "\"snr\" > 10 AND \"disposition\" <> 'false_positive'" },
+        "ui": { "x": 280, "y": 100, "label": "🔍 SNR + dispo cut" }
+      },
+      {
+        "id": "n_eq_temp_clean",
+        "step": "derive_column",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_quality" } },
+        "outputs": ["out"],
+        "params": {
+          "name": "equilibrium_temp_k_clean",
+          "expression": "NULLIF(\"equilibrium_temp_k\", -1)"
+        },
+        "ui": { "x": 540, "y": 100, "label": "🧹 -1 → NULL" }
+      },
+      {
+        "id": "n_habitable",
+        "step": "derive_column",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_eq_temp_clean" } },
+        "outputs": ["out"],
+        "params": {
+          "name": "is_habitable_zone",
+          "expression": "\"equilibrium_temp_k_clean\" BETWEEN 200 AND 320"
+        },
+        "ui": { "x": 800, "y": 100, "label": "🌡 Habitable zone" }
+      },
+      {
+        "id": "n_earth_like",
+        "step": "derive_column",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_habitable" } },
+        "outputs": ["out"],
+        "params": {
+          "name": "is_earth_like",
+          "expression": "\"planet_radius_rearth\" < 1.6 AND \"is_habitable_zone\""
+        },
+        "ui": { "x": 1060, "y": 100, "label": "🌍 Earth-like" }
+      },
+      {
+        "id": "n_expect",
+        "step": "expectations",
+        "stepVersion": "1.1.0",
+        "inputs": { "in": { "ref": "n_earth_like" } },
+        "outputs": ["out"],
+        "params": {
+          "rules": [
+            { "kind": "between", "column": "stellar_radius_rsun", "min": 0.0, "label": "stellar_radius > 0", "severity": "error" },
+            { "kind": "not_null", "column": "snr", "label": "snr present", "severity": "error" },
+            { "kind": "in", "column": "disposition", "args": { "values": ["confirmed", "candidate"] }, "label": "no false_positive leaked", "severity": "error" }
+          ],
+          "fail_on_violation": false,
+          "notify_on": "never"
+        },
+        "ui": { "x": 1320, "y": 100, "label": "✅ Expectations" }
+      },
+      {
+        "id": "n_agg",
+        "step": "group_aggregate",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_expect" } },
+        "outputs": ["out"],
+        "params": {
+          "groupBy": ["mission", "disposition"],
+          "aggregates": [
+            { "fn": "count", "as": "n_targets" },
+            { "fn": "mean", "column": "snr", "as": "avg_snr" },
+            { "fn": "mean", "column": "planet_radius_rearth", "as": "avg_radius_rearth" },
+            { "fn": "sum", "column": "is_earth_like", "as": "n_earth_like" }
+          ]
+        },
+        "ui": { "x": 1580, "y": 100, "label": "📊 By mission × dispo" }
+      },
+      {
+        "id": "n_sort",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_agg" } },
+        "outputs": ["out"],
+        "params": { "by": [{ "column": "n_targets", "direction": "desc" }] },
+        "ui": { "x": 1840, "y": 100, "label": "↕️ By count" }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "exoplanet_habitable_zone", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

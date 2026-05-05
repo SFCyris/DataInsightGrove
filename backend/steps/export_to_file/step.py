@@ -25,14 +25,38 @@ class ExportToFileStep(Step):
         fmt = (params.get("format") or "parquet").lower()
         ext = _EXT.get(fmt, "")
 
+        # Pipeline docs are user-supplied (template clones, imports). An
+        # absolute `path` or a `..`-laden relative path would let a malicious
+        # pipeline write anywhere the API process can reach. Constrain the
+        # write under `ctx.out_dir` (the run's artifact directory). The
+        # `DIG_EXPORT_ALLOW_ABSOLUTE=1` escape hatch matches the same pattern
+        # the REST connector uses (`DIG_REST_ALLOW_PRIVATE`) — set
+        # deliberately on a trusted host, never default.
+        import os as _os
+
+        allow_abs = _os.environ.get("DIG_EXPORT_ALLOW_ABSOLUTE") == "1"
         path_param = (params.get("path") or "").strip()
+        base = (ctx.out_dir if ctx is not None else Path.cwd()).resolve()
         if path_param:
-            path = Path(path_param).expanduser()
-            if not path.is_absolute() and ctx is not None:
-                path = ctx.out_dir / path
+            candidate = Path(path_param).expanduser()
+            if not allow_abs:
+                if candidate.is_absolute() or any(part == ".." for part in candidate.parts):
+                    raise ValueError(
+                        "export_to_file: path must be a relative basename inside "
+                        "the run output directory (set DIG_EXPORT_ALLOW_ABSOLUTE=1 "
+                        "to permit absolute paths on a trusted host)."
+                    )
+                path = (base / candidate).resolve()
+                try:
+                    path.relative_to(base)
+                except ValueError as e:
+                    raise ValueError(
+                        "export_to_file: refusing to write outside the run output directory"
+                    ) from e
+            else:
+                path = candidate.resolve() if candidate.is_absolute() else (base / candidate).resolve()
         else:
-            base = ctx.out_dir if ctx is not None else Path.cwd()
-            path = base / f"export-{self.id}{ext}"
+            path = (base / f"export-{self.id}{ext}").resolve()
         if path.suffix == "":
             path = path.with_suffix(ext)
 

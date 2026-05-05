@@ -25,6 +25,20 @@ from dig.storage.models import Run
 
 log = logging.getLogger(__name__)
 
+# Reference to the API process's main event loop. Captured on first submit()
+# and consumed by worker threads (the executor's subpipeline lookup,
+# webhook_trigger step) that need to dispatch coroutines back to the main
+# loop. `asyncio.get_event_loop()` from a worker thread is deprecated since
+# 3.10 and raises in 3.12+; opening a new loop with `asyncio.run()` strands
+# the aiosqlite engine on the wrong loop. This module-level reference is
+# the single source of truth.
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def main_loop() -> asyncio.AbstractEventLoop | None:
+    """Return the API main event loop, or None if no submit has run yet."""
+    return _main_loop
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -40,6 +54,9 @@ class JobManager:
         Returning before the row exists would race with API consumers who
         immediately poll /runs/{id}.
         """
+        global _main_loop
+        if _main_loop is None:
+            _main_loop = asyncio.get_running_loop()
         run_id = str(ULID())
         async with SessionLocal() as session:
             row = Run(id=run_id, pipeline_id=pipeline.id, status="queued")

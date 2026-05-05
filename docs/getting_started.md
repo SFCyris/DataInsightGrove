@@ -12,16 +12,47 @@ The page is friendly to people coming from spreadsheets — *if you've used Exce
 
 ## 0 · Install and start
 
+Run **one** command:
+
 ```bash
-cd "DataInsightGrove"
-make setup     # one-time: backend venv + frontend deps
-make start     # detached; writes PID file and prints URLs
-make status    # 'are we up?' check
-make stop      # graceful TERM, escalates to KILL after 5s
-make dev       # alternate: foreground mode (Ctrl-C to stop)
+cd DataInsightGrove
+./install.sh
+```
+
+The guided installer:
+
+1. **Detects your environment** — checks for Homebrew (macOS), Python 3.11+, pnpm, plus the optional JDBC tooling (cmake + JDK + Ant). Reports each as ✓ or ✗.
+2. **Asks about JDBC support** — adds the Oracle / MS SQL / DB2 / Sybase connector. NOT needed for CSV / Parquet / Postgres / MySQL / SQLite / DuckDB — say *no* unless you specifically need a JDBC database.
+3. **Prints a plan** — exactly what it'll install, in order. Asks once before changing anything.
+4. **Installs** — system tools (via `brew` / `apt` / `dnf` / `pacman`), then the project's `.venv` + `node_modules`.
+5. **Offers to start DIG** — accept and the installer launches the API + web UI, prints the URL, exits cleanly.
+
+The installer is idempotent — re-run any time to verify or repair the environment. Tools already on your PATH are reported and skipped.
+
+### Useful flags
+
+| Flag | Meaning |
+|---|---|
+| `-y` / `--yes` | Accept the recommended default at every prompt |
+| `--jdbc` | Skip the JDBC prompt, install it |
+| `--no-jdbc` | Skip the JDBC prompt, don't install it |
+| `--no-start` | Skip the start-now prompt, finish after install |
+| `--rebuild` | Wipe `backend/.venv` and `frontend/node_modules` before reinstalling |
+| `--non-interactive` | CI-friendly: equivalent to `-y --no-start` |
+| `-h` / `--help` | Print the full help text |
+
+### Day-to-day (after install)
+
+```bash
+./start.sh    # bring up API + web (detached)
+./stop.sh     # graceful TERM, escalates to KILL after 5s
+./status.sh   # is it up? where?
+make dev      # foreground mode with prefixed logs (Ctrl-C to stop)
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+> 💡 The installer is the only command most users need. Power users can skip straight to the underlying primitives — [`scripts/dig-bootstrap.sh`](../scripts/dig-bootstrap.sh) for system tools and [`scripts/dig-install.sh`](../scripts/dig-install.sh) for project deps. Both are documented inline.
 
 ### Port configuration
 

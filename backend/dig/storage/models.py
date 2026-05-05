@@ -46,8 +46,10 @@ class Pipeline(Base):
     document: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     etag: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Indexed: list_pipelines orders by `updated_at desc`. Without an index
+    # the planner does a full sort over every row.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, index=True,
     )
 
 
@@ -91,7 +93,9 @@ class Run(Base):
     __tablename__ = "runs"
 
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
-    pipeline_id: Mapped[str] = mapped_column(String(26))
+    # Indexed: list_runs filters by pipeline_id; without it every page-load
+    # scans the full runs table.
+    pipeline_id: Mapped[str] = mapped_column(String(26), index=True)
     status: Mapped[str] = mapped_column(String(32), default="queued")
     progress: Mapped[float] = mapped_column(default=0.0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -101,7 +105,12 @@ class Run(Base):
     # Free-form per-output artifacts (file/db/image/sink dicts) — populated by
     # the executor when Polars-engine terminal steps produce side effects.
     artifacts: Mapped[dict[str, list[dict[str, Any]]] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Indexed: list_runs orders by `created_at desc`. Composite with
+    # pipeline_id would be ideal but two single-column indexes are
+    # cheap enough on this workload.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True,
+    )
 
 
 # ---- Server-side settings (Phase 6) ---------------------------------------

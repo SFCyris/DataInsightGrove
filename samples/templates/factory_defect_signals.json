@@ -1,0 +1,115 @@
+{
+  "slug": "factory_defect_signals",
+  "title": "🏭 Factory defect signals (per-machine rolling)",
+  "summary": "Cast the timestamp, filter to a single line, derive a 5-minute defect lookback flag, compute rolling 15-min vibration std per machine, expectations gate on sensor sanity, and group_aggregate medians by machine × shift. The starting shape for IIoT / predictive-maintenance work on multi-line factory telemetry.",
+  "tags": ["manufacturing", "iiot", "predictive-maintenance", "time-series", "rolling", "advanced"],
+  "needsSampleDataset": true,
+  "sampleDataset": "manufacturing-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🏭 Factory defect signals (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · manufacturing" }
+    ],
+    "nodes": [
+      {
+        "id": "n_cast_ts",
+        "step": "cast_type",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } },
+        "outputs": ["out"],
+        "params": { "column": "ts", "targetType": "datetime", "strict": false },
+        "ui": { "x": 280, "y": 100, "label": "🔄 ts → datetime" }
+      },
+      {
+        "id": "n_filter_line",
+        "step": "filter_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_cast_ts" } },
+        "outputs": ["out"],
+        "params": { "predicate": "\"line_id\" = 'LINE-D'" },
+        "ui": { "x": 540, "y": 100, "label": "🔍 LINE-D only" }
+      },
+      {
+        "id": "n_dq",
+        "step": "expectations",
+        "stepVersion": "1.1.0",
+        "inputs": { "in": { "ref": "n_filter_line" } },
+        "outputs": ["out"],
+        "params": {
+          "rules": [
+            { "kind": "between", "column": "temperature_c", "args": { "min": 0, "max": 200 }, "severity": "warning", "label": "temperature_c sanity (faulty sensor flag)" },
+            { "kind": "between", "column": "vibration_mm_s", "args": { "min": 0, "max": 50 }, "severity": "error", "label": "vibration_mm_s non-negative" },
+            { "kind": "not_null", "column": "machine_id", "severity": "error", "label": "machine_id required" }
+          ],
+          "fail_on_violation": false,
+          "notify_on": "any_failure"
+        },
+        "ui": { "x": 800, "y": 100, "label": "✅ Sensor sanity" }
+      },
+      {
+        "id": "n_lookback",
+        "step": "window_aggregate",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_dq" } },
+        "outputs": ["out"],
+        "params": {
+          "fn": "max",
+          "column": "is_defect_event",
+          "partitionBy": ["machine_id"],
+          "orderBy": [{ "column": "ts", "direction": "asc" }],
+          "as": "defect_5min_lookback"
+        },
+        "ui": { "x": 1060, "y": 100, "label": "🪟 Defect lookback" }
+      },
+      {
+        "id": "n_roll_vib",
+        "step": "rolling",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_lookback" } },
+        "outputs": ["out"],
+        "params": {
+          "time_column": "ts",
+          "windows": [
+            { "column": "vibration_mm_s", "fn": "std", "window": "15m", "as": "vibration_std_15m" },
+            { "column": "temperature_c", "fn": "mean", "window": "15m", "as": "temperature_mean_15m" }
+          ],
+          "min_periods": 2
+        },
+        "ui": { "x": 1320, "y": 100, "label": "🌊 Rolling 15m" }
+      },
+      {
+        "id": "n_agg",
+        "step": "group_aggregate",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_roll_vib" } },
+        "outputs": ["out"],
+        "params": {
+          "groupBy": ["machine_id", "shift"],
+          "aggregates": [
+            { "fn": "count", "as": "n_ticks" },
+            { "fn": "mean", "column": "temperature_c", "as": "temperature_mean" },
+            { "fn": "max", "column": "temperature_c", "as": "temperature_max" },
+            { "fn": "mean", "column": "vibration_mm_s", "as": "vibration_mean" },
+            { "fn": "std", "column": "vibration_mm_s", "as": "vibration_std" },
+            { "fn": "sum", "column": "is_defect_event", "as": "defects" }
+          ]
+        },
+        "ui": { "x": 1580, "y": 100, "label": "📊 By machine × shift" }
+      },
+      {
+        "id": "n_sort",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_agg" } },
+        "outputs": ["out"],
+        "params": { "by": [{ "column": "defects", "direction": "desc" }] },
+        "ui": { "x": 1840, "y": 100, "label": "↕️ Worst-first" }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "factory_defect_signals", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

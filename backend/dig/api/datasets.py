@@ -651,9 +651,20 @@ async def import_sample(
     """
     from pathlib import Path as _Path
 
+    # Whitelist `sample` against the bundled samples directory — `..`
+    # segments would otherwise let an authenticated caller copy any file
+    # under `repo/` into `uploads/<id>/`, then read it back via the
+    # `/datasets/{id}/cached.parquet` route.
+    if "/" in sample or "\\" in sample or sample.startswith(".") or "\x00" in sample:
+        raise HTTPException(400, "sample name must be a bundled file basename")
     repo = _Path(__file__).resolve().parents[3]
-    src = repo / "samples" / sample
-    if not src.exists():
+    samples_dir = (repo / "samples").resolve()
+    src = (samples_dir / sample).resolve()
+    try:
+        src.relative_to(samples_dir)
+    except ValueError:
+        raise HTTPException(400, "sample path escapes the samples/ directory")
+    if not src.is_file():
         raise HTTPException(404, f"sample '{sample}' not bundled")
 
     try:

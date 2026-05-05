@@ -54,6 +54,18 @@ def _sign(body: bytes, secret: str) -> str:
 
 
 async def _post_one(client: httpx.AsyncClient, hook: Webhook, body: bytes) -> None:
+    # Pipeline docs (and the GlobalWebhook table) are user-supplied — without
+    # a private-IP check, an imported template could fire webhooks at e.g.
+    # http://169.254.169.254/latest/meta-data/ to harvest cloud-instance
+    # metadata, or at http://localhost:11434/ to poke local services. Same
+    # check the REST connector uses; same DIG_REST_ALLOW_PRIVATE escape hatch.
+    try:
+        from connectors.rest_api.connector import _assert_url_safe
+        _assert_url_safe(hook.url)
+    except ValueError as e:
+        log.warning("webhook %s rejected: %s", hook.url, e)
+        return
+
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "DataInsightGrove-Webhook/1.0",

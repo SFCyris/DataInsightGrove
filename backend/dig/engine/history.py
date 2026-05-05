@@ -102,6 +102,10 @@ async def snapshot_pipeline(
         run_id=run_id,
     )
     session.add(snap)
+    # Flush so the new row participates in the keep-set selection — without
+    # this, `_trim_history` runs against `keep` *existing* rows, then the
+    # new add goes through commit and the table ends up with `keep+1` rows.
+    await session.flush()
     # Caller owns commit semantics so this co-mingles with the actual mutation.
     await _trim_history(session, pipeline_id, _max_snapshots())
     return snap

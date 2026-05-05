@@ -26,10 +26,25 @@ def _extract_column_refs(expression: str, known_columns: set[str]) -> list[str]:
     return found
 
 
+def _validate_column_name(name: Any) -> str:
+    """Reject empty / whitespace-only / NUL-bearing names. `assert_safe_expr`
+    runs on the expression but the column name was previously trusted —
+    `name=""` produced `AS ""` (invalid SQL on most dialects), and a NUL
+    byte would truncate the identifier in some downstream clients."""
+    if not isinstance(name, str):
+        raise ValueError("derive_column: `name` must be a string")
+    s = name.strip()
+    if not s:
+        raise ValueError("derive_column: `name` cannot be empty")
+    if "\x00" in s:
+        raise ValueError("derive_column: `name` cannot contain NUL bytes")
+    return s
+
+
 class DeriveColumnStep(Step):
     def to_sql(self, params: dict[str, Any], inputs: dict[str, str]) -> str:
         src = inputs["in"]
-        name = params["name"]
+        name = _validate_column_name(params.get("name"))
         expr = assert_safe_expr(params["expression"], kind="expression")
         return f"SELECT *, ({expr}) AS {quote_ident(name)} FROM {src}"
 

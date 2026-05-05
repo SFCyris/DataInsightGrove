@@ -136,8 +136,25 @@ def _run_out(r: Run) -> RunOut:
 
 
 @router.get("", response_model=list[PipelineSummary])
-async def list_pipelines(session: AsyncSession = Depends(get_session)) -> list[PipelineSummary]:
-    res = await session.execute(select(PipelineRow).order_by(PipelineRow.updated_at.desc()))
+async def list_pipelines(
+    limit: int = 100,
+    offset: int = 0,
+    session: AsyncSession = Depends(get_session),
+) -> list[PipelineSummary]:
+    """Paginated newest-first list. Default page is 100; max 500.
+
+    The previous form returned every row and computed counts by parsing
+    each `document` blob — fine for a hobby corpus, OOM-y for any larger
+    install. Pagination is mandatory; the home page asks for the first
+    page, the dropdown switcher asks for `?limit=10&offset=0`, etc.
+    """
+    capped = max(1, min(limit, 500))
+    res = await session.execute(
+        select(PipelineRow)
+        .order_by(PipelineRow.updated_at.desc())
+        .limit(capped)
+        .offset(max(0, offset))
+    )
     return [_summary(r) for r in res.scalars().all()]
 
 
@@ -242,6 +259,137 @@ class DiffRequest(BaseModel):
     toRef: str = Field(default="current")
 
 
+# ---- Response models for v0.6 routes that previously returned `dict[str, Any]`
+# (which made FastAPI emit `{}` in OpenAPI and broke the typed-paths story
+# for clients other than DIG's own hand-typed `client.ts`). These mirror the
+# actual route returns; values are shaped permissively (Any-typed nested
+# dicts) where the underlying engine emits structures we don't want to
+# duplicate-type here, but the route shapes themselves are now contractual.
+
+
+class SnapshotOut(BaseModel):
+    id: str
+    pipelineId: str
+    etag: int
+    document: dict[str, Any]
+    changeSummary: str | None = None
+    changeReason: str | None = None
+    triggeredBy: str
+    documentHash: str
+    runId: str | None = None
+    createdAt: datetime
+
+
+class ParamDiffOut(BaseModel):
+    key: str
+    a_value: Any = None
+    b_value: Any = None
+    a_summary: str
+    b_summary: str
+
+
+class StepDiffOut(BaseModel):
+    kind: str
+    node_id: str
+    label: str
+    step_type: str
+    a_position: int | None = None
+    b_position: int | None = None
+    param_changes: list[ParamDiffOut] = Field(default_factory=list)
+
+
+class DatasetDiffOut(BaseModel):
+    kind: str
+    dataset_id: str
+    label: str
+    option_changes: list[ParamDiffOut] = Field(default_factory=list)
+
+
+class OutputDiffOut(BaseModel):
+    kind: str
+    output_id: str
+    name: str
+    a_from: str | None = None
+    b_from: str | None = None
+
+
+class PipelineDiffOut(BaseModel):
+    summary: str
+    counts: dict[str, int]
+    steps: list[StepDiffOut]
+    datasets: list[DatasetDiffOut]
+    outputs: list[OutputDiffOut]
+    metadata_changes: list[ParamDiffOut]
+
+
+class ColumnLineageNodeOut(BaseModel):
+    node_id: str
+    is_dataset: bool
+    column: str
+    label: str
+    transform: str
+    expression: str | None = None
+
+
+class ColumnLineageEdgeOut(BaseModel):
+    from_node_id: str
+    from_column: str
+    to_node_id: str
+    to_column: str
+    transform: str
+
+
+class ColumnLineageOut(BaseModel):
+    target_node_id: str
+    target_column: str
+    nodes: list[ColumnLineageNodeOut]
+    edges: list[ColumnLineageEdgeOut]
+
+
+class NodeStatusOut(BaseModel):
+    ok: bool
+    error: str | None = None
+
+
+class ValidateOut(BaseModel):
+    ok: bool
+    errors: list[str]
+    schemas: dict[str, dict[str, str]]
+    nodeStatus: dict[str, NodeStatusOut]
+
+
+class PipelineExportOut(BaseModel):
+    """Self-contained `.dig.json` envelope written by `/pipelines/{id}/export`."""
+    model_config = ConfigDict(populate_by_name=True)
+    dig_envelope: str = Field(alias="$dig")
+    exportedAt: str
+    etag: int
+    name: str
+    document: dict[str, Any]
+
+
+class CompileOut(BaseModel):
+    sql: str
+    files: list[dict[str, Any]] = Field(default_factory=list)
+    needs_spatial: bool = False
+
+
+class PreviewOut(BaseModel):
+    columns: list[dict[str, Any]]
+    rows: list[dict[str, Any]]
+    rowCount: int | None = None
+    sampleRows: int | None = None
+    fellBackToBackend: bool = False
+
+
+class RunsDiffOut(BaseModel):
+    counts: dict[str, int]
+    added: list[Any] = Field(default_factory=list)
+    dropped: list[Any] = Field(default_factory=list)
+    changed: list[Any] = Field(default_factory=list)
+    joinKey: str | None = None
+
+
 @router.get("/{pipeline_id}/history", response_model=list[HistoryEntry])
 async def list_pipeline_history(
     pipeline_id: str,
@@ -275,7 +423,7 @@ async def list_pipeline_history(
     ]
 
 
-@router.get("/{pipeline_id}/history/{snapshot_id}")
+@router.get("/{pipeline_id}/history/{snapshot_id}", response_model=SnapshotOut)
 async def get_pipeline_snapshot(
     pipeline_id: str,
     snapshot_id: str,
@@ -351,7 +499,7 @@ async def _resolve_pipeline_doc(
     return snap.document
 
 
-@router.post("/{pipeline_id}/diff")
+@router.post("/{pipeline_id}/diff", response_model=PipelineDiffOut)
 async def diff_pipeline(
     pipeline_id: str,
     req: DiffRequest,
@@ -390,7 +538,7 @@ async def restore_pipeline(
     return _doc(row)
 
 
-@router.get("/{pipeline_id}/lineage/columns/{node_id}/{column}")
+@router.get("/{pipeline_id}/lineage/columns/{node_id}/{column}", response_model=ColumnLineageOut)
 async def get_column_lineage(
     pipeline_id: str,
     node_id: str,
@@ -413,7 +561,7 @@ async def get_column_lineage(
     return trace_column(p, node_id, column)
 
 
-@router.post("/{pipeline_id}/validate")
+@router.post("/{pipeline_id}/validate", response_model=ValidateOut)
 async def validate_pipeline(
     pipeline_id: str, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
@@ -492,7 +640,7 @@ async def validate_pipeline(
     }
 
 
-@router.get("/{pipeline_id}/export")
+@router.get("/{pipeline_id}/export", response_model=PipelineExportOut, response_model_by_alias=True)
 async def export_pipeline(
     pipeline_id: str, session: AsyncSession = Depends(get_session)
 ) -> dict[str, Any]:
@@ -614,9 +762,20 @@ async def create_from_template(
     """
     from pathlib import Path as _Path
 
+    # Whitelist `slug` to a safe character set before path-joining — without
+    # this, `slug=../../../../etc/hosts` would happily resolve and `read_text`
+    # would leak file contents back as a "template not found" exception body.
+    import re as _re
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,80}", slug):
+        raise HTTPException(400, "invalid template slug")
     repo = _Path(__file__).resolve().parents[3]
-    src = repo / "samples" / "templates" / f"{slug}.json"
-    if not src.exists():
+    templates_dir = (repo / "samples" / "templates").resolve()
+    src = (templates_dir / f"{slug}.json").resolve()
+    try:
+        src.relative_to(templates_dir)
+    except ValueError:
+        raise HTTPException(400, "template path escapes the templates directory")
+    if not src.is_file():
         raise HTTPException(404, f"template '{slug}' not found")
     tmpl = json.loads(src.read_text())
     doc = tmpl.get("document") or {}
@@ -702,7 +861,7 @@ async def create_from_template(
     return _doc(row)
 
 
-@router.post("/{pipeline_id}/compile")
+@router.post("/{pipeline_id}/compile", response_model=CompileOut)
 async def compile_pipeline(
     pipeline_id: str,
     target: str = "browser",
@@ -776,7 +935,7 @@ def _ensure_spatial(con) -> None:
     con.execute("LOAD spatial;")
 
 
-@router.post("/{pipeline_id}/preview")
+@router.post("/{pipeline_id}/preview", response_model=PreviewOut)
 async def preview_pipeline(
     pipeline_id: str,
     sample_rows: int = 100_000,
@@ -988,7 +1147,7 @@ async def get_run_artifact(
     return _FileResponse(target, headers={"Cache-Control": "no-cache"})
 
 
-@runs_router.get("/{run_id}/diff")
+@runs_router.get("/{run_id}/diff", response_model=RunsDiffOut)
 async def diff_runs(
     run_id: str,
     other: str,

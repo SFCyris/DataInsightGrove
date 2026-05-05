@@ -78,7 +78,12 @@ export function ReviewPanel({ pipelineId, onFocusNode }: Props) {
   const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<AiReviewOut | null>(null);
-  const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed(pipelineId));
+  // Initialize empty so SSR and the first client render agree; the actual
+  // persisted set is loaded in the mount effect below. The lazy initializer
+  // (`() => readDismissed(...)`) used to read localStorage at render time,
+  // which only exists on the client → hydration mismatch on the dismissed
+  // count and any conditional rendering driven from it.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [showDismissed, setShowDismissed] = useState(false);
 
   // Load dismissed for this pipeline whenever id changes.
