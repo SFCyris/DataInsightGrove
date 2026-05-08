@@ -245,16 +245,33 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
     exit 2
   fi
 else
+  # Treat the venv as broken if the directory exists but its `pip`
+  # doesn't — typical state after a prior `python3 -m venv` that
+  # half-created the tree before failing on missing ensurepip
+  # (Debian / Ubuntu / Pop!_OS without the `python3-venv` package).
+  # Detecting this here saves the user a manual `rm -rf .venv` round-trip
+  # AFTER they fix the underlying ensurepip issue.
+  VENV_PIP="$BACKEND_DIR/.venv/bin/pip"
+  if [[ -d "$BACKEND_DIR/.venv" && ! -x "$VENV_PIP" ]]; then
+    info "  • backend/.venv exists but is broken (no bin/pip) — recreating…"
+    rm -rf "$BACKEND_DIR/.venv"
+  fi
   if [[ ! -d "$BACKEND_DIR/.venv" ]]; then
     info "  • creating backend/.venv…"
-    "$PY" -m venv "$BACKEND_DIR/.venv"
+    if ! "$PY" -m venv "$BACKEND_DIR/.venv"; then
+      err "  ✗ python -m venv failed."
+      case "$(uname -s)" in
+        Linux)
+          err "    On Debian / Ubuntu / Pop!_OS this usually means the"
+          err "    python3-venv package isn't installed. Try:"
+          err "      sudo apt-get install -y python3-venv python3-pip"
+          ;;
+      esac
+      exit 3
+    fi
   else
     info "  • backend/.venv already exists — installing/updating in place"
   fi
-
-  # Use the venv's pip explicitly so we don't leak into the system interpreter
-  # if the user happened to have backend/.venv activated externally.
-  VENV_PIP="$BACKEND_DIR/.venv/bin/pip"
   # NB: `engine` and `storage` MUST be in this list — they hold polars,
   # duckdb, pyarrow, sqlalchemy, aiosqlite, alembic. Without them the API
   # process crashes on import with ModuleNotFoundError. Caught the hard way
@@ -297,7 +314,12 @@ else
   # to populate frontend/public/duckdb-wasm/ — that's why we don't need to
   # copy WASM bundles ourselves here.
   info "  • pnpm install (DuckDB-WASM bundles copied via postinstall)…"
-  if ! (cd "$FRONTEND_DIR" && pnpm install --silent); then
+  # Drop --silent here — when this step fails, the user needs to see
+  # what pnpm is actually complaining about (peer-dep mismatch, missing
+  # postinstall script, network, etc.). The output is verbose on the
+  # happy path, but a working install runs once and a broken install
+  # runs many times.
+  if ! (cd "$FRONTEND_DIR" && pnpm install); then
     err "  ✗ pnpm install failed — see error above"
     exit 3
   fi

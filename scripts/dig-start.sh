@@ -30,7 +30,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts"
 
 # ---- portable helpers ----
-err() { printf '%s\n' "$*" >&2; }
+err()  { printf '%s\n' "$*" >&2; }
+info() { printf '\033[36m%s\033[0m\n' "$*"; }
 
 # True when the host string means "all interfaces" (`0.0.0.0`, `::`, `*`).
 # Used to flip behaviour between local-only and LAN-wide modes — the
@@ -192,6 +193,30 @@ cat <<EOF
 [dig start] cfg  → $("$PY" "$SCRIPT_DIR/dig_config.py" path 2>/dev/null || echo '(defaults only)')
 EOF
 
+# In global mode the backend refuses to bind to a non-loopback host
+# unless DIG_AUTH_TOKEN is set. Auto-generate a strong token on the
+# first --global run and persist it so subsequent runs reuse the same
+# value (otherwise the frontend's NEXT_PUBLIC_DIG_AUTH_TOKEN would
+# rotate every restart and embedded clients would break).
+if is_global_bind "$API_HOST"; then
+  AUTH_FILE="$USER_CFG_DIR/auth.token"
+  if [[ -z "${DIG_AUTH_TOKEN:-}" ]]; then
+    if [[ -s "$AUTH_FILE" ]]; then
+      DIG_AUTH_TOKEN="$(tr -d '[:space:]' < "$AUTH_FILE")"
+      info "[dig start] reusing auth token from $AUTH_FILE"
+    else
+      DIG_AUTH_TOKEN="$("$PY" -c 'import secrets; print(secrets.token_urlsafe(32))')"
+      umask 077
+      printf '%s\n' "$DIG_AUTH_TOKEN" > "$AUTH_FILE"
+      chmod 600 "$AUTH_FILE"
+      info "[dig start] generated DIG_AUTH_TOKEN, persisted to $AUTH_FILE (chmod 600)"
+    fi
+  fi
+  export DIG_AUTH_TOKEN
+  # Frontend client reads this at build/runtime to attach Bearer header.
+  export NEXT_PUBLIC_DIG_AUTH_TOKEN="$DIG_AUTH_TOKEN"
+fi
+
 # Foreground mode: prefix-tag and inherit signals; for `make dev` and Ctrl-C use.
 if [[ "$FOREGROUND" -eq 1 ]]; then
   exec "$SCRIPT_DIR/dig-dev.sh"
@@ -279,7 +304,14 @@ if is_global_bind "$WEB_HOST"; then
     [[ -n "$ip" ]] && echo "     • http://$ip:$WEB_PORT"
   done < <(list_lan_addresses)
   echo
-  if [[ -z "${NEXT_PUBLIC_DIG_AUTH_TOKEN:-}" ]]; then
+  if [[ -n "${DIG_AUTH_TOKEN:-}" ]]; then
+    echo "   🔑 Auth token active. Stored at ${USER_CFG_DIR}/auth.token (chmod 600)."
+    echo "      Devices on the LAN need to attach Authorization: Bearer <token>"
+    echo "      to API calls. The local frontend already picks it up via"
+    echo "      NEXT_PUBLIC_DIG_AUTH_TOKEN; remote integrations need the value."
+    echo "      Print it: cat ${USER_CFG_DIR}/auth.token"
+    echo
+  else
     echo "   ⚠ SECURITY: no API auth token is set. Anyone on your network can"
     echo "     read every dataset, edit every pipeline, and trigger backend runs."
     echo "     For more than a quick demo, set NEXT_PUBLIC_DIG_AUTH_TOKEN +"

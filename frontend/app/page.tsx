@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api, API_BASE } from "@/lib/api/client";
+import { useApiBase } from "@/lib/use-api-base";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { MatrixTreeBackground } from "@/components/matrix-tree-background";
 import { NumberTree3D } from "@/components/number-tree-3d";
@@ -52,6 +53,11 @@ export default function Home() {
   const reduce = useReducedMotion();
   const router = useRouter();
   const [tourOpen, setTourOpen] = useState(false);
+  // Hydration-safe API base for rendering into the footer link.
+  // Using API_BASE directly would mismatch between SSR (no `window`)
+  // and CSR (resolves from window.location), tripping React's
+  // hydration check.
+  const apiBaseRendered = useApiBase();
 
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
   const pipelines = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines });
@@ -420,10 +426,11 @@ export default function Home() {
               ⚙️ Settings
             </Link>
             <a
-              href={`${API_BASE}/docs`}
+              href={`${apiBaseRendered}/docs`}
               target="_blank"
               rel="noreferrer"
               className="hover:text-emerald-200 transition-colors"
+              suppressHydrationWarning
             >
               📡 API
             </a>

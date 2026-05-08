@@ -136,29 +136,41 @@ linux_base_packages() {
       # `apt-get` over `apt`: apt prints "WARNING: apt does not have a
       # stable CLI interface" on stderr in scripted use. apt-get is
       # the documented scripting interface.
+      #
+      # Why `python3-venv` + `python3-pip` here even when the user
+      # already has python3 installed: Debian / Ubuntu / Pop!_OS ship
+      # python3 split across multiple packages, and `ensurepip`
+      # (needed by `python3 -m venv`) lives in the `python3-venv`
+      # package — NOT bundled with the interpreter. A user with
+      # python3.12 already on PATH will still hit "ensurepip is not
+      # available" without this. Caught the hard way on Pop!_OS 24.04.
       run "sudo apt-get update -qq"
       run "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-           ca-certificates curl gnupg unzip pkg-config build-essential"
+           ca-certificates curl gnupg unzip pkg-config build-essential \
+           python3-venv python3-pip python3-dev"
       ;;
     dnf)
       # @development-tools is the meta-group covering gcc/make/binutils.
       # Newer dnf5 prefers `dnf group install` syntax; both forms work
-      # back to RHEL 8.
-      run "sudo dnf install -y ca-certificates curl gnupg2 unzip pkgconf-pkg-config"
+      # back to RHEL 8. python3-pip is split out on Fedora/RHEL like
+      # on Debian; venv is bundled with the interpreter so there's no
+      # python3-venv package.
+      run "sudo dnf install -y ca-certificates curl gnupg2 unzip pkgconf-pkg-config python3-pip python3-devel"
       run "sudo dnf group install -y development-tools || sudo dnf groupinstall -y 'Development Tools'"
       ;;
     yum)
       # RHEL/CentOS 7 path. Same coverage as dnf.
-      run "sudo yum install -y ca-certificates curl gnupg2 unzip pkgconfig"
+      run "sudo yum install -y ca-certificates curl gnupg2 unzip pkgconfig python3-pip python3-devel"
       run "sudo yum groupinstall -y 'Development Tools'"
       ;;
     pacman)
       # base-devel is Arch's equivalent of build-essential (gcc, make, …).
       # Pacman's --needed skips already-installed packages cleanly.
+      # Arch's `python` package includes venv + pip — no separate ones.
       run "sudo pacman -Sy --noconfirm --needed base-devel ca-certificates curl unzip"
       ;;
     zypper)
-      run "sudo zypper --non-interactive install -y ca-certificates curl unzip pkg-config"
+      run "sudo zypper --non-interactive install -y ca-certificates curl unzip pkg-config python3-pip python3-devel"
       run "sudo zypper --non-interactive install -y --type pattern devel_basis"
       ;;
   esac
@@ -297,13 +309,29 @@ else
       # Universal Linux path: the official install script. Drop into the
       # current shell's PATH so subsequent steps (including dig-install)
       # see pnpm without requiring a logout / re-source.
-      run "curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=latest sh -"
+      #
+      # NB: do NOT set PNPM_VERSION — the script's downloader treats
+      # "latest" as a numeric comparand and explodes ("[: Illegal
+      # number: latest") + 404s. Leaving it unset = the script fetches
+      # whatever's actually current.
+      run "curl -fsSL https://get.pnpm.io/install.sh | sh -"
       if [[ "$DRY_RUN" -ne 1 ]]; then
-        # pnpm's install script writes its location to ~/.bashrc / ~/.zshrc
-        # under SHELL-specific env vars; the canonical path is
-        # ~/.local/share/pnpm regardless of shell. Source via env var.
+        # pnpm's install script writes a snippet into ~/.bashrc / ~/.zshrc.
+        # Layout depends on pnpm version:
+        #   pnpm ≤ v9:  $PNPM_HOME/pnpm      (binary directly under root)
+        #   pnpm ≥ v10: $PNPM_HOME/bin/pnpm  (wrapped in a `bin/` subdir)
+        # We add BOTH to the current shell's PATH so subsequent steps
+        # (dig-install, frontend pnpm install) find the binary regardless
+        # of which version was just dropped in.
         export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
-        case ":$PATH:" in *":$PNPM_HOME:"*) ;; *) export PATH="$PNPM_HOME:$PATH" ;; esac
+        case ":$PATH:" in
+          *":$PNPM_HOME/bin:"*) ;;
+          *) export PATH="$PNPM_HOME/bin:$PATH" ;;
+        esac
+        case ":$PATH:" in
+          *":$PNPM_HOME:"*) ;;
+          *) export PATH="$PNPM_HOME:$PATH" ;;
+        esac
       fi
       ;;
   esac
@@ -312,6 +340,49 @@ else
     err "Open a new terminal and re-run this script, OR add \$HOME/.local/share/pnpm to your PATH."
     exit 1
   fi
+fi
+
+# ---- 3b. Node.js -----------------------------------------------------------
+# pnpm bundles its own Node binary for running pnpm itself, but the
+# `frontend/` postinstall hook (`node scripts/copy-duckdb-wasm.mjs`)
+# and any project script in package.json that invokes `node` directly
+# need a real Node on PATH. pnpm's `env use` puts an LTS Node under
+# $PNPM_HOME/nodejs and PATH-augments accordingly — the same install
+# pattern across every distro.
+if [[ "$OS" == "Darwin" ]] && command -v node >/dev/null 2>&1; then
+  ok "OK node $(node --version 2>/dev/null) ($(command -v node))"
+elif command -v node >/dev/null 2>&1; then
+  ok "OK node $(node --version 2>/dev/null) ($(command -v node))"
+else
+  case "$PKG_MGR" in
+    brew)
+      run "brew install node"
+      ;;
+    *)
+      # Use pnpm's bundled env manager — keeps Node version in sync
+      # with the project's pnpm install, doesn't pollute system paths.
+      if command -v pnpm >/dev/null 2>&1 || [[ "$DRY_RUN" -eq 1 ]]; then
+        # pnpm 11 deprecated `env use --global lts` in favour of
+        # `runtime set node <version> -g`. Try the new form first;
+        # fall back to the old one for pnpm 10 + earlier.
+        if pnpm runtime --help >/dev/null 2>&1; then
+          run "pnpm runtime set node lts -g"
+        else
+          run "pnpm env use --global lts"
+        fi
+      else
+        # Last-resort distro fallback. Distro Node is sometimes old
+        # but Debian 12+ / Ubuntu 22.04+ / Fedora 39+ all ship ≥ 18
+        # which is enough for DIG.
+        case "$PKG_MGR" in
+          apt)    run "sudo apt-get install -y -qq nodejs" ;;
+          dnf|yum) run "sudo $PKG_MGR install -y nodejs" ;;
+          pacman) run "sudo pacman -Sy --noconfirm --needed nodejs" ;;
+          zypper) run "sudo zypper --non-interactive install -y nodejs" ;;
+        esac
+      fi
+      ;;
+  esac
 fi
 
 # ---- 4. JDBC extras: cmake + JDK + ant -----------------------------------

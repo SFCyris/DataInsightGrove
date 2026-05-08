@@ -16,6 +16,13 @@ import type { components, paths } from "./types";
  *      at `http://10.0.0.5:8090`, not the phone's own loopback. This is
  *      what "DIG --global" mode relies on.
  *   4. http://127.0.0.1:8090      (SSR / Node fallback)
+ *
+ * IMPORTANT: don't render this string into HTML attributes (`<a href={…}/>`,
+ * `<form action={…}/>`, `<img src={…}/>`). Server and client resolve to
+ * different values (SSR can't see window.location), which causes a React
+ * hydration mismatch. For rendered URLs use `useApiBase()` instead — it
+ * returns the SSR-safe value on first render and swaps to the client-
+ * derived value after hydration completes.
  */
 function _resolveApiBase(): string {
   if (typeof window !== "undefined") {
@@ -32,6 +39,14 @@ function _resolveApiBase(): string {
 }
 
 export const API_BASE = _resolveApiBase();
+
+/**
+ * The "stable" form of API_BASE for rendering into HTML — never depends
+ * on window, so server and client agree. Use it as a hook seed and
+ * upgrade to the real value after mount via `useApiBase()`.
+ */
+export const SSR_SAFE_API_BASE: string =
+  process.env.NEXT_PUBLIC_DIG_API || "http://127.0.0.1:8090";
 
 /**
  * Bearer token for the DIG API.
