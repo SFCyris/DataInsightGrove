@@ -2,7 +2,7 @@
 
 import * as duckdb from "@duckdb/duckdb-wasm";
 import { tableFromIPC, type Table } from "apache-arrow";
-import { API_BASE, api } from "@/lib/api/client";
+import { API_BASE, API_TOKEN, api } from "@/lib/api/client";
 import { wrapWithSampling, type SamplingConfig } from "@/lib/sampling";
 import { getDb } from "./duckdb";
 
@@ -124,8 +124,18 @@ export async function previewPipeline(
   const t0 = performance.now();
   try {
     // Register each binding as a virtual file pointing at the API URL.
+    // DuckDB-WASM emits its own HTTP requests for these files and has no
+    // hook for adding headers — so when the backend has DIG_AUTH_TOKEN set
+    // (--global mode), we attach the token via `?token=…`. The backend's
+    // BearerAuthMiddleware accepts that as a fallback when no Authorization
+    // header is present. Without this, the parquet fetch returns 401 and
+    // DuckDB-WASM silently shows an empty grid for non-chart steps.
     for (const f of compile.files) {
-      const url = f.url.startsWith("http") ? f.url : `${API_BASE}${f.url}`;
+      let url = f.url.startsWith("http") ? f.url : `${API_BASE}${f.url}`;
+      if (API_TOKEN) {
+        const sep = url.includes("?") ? "&" : "?";
+        url = `${url}${sep}token=${encodeURIComponent(API_TOKEN)}`;
+      }
       // Always (re)register — DuckDB-WASM dedupes by name.
       await db.registerFileURL(f.name, url, duckdb.DuckDBDataProtocol.HTTP, false);
     }

@@ -70,12 +70,21 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         if path.startswith("/docs-files/") or path in ("/docs", "/openapi.json", "/redoc"):
             return await call_next(request)
 
-        # WebSocket: token via query string (browsers can't set headers on WS).
-        if path.startswith("/ws/"):
-            supplied = request.query_params.get("token")
+        # Token is normally supplied via `Authorization: Bearer <token>`. Two
+        # categories of client can't reach that header:
+        #   - WebSocket upgrades (browsers don't allow custom headers on WS).
+        #   - DuckDB-WASM's HTTP fetches for parquet/csv files registered via
+        #     `registerFileURL` — the WASM HTTP path emits a fixed Range/Accept
+        #     request and there's no API to inject headers.
+        # For both, fall back to `?token=…`. The frontend embeds it for
+        # registered file URLs (see dispatcher.ts) and ws.ts for the WS path.
+        # Header takes precedence so ordinary REST calls aren't tempted to put
+        # the token on the URL where it'd leak via referer / log lines.
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            supplied = auth.removeprefix("Bearer ").strip()
         else:
-            auth = request.headers.get("authorization", "")
-            supplied = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else None
+            supplied = request.query_params.get("token")
 
         if supplied is None or not secrets.compare_digest(supplied, self._token):
             return JSONResponse(

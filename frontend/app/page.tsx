@@ -187,7 +187,7 @@ export default function Home() {
       placement: "top",
     },
     {
-      title: "What you&apos;ll see next",
+      title: "What you'll see next",
       body: (
         <>
           The dataset page shows a fast, scrollable grid plus profile cards above each
@@ -200,14 +200,14 @@ export default function Home() {
       nextLabel: "Got it",
     },
     {
-      title: "You&apos;re ready",
+      title: "You're ready",
       body: (
         <>
           You can replay this tour from the <strong>Help</strong> link at the bottom.
           For the full reference, see <code>docs/getting_started.md</code>.
         </>
       ),
-      nextLabel: "Let&apos;s go ✓",
+      nextLabel: "Let's go ✓",
     },
   ];
 
@@ -314,21 +314,29 @@ export default function Home() {
                   damping: 26,
                   delay: 0.15 + i * 0.08,
                 }}
-                className="rounded-xl border border-emerald-300/15 bg-zinc-950/55 backdrop-blur-md p-5 flex flex-col gap-3 hover:border-emerald-300/40 transition-colors"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full grid place-items-center bg-emerald-500/10 border border-emerald-300/20 text-emerald-200 font-semibold tabular-nums text-sm">
-                    {w.n}
-                  </div>
-                  <span className="text-2xl select-none" aria-hidden>{w.emoji}</span>
-                  <h2 className="text-lg font-semibold">{w.title}</h2>
-                </div>
-                <p className="text-sm text-zinc-300/80 leading-relaxed flex-1">{w.body}</p>
+                {/* Whole card is the link — clicking anywhere navigates.
+                    The CTA chevron stays as visual affordance but is not a
+                    separate tab-stop. focus-visible ring + group-hover on
+                    border so keyboard users still see what's selected. */}
                 <Link
                   href={w.href}
-                  className="text-xs text-emerald-300 hover:text-emerald-200 self-start mt-1"
+                  className="group block h-full rounded-xl border border-emerald-300/15 bg-zinc-950/55 backdrop-blur-md p-5 flex flex-col gap-3 hover:border-emerald-300/60 hover:bg-zinc-950/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 focus-visible:border-emerald-300/60"
                 >
-                  {w.cta} →
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full grid place-items-center bg-emerald-500/10 border border-emerald-300/20 text-emerald-200 font-semibold tabular-nums text-sm">
+                      {w.n}
+                    </div>
+                    <span className="text-2xl select-none" aria-hidden>{w.emoji}</span>
+                    <h2 className="text-lg font-semibold">{w.title}</h2>
+                  </div>
+                  <p className="text-sm text-zinc-300/80 leading-relaxed flex-1">{w.body}</p>
+                  <span
+                    className="text-xs text-emerald-300 group-hover:text-emerald-200 self-start mt-1 transition-transform group-hover:translate-x-0.5"
+                    aria-hidden
+                  >
+                    {w.cta} →
+                  </span>
                 </Link>
               </motion.div>
             ))}
