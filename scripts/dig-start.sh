@@ -160,13 +160,25 @@ API_LOG="$LOG_DIR/dig-api.log"
 WEB_LOG="$LOG_DIR/dig-web.log"
 
 # ---- preflight ----
-if [[ ! -d "$REPO_ROOT/backend/.venv" ]]; then
-  err "[dig start] backend venv missing — run 'make backend-setup' first."
-  exit 1
-fi
-if [[ ! -d "$REPO_ROOT/frontend/node_modules" ]]; then
-  err "[dig start] frontend deps missing — run 'pnpm install' from the repo root first."
-  exit 1
+# When deps aren't ready, run the installer rather than punting back to the
+# user. Most users hit this on a fresh clone (no .venv, no node_modules) —
+# they'd rather wait a few minutes than be told to run another command and
+# come back. Power users who don't want this can `--no-auto-install` it.
+NEEDS_INSTALL=0
+[[ ! -d "$REPO_ROOT/backend/.venv" ]]        && NEEDS_INSTALL=1
+[[ ! -d "$REPO_ROOT/frontend/node_modules" ]] && NEEDS_INSTALL=1
+if [[ "$NEEDS_INSTALL" -eq 1 ]]; then
+  if [[ "${DIG_NO_AUTO_INSTALL:-}" == "1" ]]; then
+    err "[dig start] dependencies missing — run ./scripts/dig-install.sh first."
+    err "            (DIG_NO_AUTO_INSTALL=1 is set, so the autorun was skipped.)"
+    exit 1
+  fi
+  info "[dig start] dependencies missing — running ./scripts/dig-install.sh now."
+  info "            (set DIG_NO_AUTO_INSTALL=1 to skip this autorun)"
+  if ! "$REPO_ROOT/scripts/dig-install.sh"; then
+    err "[dig start] install failed — see error above. Fix the issue, then re-run ./start.sh"
+    exit 1
+  fi
 fi
 
 # Refuse to start if anything is already LISTENING on the requested ports.

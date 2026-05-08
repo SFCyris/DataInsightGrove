@@ -103,8 +103,23 @@ def is_valid_timezone(value: str | None) -> bool:
 # Full list is ~250 entries. We hardcode the subset rather than depend
 # on pycountry to keep the install lean. If you need exotic codes,
 # install pycountry and swap the implementation.
+#
+# We accept three categories per ISO 3166-1:
+#   1. **Officially assigned** alpha-2 codes (the canonical 249).
+#   2. **Exceptionally reserved** (held in reserve at a country/group's
+#      request, sometimes seen in real datasets in lieu of the assigned
+#      code — e.g. `UK` for `GB`, `EU` for the European Union).
+#   3. **Transitionally / formerly used** that have only recently been
+#      reassigned and still show up in older exports (e.g. `AN` for the
+#      former Netherlands Antilles, `CS` for Serbia and Montenegro,
+#      `YU` for Yugoslavia, `SU` for the Soviet Union).
+#
+# We accept (2) and (3) silently rather than flagging them as bogus —
+# a data-prep tool that scolds users for using `UK` is being pedantic.
+# The validator's purpose is to catch typos, not police nomenclature.
 
 _ISO_3166_ALPHA2 = frozenset({
+    # 1. Officially assigned alpha-2 codes
     "AD","AE","AF","AG","AI","AL","AM","AO","AQ","AR","AS","AT","AU","AW","AX","AZ",
     "BA","BB","BD","BE","BF","BG","BH","BI","BJ","BL","BM","BN","BO","BQ","BR","BS","BT","BV","BW","BY","BZ",
     "CA","CC","CD","CF","CG","CH","CI","CK","CL","CM","CN","CO","CR","CU","CV","CW","CX","CY","CZ",
@@ -130,7 +145,35 @@ _ISO_3166_ALPHA2 = frozenset({
     "WF","WS",
     "YE","YT",
     "ZA","ZM","ZW",
+
+    # 2. Exceptionally reserved (alpha-2 codes ISO holds in reserve, often
+    # used informally even though they're not assigned country codes).
+    # `UK` — United Kingdom (uses `GB`); `EU` — European Union; `EZ` —
+    # Eurozone; `AC` — Ascension Island; `EA` — Ceuta & Melilla; `IC` —
+    # Canary Islands; `CP` — Clipperton Island; `DG` — Diego Garcia;
+    # `FX` — Metropolitan France; `TA` — Tristan da Cunha; `UN` — UN.
+    "UK","EU","EZ","AC","EA","IC","CP","DG","FX","TA","UN",
+
+    # 3. Transitionally / formerly used (recently reassigned; still in
+    # archived datasets).
+    # `AN` — Netherlands Antilles (split into BQ/CW/SX in 2010); `CS` —
+    # Serbia & Montenegro (split RS/ME in 2006); `YU` — Yugoslavia (now
+    # RS); `SU` — USSR (now RU + others); `BU` — Burma (now MM); `TP` —
+    # East Timor (now TL); `ZR` — Zaire (now CD); `NT` — Saudi-Iraqi
+    # Neutral Zone (dissolved 1993).
+    "AN","CS","YU","SU","BU","TP","ZR","NT",
 })
+
+# Human-readable hint shown by the frontend's column-header info
+# popover when the validator flags "invalid" country codes. References
+# this constant via the type's `validation_help` field below so the
+# explanation lives next to the data, not the UI.
+_COUNTRY_VALIDATION_HELP = (
+    "ISO 3166-1 alpha-2 country code (US, GB, JP, …). DIG also accepts "
+    "common informal aliases — UK (formal: GB), EU, EZ — and "
+    "transitionally reserved codes from older datasets (AN, CS, YU). "
+    "Anything else flagged here is likely a typo or a non-standard code."
+)
 
 
 # ── Regex helpers ─────────────────────────────────────────────────

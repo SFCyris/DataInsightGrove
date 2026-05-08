@@ -10,6 +10,33 @@ import { findIndexDuplicates, isValidForType } from "@/lib/meta-types";
 import { useSettings } from "@/lib/settings";
 import { PositiveLoader, PositiveLoaderInline } from "@/components/positive-loader";
 
+// Per-type explanation surfaced by the column-header `⚠ N` info popover.
+// Tells the user what the format expects and (where applicable) what the
+// validator silently accepts beyond the strict standard. Keep these terse
+// enough to read at a glance — three sentences max.
+const TYPE_VALIDATION_HELP: Record<string, string> = {
+  country:
+    "ISO 3166-1 alpha-2 country code (US, GB, JP, …). DIG also accepts common informal aliases — UK (formal: GB), EU, EZ — and transitionally reserved codes from older datasets (AN, CS, YU). Anything still flagged here is likely a typo or a non-standard code.",
+  email:
+    "Standard RFC-shaped local@domain.tld. Whitespace, multiple @, and missing TLD are flagged. International domains are accepted.",
+  url:
+    "An absolute URL with a scheme (http://, https://, ftp://, etc.). Bare hostnames like 'example.com' are flagged — add the scheme.",
+  uuid:
+    "Canonical 8-4-4-4-12 hex form (e.g. 3b1cb5a4-8d2e-4… ). Both upper- and lower-case are accepted. Missing dashes or wrong length are flagged.",
+  hex:
+    "Hexadecimal value, optional `0x` or `#` prefix. `#fafafa`, `0xDEADBEEF`, and `ABCD1234` all valid.",
+  color:
+    "CSS hex (`#fafafa`, `#fff`), rgb()/rgba() function form, or a named CSS color (e.g. `tomato`, `dodgerblue`).",
+  phone:
+    "International or domestic phone number. Spaces, dashes, parentheses, and `+` are tolerated. Letters or symbols other than these are flagged.",
+  ip:
+    "IPv4 (`a.b.c.d`) or IPv6 (`2001:db8::1`) address. Hostnames and partial addresses are flagged.",
+  timezone:
+    "IANA timezone identifier (`America/New_York`, `Europe/Berlin`). UTC offset strings like `+02:00` are NOT timezone identifiers — flagged here.",
+  index:
+    "An index column should have a unique value per row. Duplicates undermine the column's purpose as a row identifier and are flagged here.",
+};
+
 const TYPE_EMOJI: Record<string, string> = {
   integer: "🔢", double: "🔢", string: "🅰️", date: "📅",
   datetime: "📅", boolean: "☑️", nested: "🧱",
@@ -190,6 +217,15 @@ export function LiveGrid({
   const [menu, setMenu] = useState<{ x: number; y: number; col: Column; initialOpen?: "cast" } | null>(null);
   const [hoveredCol, setHoveredCol] = useState<string | null>(null);
   const [profileFor, setProfileFor] = useState<Column | null>(null);
+  // Popover anchored to a column-header `⚠ N` chip — explains the validation
+  // check, lists a few offending samples, and surfaces the per-type help text.
+  const [whyChip, setWhyChip] = useState<{
+    col: string;
+    bad: number;
+    t: string;
+    samples: string[];
+    anchor: { x: number; y: number };
+  } | null>(null);
   // Drag-to-reorder state. dragCol = column being dragged; dragOver = column
   // currently under the cursor; dropEdge = whether to insert before/after.
   // We use HTML5 native DnD because (a) it's free, (b) it gives us the
@@ -451,26 +487,46 @@ export function LiveGrid({
                           // Inline data-quality badge: how many cells in
                           // this column are invalid? Reads from the same
                           // memo the cell renderer uses so it stays in
-                          // perfect lockstep.
+                          // perfect lockstep. Click → popover with help
+                          // text + sample offending values.
                           const t = logicalType(c.type);
                           if (t !== "index" && !VALIDATED_TYPES.has(t)) return null;
                           const predicate = cellInvalidByCol[c.name];
                           let bad = 0;
+                          const samples: string[] = [];
                           for (const r of renderedRows) {
-                            if (predicate(r[c.name])) bad++;
+                            if (predicate(r[c.name])) {
+                              bad++;
+                              if (samples.length < 3) {
+                                samples.push(String(r[c.name]));
+                              }
+                            }
                           }
                           if (bad === 0) return null;
                           const reason =
                             t === "index"
-                              ? `${bad} duplicate value(s) in this index column`
-                              : `${bad} cell(s) don't match the ${t} format`;
+                              ? `${bad} duplicate value(s) — click for details`
+                              : `${bad} cell(s) don't match the ${t} format — click for details`;
                           return (
-                            <span
-                              className="ml-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-300/60"
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setWhyChip({
+                                  col: c.name,
+                                  bad,
+                                  t,
+                                  samples,
+                                  anchor: { x: rect.left, y: rect.bottom + 4 },
+                                });
+                              }}
                               title={reason}
+                              aria-label={reason}
+                              className="ml-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-300/60 hover:bg-rose-200 dark:hover:bg-rose-900/60 transition-colors cursor-pointer"
                             >
                               ⚠ {bad}
-                            </span>
+                            </button>
                           );
                         })()}
                         {(() => {
@@ -648,6 +704,13 @@ export function LiveGrid({
         )}
       </AnimatePresence>
 
+      {/* Why-this-warning popover anchored to a column-header ⚠ chip */}
+      <AnimatePresence>
+        {whyChip && (
+          <WhyChipPopover info={whyChip} onClose={() => setWhyChip(null)} />
+        )}
+      </AnimatePresence>
+
       {/* Column profile drawer */}
       <ProfileDrawer
         open={profileFor !== null}
@@ -661,6 +724,119 @@ export function LiveGrid({
         onSaveAnnotation={onSaveAnnotation}
       />
     </div>
+  );
+}
+
+function WhyChipPopover({
+  info, onClose,
+}: {
+  info: {
+    col: string;
+    bad: number;
+    t: string;
+    samples: string[];
+    anchor: { x: number; y: number };
+  };
+  onClose: () => void;
+}) {
+  // Close on outside click. setTimeout so the click that opened the popover
+  // doesn't immediately fire this handler and dismiss it on the same tick.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("[data-why-chip-popover]")) return;
+      onClose();
+    };
+    const t = setTimeout(() => {
+      window.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("mousedown", handler);
+    };
+  }, [onClose]);
+  // Escape closes too.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const help = TYPE_VALIDATION_HELP[info.t];
+  const isIndex = info.t === "index";
+  const title = isIndex
+    ? "Index uniqueness check"
+    : `Format check: ${info.t}`;
+  const summary = isIndex
+    ? `${info.bad} duplicate value${info.bad === 1 ? "" : "s"} found in column "${info.col}".`
+    : `${info.bad} cell${info.bad === 1 ? "" : "s"} in column "${info.col}" don't match the ${info.t} format.`;
+
+  // Clamp the popover into the viewport — anchor.x can be near the right
+  // edge for the rightmost column, and we'd render the popover off-screen.
+  const POP_W = 320;
+  const left =
+    typeof window !== "undefined"
+      ? Math.max(8, Math.min(info.anchor.x, window.innerWidth - POP_W - 8))
+      : info.anchor.x;
+  const top = Math.max(8, info.anchor.y);
+
+  return (
+    <motion.div
+      data-why-chip-popover
+      initial={{ opacity: 0, y: -4, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      style={{
+        position: "fixed",
+        left,
+        top,
+        width: POP_W,
+      }}
+      role="dialog"
+      aria-label={title}
+      className="z-50 rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl p-3 text-xs"
+    >
+      <div className="flex items-start gap-2">
+        <span aria-hidden className="text-base shrink-0">⚠️</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm leading-tight">{title}</p>
+          <p className="text-muted-foreground mt-1 leading-snug">{summary}</p>
+          {help && (
+            <p className="mt-2 leading-relaxed">{help}</p>
+          )}
+          {info.samples.length > 0 && (
+            <div className="mt-2.5">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                {isIndex ? "Sample duplicates" : "Sample invalid values"}
+              </p>
+              <ul className="space-y-0.5 rounded bg-muted/40 px-2 py-1.5">
+                {info.samples.map((s, i) => (
+                  <li
+                    key={i}
+                    className="font-mono text-[11px] truncate text-rose-700 dark:text-rose-300"
+                    title={s}
+                  >
+                    {s || <span className="italic opacity-70">(empty)</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="mt-2.5 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[11px] rounded px-2 py-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
   );
 }
 

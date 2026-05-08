@@ -102,8 +102,12 @@ export function isValidIp(v: unknown): boolean {
   return v.includes(":") && _IPV6_RE.test(v);
 }
 
-// ISO-3166 alpha-2 country codes — mirrors the frozenset in the backend.
+// ISO-3166 alpha-2 country codes — mirrors the frozenset in the backend
+// (see backend/dig/engine/meta_types.py for the canonical list + the
+// rationale behind accepting exceptionally / transitionally reserved
+// codes alongside officially assigned ones). Keep both lists in sync.
 const _COUNTRY_CODES = new Set([
+  // 1. Officially assigned alpha-2 codes
   "AD","AE","AF","AG","AI","AL","AM","AO","AQ","AR","AS","AT","AU","AW","AX","AZ",
   "BA","BB","BD","BE","BF","BG","BH","BI","BJ","BL","BM","BN","BO","BQ","BR","BS",
   "BT","BV","BW","BY","BZ",
@@ -134,6 +138,14 @@ const _COUNTRY_CODES = new Set([
   "WF","WS",
   "YE","YT",
   "ZA","ZM","ZW",
+  // 2. Exceptionally reserved (informal but widely used in datasets):
+  // UK = United Kingdom (formal: GB), EU = European Union, EZ = Eurozone,
+  // AC, EA, IC, CP, DG, FX, TA, UN — minor reservations.
+  "UK","EU","EZ","AC","EA","IC","CP","DG","FX","TA","UN",
+  // 3. Transitionally / formerly used (still appear in archived data):
+  // AN (Netherlands Antilles), CS (Serbia & Montenegro), YU (Yugoslavia),
+  // SU (USSR), BU (Burma), TP (East Timor), ZR (Zaire), NT (Neutral Zone).
+  "AN","CS","YU","SU","BU","TP","ZR","NT",
 ]);
 
 export function isValidCountry(v: unknown): boolean {

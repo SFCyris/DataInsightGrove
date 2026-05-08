@@ -382,6 +382,28 @@ if [[ "$NEEDS_SYSTEM_CORE" -eq 1 || "$NEEDS_JDBC_TOOLS" -eq 1 ]]; then
     fi
   fi
   echo
+
+  # Re-augment OUR PATH with what bootstrap just installed. The bootstrap
+  # script `export`s PATH inside its own subshell, but those exports never
+  # cross back into this parent process — so without this, `dig-install.sh`
+  # below would fail with "pnpm not on PATH" even though pnpm was just
+  # installed seconds ago. Cover the standard pnpm locations + brew on
+  # macOS + node-via-pnpm so subsequent steps are seamless.
+  for candidate in \
+      "$HOME/.local/share/pnpm/bin" \
+      "$HOME/.local/share/pnpm" \
+      "/opt/homebrew/bin" \
+      "/usr/local/bin"; do
+    if [[ -d "$candidate" ]]; then
+      case ":$PATH:" in
+        *":$candidate:"*) ;;
+        *) export PATH="$candidate:$PATH" ;;
+      esac
+    fi
+  done
+  # Re-export PNPM_HOME for any tool that relies on it (pnpm itself, the
+  # `pnpm runtime` shim that invokes node, etc.).
+  export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
 fi
 
 # (b) Project dependencies — delegate to dig-install.sh. Pass the access-

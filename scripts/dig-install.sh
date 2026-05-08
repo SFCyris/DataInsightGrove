@@ -112,9 +112,32 @@ if [[ "$PY_MAJOR" -lt 3 ]] || { [[ "$PY_MAJOR" -eq 3 ]] && [[ "$PY_MINOR" -lt 11
 fi
 ok "  ✓ python $PY_VERSION ($PY)"
 
-# pnpm
+# pnpm — try common install locations before giving up. The official pnpm
+# installer drops the binary in $HOME/.local/share/pnpm and writes a shell-rc
+# snippet to add it to PATH, but that rc snippet only takes effect in NEW
+# shells. A user who just ran ./install.sh (or sourced bootstrap manually)
+# in this same shell will hit "pnpm not on PATH" even though the binary is
+# right there. Rather than telling them to reopen the terminal, we look in
+# the obvious places ourselves.
 if ! command -v pnpm >/dev/null 2>&1; then
-  err "  ✗ pnpm not on PATH. Install via: npm install -g pnpm  (or https://pnpm.io/installation)"
+  for candidate in \
+      "$HOME/.local/share/pnpm/bin" \
+      "$HOME/.local/share/pnpm" \
+      "/opt/homebrew/bin" \
+      "/usr/local/bin"; do
+    if [[ -x "$candidate/pnpm" ]]; then
+      case ":$PATH:" in
+        *":$candidate:"*) ;;
+        *) export PATH="$candidate:$PATH" ;;
+      esac
+    fi
+  done
+  export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+fi
+if ! command -v pnpm >/dev/null 2>&1; then
+  err "  ✗ pnpm not on PATH and not in standard install locations."
+  err "    Install via:   ./scripts/dig-bootstrap.sh    (recommended)"
+  err "    Or manually:   npm install -g pnpm           (https://pnpm.io/installation)"
   exit 1
 fi
 PNPM_VERSION="$(pnpm --version 2>/dev/null || echo '?')"

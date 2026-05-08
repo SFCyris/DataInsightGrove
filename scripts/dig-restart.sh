@@ -124,7 +124,7 @@ fi
 # ---- 2. Preflight + re-launch ---------------------------------------------
 
 if [[ ! -d "$REPO_ROOT/backend/.venv" ]]; then
-  err "[dig restart] backend venv missing — run 'make backend-setup' first."
+  err "[dig restart] backend venv missing — run ./scripts/dig-install.sh first."
   exit 1
 fi
 
