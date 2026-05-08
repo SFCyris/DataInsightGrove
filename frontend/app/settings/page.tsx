@@ -15,8 +15,9 @@ import {
   EXPERTISE_DESCRIPTION,
   AUTO_PROMOTE_THRESHOLD,
 } from "@/lib/settings";
-import { api, aiApi, API_BASE } from "@/lib/api/client";
+import { api, aiApi } from "@/lib/api/client";
 import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord, AiProbeOut } from "@/lib/api/client";
+import { useApiBase } from "@/lib/use-api-base";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { DirectoryPickerModal } from "@/components/directory-picker-modal";
 import { PacksSection } from "@/components/settings/packs-section";
@@ -1104,12 +1105,18 @@ function WebhooksSection() {
 // ---- Section: Security ---------------------------------------------------
 
 function SecuritySection() {
+  const apiBaseRendered = useApiBase();
   return (
     <Page title="🔐 Security & API"
       lede="Bind host, port, and auth token are start-time settings — DIG re-reads them only on restart, so they're shown read-only here.">
       <Card>
         <Field label="API endpoint" hint="The address this UI talks to.">
-          <code className="text-xs bg-muted px-2 py-1 rounded font-mono">{API_BASE}</code>
+          <code
+            className="text-xs bg-muted px-2 py-1 rounded font-mono"
+            suppressHydrationWarning
+          >
+            {apiBaseRendered}
+          </code>
         </Field>
         <Field label="Auth token" hint="Required for non-loopback bind. Set via DIG_AUTH_TOKEN at server start.">
           <p className="text-xs text-muted-foreground">
@@ -1132,6 +1139,7 @@ function AboutSection() {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const conns = useQuery({ queryKey: ["connectors"], queryFn: api.listConnectorsTyped });
   const steps = useQuery({ queryKey: ["steps"], queryFn: api.listSteps });
+  const apiBaseRendered = useApiBase();
 
   return (
     <Page title="ℹ️ About this install" lede="DataInsightGrove™ — self-hosted data preparation.">
@@ -1139,7 +1147,7 @@ function AboutSection() {
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <Stat label="Product" value="DataInsightGrove™ · DIG™" />
           <Stat label="Backend" value={health.data ? `${health.data.name} v${health.data.version} ✅` : "…"} />
-          <Stat label="API endpoint" value={API_BASE} mono />
+          <Stat label="API endpoint" value={apiBaseRendered} mono />
           <Stat label="License" value="AGPL-3.0-or-later" />
           <Stat label="Connectors" value={`${conns.data?.length ?? 0} loaded`} />
           <Stat label="Steps" value={`${steps.data?.length ?? 0} registered`} />
@@ -1150,12 +1158,14 @@ function AboutSection() {
              title="Canonical source repository (AGPL-3.0)">
             🐙 Source on GitHub
           </a>
-          <a href={`${API_BASE}/docs`} target="_blank" rel="noreferrer"
-             className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <a href={`${apiBaseRendered}/docs`} target="_blank" rel="noreferrer"
+             className={buttonVariants({ variant: "outline", size: "sm" })}
+             suppressHydrationWarning>
             📡 Open Swagger UI
           </a>
-          <a href={`${API_BASE}/openapi.json`} target="_blank" rel="noreferrer"
-             className={buttonVariants({ variant: "ghost", size: "sm" })}>
+          <a href={`${apiBaseRendered}/openapi.json`} target="_blank" rel="noreferrer"
+             className={buttonVariants({ variant: "ghost", size: "sm" })}
+             suppressHydrationWarning>
             ⬇️ openapi.json
           </a>
         </div>

@@ -10,7 +10,7 @@
  */
 
 import { motion } from "motion/react";
-import { API_BASE } from "@/lib/api/client";
+import { useApiBase } from "@/lib/use-api-base";
 
 interface Props {
   /** Anchor in the doc, e.g. "the-editor". Without leading '#'. */
@@ -24,9 +24,10 @@ interface Props {
 }
 
 export function HelpLink({ anchor, topic, doc = "getting_started.md", size = "sm" }: Props) {
+  const apiBase = useApiBase();
   const href = anchor
-    ? `${API_BASE}/docs-files/${doc}#${anchor}`
-    : `${API_BASE}/docs-files/${doc}`;
+    ? `${apiBase}/docs-files/${doc}#${anchor}`
+    : `${apiBase}/docs-files/${doc}`;
   const label = `Help: ${topic}`;
   return (
     <motion.a
@@ -37,6 +38,7 @@ export function HelpLink({ anchor, topic, doc = "getting_started.md", size = "sm
       aria-label={label}
       whileHover={{ scale: 1.06 }}
       whileTap={{ scale: 0.94 }}
+      suppressHydrationWarning
       className={
         size === "sm"
           ? "inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors leading-none"
