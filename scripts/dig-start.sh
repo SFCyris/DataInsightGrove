@@ -200,21 +200,59 @@ EOF
 # rotate every restart and embedded clients would break).
 if is_global_bind "$API_HOST"; then
   AUTH_FILE="$USER_CFG_DIR/auth.token"
-  if [[ -z "${DIG_AUTH_TOKEN:-}" ]]; then
-    if [[ -s "$AUTH_FILE" ]]; then
-      DIG_AUTH_TOKEN="$(tr -d '[:space:]' < "$AUTH_FILE")"
-      info "[dig start] reusing auth token from $AUTH_FILE"
-    else
-      DIG_AUTH_TOKEN="$("$PY" -c 'import secrets; print(secrets.token_urlsafe(32))')"
-      umask 077
-      printf '%s\n' "$DIG_AUTH_TOKEN" > "$AUTH_FILE"
-      chmod 600 "$AUTH_FILE"
-      info "[dig start] generated DIG_AUTH_TOKEN, persisted to $AUTH_FILE (chmod 600)"
-    fi
+  # Resolve the token in priority order:
+  #   1. DIG_AUTH_TOKEN already in env (e.g. from .bashrc, CI, the operator).
+  #   2. ~/.config/dig/auth.token  (persisted across runs).
+  #   3. Auto-generate.
+  # Then ALWAYS persist to AUTH_FILE so the file is a reliable source-of-
+  # truth — without this, the post-startup banner could lie about where
+  # the token lives (e.g. operator exported via env, banner claimed file
+  # storage, file didn't exist). Caught by Pop!_OS testing.
+  if [[ -n "${DIG_AUTH_TOKEN:-}" ]]; then
+    info "[dig start] using auth token from existing DIG_AUTH_TOKEN env var"
+  elif [[ -s "$AUTH_FILE" ]]; then
+    DIG_AUTH_TOKEN="$(tr -d '[:space:]' < "$AUTH_FILE")"
+    info "[dig start] reusing auth token from $AUTH_FILE"
+  else
+    DIG_AUTH_TOKEN="$("$PY" -c 'import secrets; print(secrets.token_urlsafe(32))')"
+    info "[dig start] generated a fresh auth token"
+  fi
+  # Always (re)write to AUTH_FILE so the banner's "Stored at …" claim is
+  # truthful and a single canonical place exists for remote integrations.
+  if [[ ! -s "$AUTH_FILE" ]] || [[ "$(tr -d '[:space:]' < "$AUTH_FILE")" != "$DIG_AUTH_TOKEN" ]]; then
+    umask 077
+    printf '%s\n' "$DIG_AUTH_TOKEN" > "$AUTH_FILE"
+    chmod 600 "$AUTH_FILE"
+    info "[dig start] auth token persisted to $AUTH_FILE (chmod 600)"
   fi
   export DIG_AUTH_TOKEN
   # Frontend client reads this at build/runtime to attach Bearer header.
   export NEXT_PUBLIC_DIG_AUTH_TOKEN="$DIG_AUTH_TOKEN"
+
+  # CORS allow-list. The backend defaults to `localhost:3000,127.0.0.1:3000`,
+  # which means a remote browser hitting `http://<lan-ip>:3000` triggers
+  # a CORS preflight failure (Firefox masks it as "NetworkError when
+  # attempting to fetch resource"). In global mode auto-populate the
+  # list with every reachable web origin: localhost/127.0.0.1, the
+  # local hostname (mDNS .local on macOS, kernel hostname on Linux),
+  # and every non-loopback IPv4 on the box. Honor a user-provided
+  # DIG_CORS_ORIGINS — only auto-populate when unset.
+  if [[ -z "${DIG_CORS_ORIGINS:-}" ]]; then
+    cors_list="http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT"
+    hn="$(local_hostname)"
+    if [[ -n "$hn" ]]; then
+      cors_list="$cors_list,http://$hn:$WEB_PORT"
+      # On macOS local_hostname returns `<name>.local`; also add the
+      # bare hostname (kernel form) since some browsers prefer that.
+      bare="${hn%.local}"
+      [[ "$bare" != "$hn" ]] && cors_list="$cors_list,http://$bare:$WEB_PORT"
+    fi
+    while IFS= read -r ip; do
+      [[ -n "$ip" ]] && cors_list="$cors_list,http://$ip:$WEB_PORT"
+    done < <(list_lan_addresses)
+    export DIG_CORS_ORIGINS="$cors_list"
+    info "[dig start] DIG_CORS_ORIGINS auto-populated for LAN: $DIG_CORS_ORIGINS"
+  fi
 fi
 
 # Foreground mode: prefix-tag and inherit signals; for `make dev` and Ctrl-C use.

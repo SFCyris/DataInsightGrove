@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
@@ -17,6 +17,15 @@ export default function GalleryDetailPage({ params }: PageProps) {
   const { slug } = use(params);
   const reduce = useReducedMotion();
   const router = useRouter();
+
+  // Hydration-safe share URL — `window` only exists on the client, so
+  // start empty (matching the server render) and patch in the real URL
+  // after mount. The bare `typeof window !== "undefined" ? … : ""`
+  // pattern at the input causes a hydration mismatch every render.
+  const [shareUrl, setShareUrl] = useState("");
+  useEffect(() => {
+    setShareUrl(window.location.href);
+  }, []);
 
   const q = useQuery({
     queryKey: ["gallery", slug],
@@ -125,7 +134,8 @@ export default function GalleryDetailPage({ params }: PageProps) {
               <div className="flex items-center gap-2">
                 <input
                   readOnly
-                  value={typeof window !== "undefined" ? window.location.href : ""}
+                  value={shareUrl}
+                  suppressHydrationWarning
                   className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-xs font-mono"
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
