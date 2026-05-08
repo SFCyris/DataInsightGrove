@@ -178,7 +178,7 @@ export default function SchedulesPage() {
                 {pipelineById.get(s.pipeline_id) ?? s.pipeline_id}
               </p>
               <p className="text-[11px] text-muted-foreground font-mono">
-                {s.cron}{s.sample_rows ? ` · sample ${s.sample_rows.toLocaleString()}` : ""}
+                {s.cron}{s.sample_rows ? ` · sample ${s.sample_rows.toLocaleString("en-US")}` : ""}
               </p>
             </div>
             <Link

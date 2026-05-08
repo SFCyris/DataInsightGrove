@@ -214,7 +214,7 @@ function RefPicker({
           history.map((h) => (
             <option key={h.id} value={h.id}>
               {TRIGGER_LABEL[h.triggeredBy] ?? "·"} ·{" "}
-              {new Date(h.createdAt).toLocaleString()}
+              {new Date(h.createdAt).toLocaleString("en-US")}
             </option>
           ))}
       </select>

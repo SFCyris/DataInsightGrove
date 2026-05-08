@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api, API_BASE } from "@/lib/api/client";
+import { api, API_BASE, API_TOKEN } from "@/lib/api/client";
 import { useApiBase } from "@/lib/use-api-base";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { MatrixTreeBackground } from "@/components/matrix-tree-background";
@@ -108,9 +108,15 @@ export default function Home() {
   // something" — collapse that to one click.
   const importSample = useMutation({
     mutationFn: async () => {
+      // Direct fetch (not the typed wrapper) so we have to attach the
+      // Bearer token ourselves — without it, --global mode rejects with
+      // 401 and the user sees a generic "NetworkError" toast. Caught the
+      // hard way during Pop!_OS LAN testing.
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
       const res = await fetch(`${API_BASE}/datasets/samples/import`, {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers,
       });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const d = await res.json();

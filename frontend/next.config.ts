@@ -1,4 +1,40 @@
 import type { NextConfig } from "next";
+import { networkInterfaces, hostname } from "node:os";
+
+// Enumerate every non-loopback IPv4 (plus the kernel hostname) so Next 16's
+// dev-origin gate accepts the LAN URLs DIG's `--global` mode advertises.
+// The previous version listed CIDR ranges (`10.0.0.0/8`, …) but Next does
+// NOT parse CIDR — it expects exact hostnames or `*` wildcards. Dynamic
+// enumeration matches whatever interfaces the host actually has, so a
+// machine on `10.0.0.80` and another on `192.168.5.42` both Just Work
+// without anyone editing config.
+function lanDevOrigins(): string[] {
+  const out = new Set<string>(["127.0.0.1", "localhost", "[::1]"]);
+  try {
+    for (const ifaces of Object.values(networkInterfaces())) {
+      for (const i of ifaces ?? []) {
+        if (i.internal) continue;
+        if (i.family === "IPv4") out.add(i.address);
+      }
+    }
+    const hn = hostname();
+    if (hn) {
+      out.add(hn);
+      // Some setups expose the kernel hostname as `<hn>.local` via mDNS.
+      out.add(`${hn}.local`);
+    }
+  } catch {
+    // Best-effort — if `os` lookups fail, fall through to loopback only.
+  }
+  // Operator override: comma-separated list, e.g.
+  //   DIG_ALLOWED_DEV_ORIGINS="my-tunnel.example.com,10.0.5.42"
+  const extra = process.env.DIG_ALLOWED_DEV_ORIGINS || "";
+  for (const e of extra.split(",")) {
+    const v = e.trim();
+    if (v) out.add(v);
+  }
+  return Array.from(out);
+}
 
 const nextConfig: NextConfig = {
   // Hide Next's dev-mode route-status badge (the small "N" pinned to the
@@ -8,16 +44,9 @@ const nextConfig: NextConfig = {
   // Per Next 16 docs: node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/devIndicators.md
   devIndicators: false,
 
-  // Allow dev-server HMR over LAN IPs (Next 16+ blocks cross-origin HMR by default).
-  // DIG is meant to run on a single host but be reachable from other devices on
-  // the LAN, so we accept loopback + common private ranges.
-  allowedDevOrigins: [
-    "127.0.0.1",
-    "localhost",
-    "10.0.0.0/8",
-    "192.168.0.0/16",
-    "172.16.0.0/12",
-  ],
+  // Allow dev-server HMR + RSC over LAN IPs (Next 16+ blocks cross-origin
+  // dev-resource access by default). See `lanDevOrigins()` above.
+  allowedDevOrigins: lanDevOrigins(),
 
   async headers() {
     return [
