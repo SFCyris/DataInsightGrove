@@ -1106,12 +1106,21 @@ async def create_overview_from_dataset(
     nodes: list[dict[str, Any]] = []
     outputs: list[dict[str, Any]] = []
 
+    # Canonical doc-internal alias for the dataset: `ds_<ulid-lowercase>`.
+    # The pipeline-doctor rule `ruleNonCanonicalDatasetId` flags any other
+    # form (`ds_main`, etc.) so several preview surfaces (focused-dataset
+    # grid, rule-based hints, lineage trace) can match the alias against
+    # the registered dataset row by id. Building the alias canonically
+    # here avoids the doctor pop-up on every fresh "🌱 Try with sample
+    # data" → auto-overview-pipeline run.
+    ds_alias = f"ds_{d.id.lower()}"
+
     def _add_chart(node_id: str, kind: str, x_col: str, label_emoji: str, x_offset: int) -> None:
         nodes.append({
             "id": node_id,
             "step": "export_to_image",
             "stepVersion": "1.0.0",
-            "inputs": {"in": {"port": "out", "ref": "ds_main"}},
+            "inputs": {"in": {"port": "out", "ref": ds_alias}},
             "outputs": ["out"],
             "params": {
                 "kind": kind,
@@ -1149,7 +1158,7 @@ async def create_overview_from_dataset(
         "id": pid,
         "name": name,
         "datasets": [{
-            "id": "ds_main",
+            "id": ds_alias,
             # The pipeline reads from the dataset's *cached parquet* path,
             # so the connector here is always "parquet" — regardless of the
             # original ingest connector (csv, xlsx, jdbc, …). Using
