@@ -14,6 +14,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, TALL_STACK_FIGSIZE
 
 
 def _detect_period(times) -> int:
@@ -119,7 +120,7 @@ class SeasonalDecomposeStep(Step):
             ("seasonal",  df.get_column("seasonal").to_numpy()),
             ("residual",  df.get_column("residual").to_numpy()),
         ]
-        fig, axes = plt.subplots(4, 1, figsize=(10, 9), dpi=144, sharex=True)
+        fig, axes = plt.subplots(4, 1, figsize=TALL_STACK_FIGSIZE, dpi=DEFAULT_DPI, sharex=True)
         for ax, (label, ys) in zip(axes, rows):
             ax.plot(x, ys, linewidth=1.2)
             ax.set_ylabel(label)
@@ -128,7 +129,7 @@ class SeasonalDecomposeStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from dig.ai.client import AiConfig, AiError, chat
+from dig.ai.parsing import parse_json_lenient
+from dig.ai.prompts import TOKEN_BUDGETS
 from dig.ai.safety import lint_plugin_python
 
 
@@ -149,27 +151,33 @@ async def generate_step(
     user_parts.append(f"```\n{_FEW_SHOT_ARRAY_LENGTH}\n```")
     user_parts.append("\nGenerate the JSON now.")
 
-    resp = await chat(
-        cfg,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": "\n\n".join(user_parts)},
-        ],
-        response_format="json_object",
-        temperature=0.1,
-        max_tokens=4096,
-    )
+    # Two-phase chat — same fallback as the suggestor features.
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": "\n\n".join(user_parts)},
+    ]
+    last_err: AiError | None = None
+    resp = None
+    for use_json_format in (True, False):
+        try:
+            resp = await chat(
+                cfg,
+                messages=messages,
+                response_format="json_object" if use_json_format else None,
+                temperature=0.1,
+                max_tokens=TOKEN_BUDGETS["generate_step"],
+            )
+            break
+        except AiError as e:
+            last_err = e
+            if "empty message" not in str(e).lower():
+                raise
+    if resp is None:
+        raise AiError(str(last_err) if last_err else "AI returned no content")
 
-    text = resp.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise AiError(f"AI returned non-JSON: {text[:300]} ({e})") from e
+    parsed = parse_json_lenient(resp.text)
+    if parsed is None:
+        raise AiError(f"AI returned non-JSON: {resp.text[:300]}")
 
     required = {"id", "manifest_json", "step_py"}
     missing = required - set(parsed.keys())

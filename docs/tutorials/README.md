@@ -4,7 +4,7 @@ Ten longer walkthroughs that take a complete scenario end-to-end — from raw da
 
 These pair with the [first-steps tutorials](../tutorials.md) (which cover individual mechanics) and assume you've finished at least one of those — they don't re-explain how to import a CSV or open the editor.
 
-Each tutorial showcases features from the v0.6 feature wave: adaptive UI mode switching, pipeline diff, AI review, column lineage, inline histograms, the live SQL toggle, sharing to the gallery, and the dbt + reverse-ETL connectors.
+Each tutorial showcases the advanced surfaces: adaptive UI mode switching, pipeline diff, AI review, column lineage, inline histograms, the live SQL toggle, sharing to the gallery, and the dbt + reverse-ETL connectors.
 
 | # | Tutorial | Dataset | Features in focus |
 |---|---|---|---|
@@ -35,7 +35,7 @@ Each tutorial showcases features from the v0.6 feature wave: adaptive UI mode sw
 
 ---
 
-## 📸 What's new in v0.6 — feature showcase
+## 📸 Feature showcase
 
 A quick visual tour of the new surfaces these tutorials use. Capture from a live DIG running locally; see [Lifecycle reference](../lifecycle.md) for the start scripts.
 
@@ -49,7 +49,7 @@ Settings → 🌱 Expertise mode. Beginner is the default for first-time users; 
 
 Every new feature has a button: `🔍 Review` (AI Pipeline Reviewer), `↔ Compare` (Pipeline Diff), `🔗 Share` (Template Gallery), `{ } SQL` (Engineer-only — Live SQL view).
 
-![Pipeline editor with the v0.6 toolbar — Suggest · Explain · Review · Compare · Share · SQL](../images/tutorials/advanced/10-template-editor-rich.png)
+![Pipeline editor toolbar — Suggest · Explain · Review · Compare · Share · SQL](../images/tutorials/advanced/10-template-editor-rich.png)
 
 Notice the **inline column histograms** in the grid header — `plan` (categorical, 4 bars) and `n` (numeric).
 
@@ -67,7 +67,7 @@ Click `🔍 Review` to ask the configured LLM (local Ollama, OpenAI, or Anthropi
 
 ### { } Live SQL view (Engineer mode)
 
-Toggle between visual + SQL with the `{} SQL` toolbar button. Tier-1 read-only ships in v0.6; Tier-2 round-trip edit follows.
+Toggle between visual + SQL with the `{} SQL` toolbar button. Tier-1 read-only ships today; Tier-2 round-trip edit follows.
 
 ![Live SQL view — keyword-tinted CTE chain compiled to DuckDB](../images/tutorials/advanced/10-live-sql-rich.png)
 

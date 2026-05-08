@@ -59,5 +59,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["export", "sink", "database", "jdbc", "java"]
+  "tags": ["export", "sink", "database", "jdbc", "java"],
+  "aliases": ["save jdbc", "write jdbc"]
 }

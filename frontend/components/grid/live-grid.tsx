@@ -8,6 +8,7 @@ import { ColumnSparkline } from "@/components/grid/column-sparkline";
 import { fmtInt } from "@/lib/format-number";
 import { findIndexDuplicates, isValidForType } from "@/lib/meta-types";
 import { useSettings } from "@/lib/settings";
+import { PositiveLoader, PositiveLoaderInline } from "@/components/positive-loader";
 
 const TYPE_EMOJI: Record<string, string> = {
   integer: "🔢", double: "🔢", string: "🅰️", date: "📅",
@@ -301,9 +302,8 @@ export function LiveGrid({
           <motion.span
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-[10px] text-muted-foreground"
           >
-            ⏳ recomputing…
+            <PositiveLoaderInline variant="rendering" text="recomputing" />
           </motion.span>
         )}
       </div>
@@ -312,12 +312,20 @@ export function LiveGrid({
       <div className="flex-1 overflow-auto relative">
         {columns.length === 0 || rows.length === 0 ? (
           <div className="absolute inset-0 grid place-items-center text-center text-sm text-muted-foreground">
-            {emptyHint ?? (
-              <div>
-                <div className="text-5xl mb-2">🌱</div>
-                <p>No data yet — add a dataset to begin.</p>
-              </div>
-            )}
+            {/* Three states for the empty grid:
+                  1. emptyHint provided (chart-first, error, etc.) → use it.
+                  2. no emptyHint + currently loading → positive loader so
+                     the user sees motion + a timer instead of "no data".
+                  3. genuinely empty (no dataset) → 🌱 prompt to add one. */}
+            {emptyHint ??
+              (loading ? (
+                <PositiveLoader variant="rendering" primary="Loading data…" />
+              ) : (
+                <div>
+                  <div className="text-5xl mb-2">🌱</div>
+                  <p>No data yet — add a dataset to begin.</p>
+                </div>
+              ))}
           </div>
         ) : (
           <table

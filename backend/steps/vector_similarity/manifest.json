@@ -28,5 +28,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["vector", "embedding", "similarity", "knn", "ml", "derive"]
+  "tags": ["vector", "embedding", "similarity", "knn", "ml", "derive"],
+  "requires": [{"kind": ["vector", "string", "array"], "min": 2}],
+  "aliases": ["cosine", "knn", "nearest neighbors", "similarity", "dot product"]
 }

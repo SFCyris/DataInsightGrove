@@ -43,5 +43,7 @@
     }
   },
   "preview": { "rowImpact": "unknown", "schemaImpact": "rebuilds" },
-  "tags": ["time-series", "aggregate", "resample", "bucketize"]
+  "tags": ["time-series", "aggregate", "resample", "bucketize"],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}],
+  "aliases": ["time bucket", "downsample", "upsample", "rebin time"]
 }

@@ -29,6 +29,7 @@ import {
   type AiProbeUrlOut,
 } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ThinkingLabel } from "@/components/positive-loader";
 
 type AuthKind = "none" | "bearer" | "api_key_query" | "basic";
 
@@ -246,7 +247,7 @@ export default function NewConnectorPage() {
           </div>
 
           <Button onClick={onGenerate} disabled={generating} size="sm">
-            {generating ? "⏳ Generating (30–60s for cold local model)…" : "✨ Generate connector"}
+            {generating ? <ThinkingLabel text="Generating (30–60s for cold local model)…" /> : "✨ Generate connector"}
           </Button>
         </motion.section>
       )}

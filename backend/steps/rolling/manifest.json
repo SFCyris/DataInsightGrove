@@ -31,5 +31,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["time-series", "rolling", "moving-average", "smoothing"]
+  "tags": ["time-series", "rolling", "moving-average", "smoothing"],
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["moving average", "rolling window", "smoothing"]
 }

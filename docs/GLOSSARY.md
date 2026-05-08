@@ -18,6 +18,11 @@ A short tour of the words DIG uses for its building blocks. If you've used a spr
 | **Schedule** | A cron expression that runs a pipeline automatically on a cadence.              |
 | **Lineage**  | Optional per-row source tracing — click 🔍 to see which input row(s) made it.    |
 | **Module**   | A reusable, packaged sub-pipeline you can drop into a larger pipeline.          |
+| **Sub-pipeline** | A pipeline published as a reusable step (`metadata.publishedAsStep`). Appears in every other pipeline's picker as `pipeline:<id>`. See [SUB_PIPELINES.md](SUB_PIPELINES.md). |
+| **Checkpoint** | A labelled save (`💾 Save`) that survives autosave history pruning. The version you intend to come back to. See [SAVE_AND_VERSIONS.md](SAVE_AND_VERSIONS.md). |
+| **Sampling** | Per-pipeline setting (head / tail / random / systematic) controlling how the editor preview draws rows from the pipeline output. See [SAMPLING.md](SAMPLING.md). |
+| **Pinned etag** | The specific source-pipeline version a sub-pipeline consumer is locked to. Bumped via the **⬆ Upgrade to vN** button on the wrapper node. |
+| **Exposed param** | A node parameter declared (via the 🪆 expose pill) as customisable from outside when the pipeline is published as a reusable step. |
 
 ## In a bit more detail
 

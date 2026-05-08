@@ -24,5 +24,6 @@
               "visibleWhen": { "kind": "random_n" } }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "preserves" },
-  "tags": ["sample", "random", "head"]
+  "tags": ["sample", "random", "head"],
+  "aliases": ["random sample", "subset", "shuffle"]
 }

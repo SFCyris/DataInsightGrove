@@ -62,6 +62,7 @@ banner() {
 ASSUME_YES=0
 JDBC_PREF=""        # "" = ask, "yes", "no"
 START_PREF=""       # "" = ask, "yes", "no"
+ACCESS_PREF=""      # "" = ask, "local", "global"
 REBUILD_FLAG=""
 
 while [[ $# -gt 0 ]]; do
@@ -69,6 +70,8 @@ while [[ $# -gt 0 ]]; do
     -y|--yes)            ASSUME_YES=1; shift ;;
     --jdbc)              JDBC_PREF="yes"; shift ;;
     --no-jdbc)           JDBC_PREF="no"; shift ;;
+    --local)             ACCESS_PREF="local"; shift ;;
+    --global|--lan)      ACCESS_PREF="global"; shift ;;
     --no-start)          START_PREF="no"; shift ;;
     --rebuild)           REBUILD_FLAG="--rebuild"; shift ;;
     --non-interactive)   ASSUME_YES=1; START_PREF="no"; shift ;;
@@ -95,13 +98,22 @@ ask() {
 
 # ---------- detect platform ----------------------------------------------
 OS="$(uname -s)"
+DISTRO_LABEL=""
+if [[ "$OS" == "Linux" ]] && [[ -r /etc/os-release ]]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  DISTRO_LABEL="${PRETTY_NAME:-${ID:-Linux}}"
+fi
 case "$OS" in
   Darwin) PLATFORM="macOS" ;;
   Linux)
-    if   command -v apt    >/dev/null 2>&1; then PLATFORM="Linux (apt)"
-    elif command -v dnf    >/dev/null 2>&1; then PLATFORM="Linux (dnf)"
-    elif command -v pacman >/dev/null 2>&1; then PLATFORM="Linux (pacman)"
+    if   command -v apt-get >/dev/null 2>&1; then PLATFORM="Linux (apt-get)"
+    elif command -v dnf     >/dev/null 2>&1; then PLATFORM="Linux (dnf)"
+    elif command -v yum     >/dev/null 2>&1; then PLATFORM="Linux (yum)"
+    elif command -v pacman  >/dev/null 2>&1; then PLATFORM="Linux (pacman)"
+    elif command -v zypper  >/dev/null 2>&1; then PLATFORM="Linux (zypper)"
     else                                          PLATFORM="Linux (unknown)"; fi
+    [[ -n "$DISTRO_LABEL" ]] && PLATFORM="$DISTRO_LABEL — $PLATFORM"
     ;;
   *) PLATFORM="$OS (unsupported)" ;;
 esac
@@ -269,6 +281,52 @@ if [[ "$WANT_JDBC" -eq 1 ]]; then
   fi
 fi
 
+# ---- access mode prompt -------------------------------------------------
+# Whether DIG should listen on 127.0.0.1 only (local) or 0.0.0.0 (LAN-wide).
+# Persisted via dig-install.sh's --api-host / --web-host flags so every
+# subsequent ./start.sh / ./scripts/dig-restart.sh honors it without the
+# user having to remember.
+case "$ACCESS_PREF" in
+  local|global) ;;
+  "")
+    # --yes / --non-interactive should default to LOCAL — the safe
+    # choice. Surfacing global mode requires an explicit choice from a
+    # human at the prompt.
+    if [[ "$ASSUME_YES" -eq 1 ]]; then
+      ACCESS_PREF="local"
+    else
+    hdr "🌐  Step 2b of 5 — network access"
+    cat <<EOF
+Should DIG be reachable only from this machine, or from any device on
+your local network (phone, laptop, another computer)?
+
+  • LOCAL (default)  Only this computer. The web UI lives at
+                     http://localhost:3000 and nothing else can talk to it.
+                     Best for personal use and the safest default.
+
+  • LAN-wide         Any device on your home / office network can reach
+                     DIG via this machine's IP. Useful for demos, sharing
+                     a pipeline mid-flight, or running on a small server.
+                     ⚠ DIG does NOT enforce auth by default — anyone on
+                     the LAN who reaches the URL gets full editor access.
+
+You can flip this any time with:
+    ./scripts/dig-restart.sh --local   |   --global
+
+EOF
+    if ask "Make DIG reachable from other devices on your network?" "n"; then
+      ACCESS_PREF="global"
+    else
+      ACCESS_PREF="local"
+    fi
+    fi  # close the ASSUME_YES branch
+    ;;
+esac
+case "$ACCESS_PREF" in
+  local)  PERSIST_HOST="127.0.0.1" ;;
+  global) PERSIST_HOST="0.0.0.0" ;;
+esac
+
 # ---------- print plan ---------------------------------------------------
 hdr "📋  Step 3 of 5 — plan"
 plan_lines=()
@@ -326,11 +384,24 @@ if [[ "$NEEDS_SYSTEM_CORE" -eq 1 || "$NEEDS_JDBC_TOOLS" -eq 1 ]]; then
   echo
 fi
 
-# (b) Project dependencies — delegate to dig-install.sh.
-if [[ "$NEEDS_PROJECT" -eq 1 || "$WANT_JDBC" -eq 1 ]]; then
+# (b) Project dependencies — delegate to dig-install.sh. Pass the access-
+# mode choice via --api-host / --web-host so dig-install persists it to
+# ~/.config/dig/config.json (its persistence step runs BEFORE prereq
+# checks, so the values stick even when --check would have early-exited).
+if [[ "$NEEDS_PROJECT" -eq 1 || "$WANT_JDBC" -eq 1 || -n "${PERSIST_HOST:-}" ]]; then
   install_args=()
   [[ -n "$REBUILD_FLAG" ]] && install_args+=("$REBUILD_FLAG")
   [[ "$WANT_JDBC" -eq 1 ]] && install_args+=(--jdbc)
+  if [[ -n "${PERSIST_HOST:-}" ]]; then
+    install_args+=(--api-host "$PERSIST_HOST" --web-host "$PERSIST_HOST")
+  fi
+  # When NOTHING needs (re)installing but we DO need to persist the host
+  # choice, run with --check so dig-install just records the values and
+  # exits without re-doing the venv. The --check path still runs the
+  # config-persistence block at the top of dig-install.sh.
+  if [[ "$NEEDS_PROJECT" -eq 0 && "$WANT_JDBC" -eq 0 ]]; then
+    install_args+=(--check)
+  fi
 
   info "→ Running ./scripts/dig-install.sh ${install_args[*]}"
   if ! "$SCRIPT_DIR/dig-install.sh" "${install_args[@]}"; then

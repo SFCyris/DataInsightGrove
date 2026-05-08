@@ -1,0 +1,38 @@
+{
+  "id": "pareto_chart",
+  "version": "1.0.0",
+  "label": "📈 Pareto chart",
+  "description": "Sorted bar chart of category values + cumulative-percentage line on a secondary axis. The 80/20 chart — useful for showing which few categories drive most of the total.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "label": {
+      "type": "column_ref", "label": "Label column",
+      "columnFrom": "in", "required": true
+    },
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "top_n": {
+      "type": "integer", "label": "Top N categories",
+      "default": 20, "min": 3, "max": 100
+    },
+    "title": {
+      "type": "string", "label": "Title", "default": "Pareto"
+    },
+    "output_path": {
+      "type": "string", "label": "Output path"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "recommendedMaxRows": 200,
+  "tags": ["chart", "business"],
+  "aliases": ["pareto", "80/20", "abc analysis"],
+  "requires": [{"kind": "numeric"}]
+}

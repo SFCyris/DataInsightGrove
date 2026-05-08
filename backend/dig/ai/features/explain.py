@@ -16,6 +16,7 @@ import json
 from typing import Any
 
 from dig.ai.client import AiConfig, chat
+from dig.ai.prompts import TOKEN_BUDGETS
 
 
 _SYSTEM = """\
@@ -99,6 +100,6 @@ async def explain_pipeline(
         ],
         # Prose, so a small temperature helps it read naturally.
         temperature=0.3,
-        max_tokens=1024,
+        max_tokens=TOKEN_BUDGETS["explain_pipeline"],
     )
     return resp.text.strip()

@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from dig.ai.client import AiConfig, chat
+from dig.ai.client import AiConfig, AiError, chat
+from dig.ai.parsing import parse_json_lenient
+from dig.ai.prompts import TOKEN_BUDGETS
 
 
 _SYSTEM = """\
@@ -183,36 +185,49 @@ async def review_pipeline(
     ])
     prompt = "\n".join(prompt_parts)
 
-    resp = await chat(
-        cfg,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        # Lower temperature → fewer hallucinated node IDs, more conservative findings.
-        temperature=0.1,
-        max_tokens=2048,
-        # `chat()` accepts the literal string "json_object"; passing a dict
-        # silently dropped the hint and providers like OpenAI/Anthropic
-        # returned prose, breaking parse for every cloud-backed review.
-        response_format="json_object",
-    )
+    # Two-phase chat — same shape as the suggestor features. Some local
+    # models emit empty content under response_format=json_object; on
+    # empty we retry without the constraint.
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": prompt},
+    ]
+    last_err: AiError | None = None
+    resp = None
+    for use_json_format in (True, False):
+        try:
+            resp = await chat(
+                cfg,
+                messages=messages,
+                # Lower temperature → fewer hallucinated node IDs, more conservative findings.
+                temperature=0.1,
+                max_tokens=TOKEN_BUDGETS["review_pipeline"],
+                response_format="json_object" if use_json_format else None,
+            )
+            break
+        except AiError as e:
+            last_err = e
+            if "empty message" not in str(e).lower():
+                raise
+    if resp is None:
+        return {
+            "findings": [],
+            "model": cfg.model,
+            "rawText": None,
+            "reason": str(last_err) if last_err else "AI returned no content",
+        }
 
     text = resp.text.strip()
     findings: list[dict[str, Any]] = []
-    parse_failed = False
-    try:
-        parsed = json.loads(text)
-        raw = parsed.get("findings") if isinstance(parsed, dict) else None
+    parsed = parse_json_lenient(text)
+    parse_failed = parsed is None
+    if isinstance(parsed, dict):
+        raw = parsed.get("findings")
         if isinstance(raw, list):
             for f in raw:
                 v = _validate_finding(f, valid_node_ids)
                 if v is not None:
                     findings.append(v)
-    except (json.JSONDecodeError, AttributeError):
-        # Model returned non-JSON; surface the raw text so the user can see
-        # what came back instead of an empty drawer.
-        parse_failed = True
 
     # Sort by severity desc, then confidence desc.
     sev_rank = {"high": 2, "warn": 1, "info": 0}

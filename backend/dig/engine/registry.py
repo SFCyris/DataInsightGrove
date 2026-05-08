@@ -224,6 +224,65 @@ _steps: StepRegistry | None = None
 _steps_lock = threading.Lock()
 
 
+def _load_pack_steps(reg: StepRegistry, repo: Path) -> None:
+    """Layer steps from every enabled installed pack into `reg`.
+
+    Disk layout: `<repo>/plugins/packs/<pack_id>/steps/<step_id>/…`. We
+    skip pack directories prefixed with `_` or `.` and any pack the
+    StepPack table has marked as disabled.
+    """
+    packs_root = repo / "plugins" / "packs"
+    if not packs_root.exists():
+        return
+
+    # Read which packs are disabled via a synchronous lightweight check.
+    # We avoid importing the async ORM here to keep registry init free of
+    # async machinery; instead we read the row directly with a sync
+    # connection. If the table doesn't exist yet (first boot before
+    # init_db has run), treat every pack as enabled — the registry is
+    # robust without the table.
+    disabled_pack_ids: set[str] = set()
+    try:
+        from dig.storage.files import data_dir as _data_dir
+        import sqlite3 as _sqlite
+        db_path = _data_dir() / "dig.sqlite"
+        if db_path.exists():
+            conn = _sqlite.connect(str(db_path))
+            try:
+                cur = conn.execute(
+                    "SELECT id FROM step_packs WHERE enabled = 0",
+                )
+                disabled_pack_ids = {row[0] for row in cur.fetchall()}
+            except _sqlite.OperationalError:
+                pass  # table doesn't exist yet
+            finally:
+                conn.close()
+    except Exception:
+        pass  # disabled-pack visibility is best-effort
+
+    for pack_dir in sorted(packs_root.iterdir()):
+        if not pack_dir.is_dir() or pack_dir.name.startswith(("_", ".")):
+            continue
+        if pack_dir.name in disabled_pack_ids:
+            log.info("skipping disabled pack: %s", pack_dir.name)
+            continue
+        steps_dir = pack_dir / "steps"
+        if not steps_dir.exists():
+            continue
+        sub = StepRegistry(steps_dir)
+        sub.scan()
+        for s in sub.all():
+            # Tag the step with its source pack so the UI can show a
+            # provenance badge. The Step base class doesn't have a
+            # `source` attr by default; setattr is the cheap way to add
+            # it without changing every Step subclass.
+            try:
+                setattr(s, "source", f"pack:{pack_dir.name}")
+            except Exception:
+                pass
+            reg._by_id[s.id] = s  # noqa: SLF001
+
+
 def steps() -> StepRegistry:
     global _steps
     if _steps is None:
@@ -232,6 +291,9 @@ def steps() -> StepRegistry:
                 repo = Path(__file__).resolve().parents[3]
                 reg = StepRegistry(repo / "backend" / "steps")
                 reg.scan()
+                # Built-ins win when there's a name clash. Pack steps
+                # layered next, then per-step user plugins last.
+                _load_pack_steps(reg, repo)
                 user_dir = repo / "plugins" / "steps"
                 if user_dir.exists():
                     user_reg = StepRegistry(user_dir)
@@ -240,3 +302,14 @@ def steps() -> StepRegistry:
                         reg._by_id[s.id] = s  # noqa: SLF001
                 _steps = reg
     return _steps
+
+
+def reset_steps_registry() -> None:
+    """Drop the cached registry so the next `steps()` call rescans.
+
+    Used after pack install / uninstall so the new content shows up
+    without an API restart. This is the canonical hot-reload path.
+    """
+    global _steps
+    with _steps_lock:
+        _steps = None

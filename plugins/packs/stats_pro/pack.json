@@ -1,0 +1,24 @@
+{
+  "id": "stats_pro",
+  "version": "0.1.0",
+  "label": "\ud83d\udcd0 Statistics Pro",
+  "description": "Hypothesis tests, effect sizes, multiple-comparison corrections, and bootstrap confidence intervals. The full inferential-statistics toolbox extending the basic statspack.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": [
+    "chi_square",
+    "anova",
+    "mann_whitney",
+    "effect_size",
+    "multiple_comparison_correction",
+    "bootstrap_ci"
+  ],
+  "connectors": [],
+  "pythonRequirements": [
+    "scipy>=1.11",
+    "statsmodels>=0.14"
+  ],
+  "checksum": "sha256:d06281c0b0ac695edc44d057ff2e1cf56b6a472f3eac6b6c34bb2606509e737e"
+}

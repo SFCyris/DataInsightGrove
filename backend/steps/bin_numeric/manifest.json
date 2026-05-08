@@ -20,5 +20,7 @@
     "as":     { "type": "string", "label": "New column name", "default": "bin" }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["bucket", "discretize", "histogram"]
+  "tags": ["bucket", "discretize", "histogram"],
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["bucket", "histogram bins", "discretize", "quantile"]
 }

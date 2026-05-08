@@ -12,6 +12,7 @@ import {
   type IGetRowsParams,
 } from "ag-grid-community";
 import { api, type ColumnInfo } from "@/lib/api/client";
+import { PositiveLoader } from "@/components/positive-loader";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -108,8 +109,8 @@ export function DatasetGrid({ datasetId, columns, totalRows }: Props) {
         onGridReady={(_e: GridReadyEvent) => setGridReady(true)}
       />
       {!gridReady && (
-        <div className="absolute inset-0 grid place-items-center text-muted-foreground text-sm">
-          ⏳ Loading grid…
+        <div className="absolute inset-0 grid place-items-center">
+          <PositiveLoader variant="rendering" primary="Loading grid…" size="sm" />
         </div>
       )}
     </div>

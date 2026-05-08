@@ -10,7 +10,7 @@ Pick whichever sounds most useful and dive in. They're independent, so order doe
 
 If something doesn't work the way the tutorial describes, please [open an issue](https://github.com/SFCyris/DataInsightGrove/issues) — these tutorials are the canonical "does the demo path still work?" check, and we want them to.
 
-**Want more?** [`docs/tutorials/`](tutorials/) has five longer real-world walkthroughs — churn risk, seasonality + outliers, geospatial mapping, ML feature engineering, forecast monitoring. They showcase the v0.6 features (adaptive UI mode, pipeline diff, AI review, column lineage, inline histograms, the live SQL toggle, sharing, dbt + reverse-ETL connectors).
+**Want more?** [`docs/tutorials/`](tutorials/) has five longer real-world walkthroughs — churn risk, seasonality + outliers, geospatial mapping, ML feature engineering, forecast monitoring. They showcase the advanced features (adaptive UI mode, pipeline diff, AI review, column lineage, inline histograms, the live SQL toggle, sharing, dbt + reverse-ETL connectors).
 
 > **What you'll need first**
 > - DIG installed and running ([`docs/getting_started.md`](getting_started.md))

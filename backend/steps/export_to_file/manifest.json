@@ -31,5 +31,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["export", "sink", "file"]
+  "tags": ["export", "sink", "file"],
+  "aliases": ["save", "write", "output", "csv export", "parquet export"]
 }

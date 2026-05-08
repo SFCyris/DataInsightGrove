@@ -1,0 +1,37 @@
+{
+  "id": "anomaly_zscore",
+  "version": "1.0.0",
+  "label": "⏳ Anomaly · rolling z-score",
+  "description": "Flag time-series points whose distance from a rolling mean exceeds N standard deviations. Robust to slow drift (it's relative to the local window) and surfaces both isolated spikes and short bursts. Adds `zscore` and `is_anomaly` columns; doesn't drop rows so downstream steps decide what to do.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Time-series value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "window": {
+      "type": "integer", "label": "Rolling window (rows)",
+      "default": 30, "min": 3, "max": 5000,
+      "help": "Number of rows behind each point used to compute the local mean + stddev. Larger window = slower to react but more stable baseline."
+    },
+    "threshold": {
+      "type": "number", "label": "Z-score threshold (σ)",
+      "default": 3.0, "min": 1.0, "max": 10.0,
+      "help": "Points whose |z-score| exceeds this are flagged. 2σ ≈ 5% of normal data; 3σ ≈ 0.3%; 4σ ≈ 0.006%."
+    },
+    "min_periods": {
+      "type": "integer", "label": "Min observations to flag",
+      "default": 10, "min": 2, "max": 5000,
+      "help": "Don't flag the first N rows where the rolling stats haven't stabilized yet."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["time-series", "anomaly", "outlier", "zscore"],
+  "aliases": ["outlier", "anomaly", "spike"]
+}

@@ -63,19 +63,22 @@ export default function GalleryPage() {
     <main id="main" className="flex-1 overflow-y-auto">
       <motion.section {...fadeUp} className="mx-auto max-w-6xl p-8">
         <header className="mb-8 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">DIG</p>
-            <h1 className="text-3xl font-semibold tracking-tight">🌳 Template gallery</h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              Worked pipelines you can fork and run. Click any template to see it in detail; "Use this template" creates a fresh pipeline from it.
-            </p>
+          <div className="flex items-start gap-3">
+            {/* Back/home is always at top-left for consistency. */}
+            <Link
+              href="/"
+              className="text-xs text-muted-foreground hover:text-foreground mt-1"
+            >
+              ← Home
+            </Link>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">DIG</p>
+              <h1 className="text-3xl font-semibold tracking-tight">🌳 Template gallery</h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                Worked pipelines you can fork and run. Click any template to see it in detail; "Use this template" creates a fresh pipeline from it.
+              </p>
+            </div>
           </div>
-          <Link
-            href="/"
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            ← Home
-          </Link>
         </header>
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">

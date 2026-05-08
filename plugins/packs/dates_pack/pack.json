@@ -1,0 +1,20 @@
+{
+  "id": "dates_pack",
+  "version": "0.1.0",
+  "label": "\ud83d\udcc5 Dates Pack",
+  "description": "Calendar arithmetic that the built-in extract_date_parts doesn't cover: fiscal-year math, business-day spans (with country holidays), and start-of-period snapping.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": [
+    "fiscal_year_parts",
+    "business_days_between",
+    "date_snap"
+  ],
+  "connectors": [],
+  "pythonRequirements": [
+    "holidays>=0.40"
+  ],
+  "checksum": "sha256:e39482e443d3e8d6f8c489c11518dc1386c7f282cc56fc8323bce25d8debe2f6"
+}

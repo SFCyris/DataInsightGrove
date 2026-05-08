@@ -126,10 +126,42 @@ class ExportToImageStep(Step):
         width = int(params.get("width") or 900)
         height = int(params.get("height") or 600)
         dpi = int(params.get("dpi") or 144)
+
+        # Preview-mode DPI cap. Print-quality DPIs (300+) rendered at
+        # the small preview-pane size produce labels that look oversized
+        # because the high-density raster gets scaled down to fit. The
+        # ✦live editor preview✦ (ctx.run_id == "__preview") caps DPI
+        # at ~144 (≈ Retina) which is plenty for screen viewing. Full
+        # backend Runs (real run_id) honour the user's DPI as-set so
+        # exports stay print-quality.
+        if ctx is not None and getattr(ctx, "run_id", None) == "__preview":
+            dpi = min(dpi, 144)
+
         fig_w = width / dpi
         fig_h = height / dpi
 
-        sns.set_theme(style="whitegrid", context="notebook")
+        # Font / line / marker scaling — auto-pick seaborn context from
+        # figure dimensions when the user hasn't set `font_scale`.
+        # Seaborn contexts ladder coherently: 'paper' < 'notebook' <
+        # 'talk' < 'poster' — each scales fonts AND axis line widths
+        # AND legend marker sizes together so the chart reads well at
+        # its target size. Hardcoded "notebook" looked huge for small
+        # previews and tiny for large exports; auto fixes both ends.
+        font_scale_override = params.get("font_scale")
+        if font_scale_override:
+            try:
+                sns.set_theme(style="whitegrid", font_scale=float(font_scale_override))
+            except (TypeError, ValueError):
+                sns.set_theme(style="whitegrid", context="notebook")
+        else:
+            smallest_dim = min(width, height)
+            if smallest_dim < 500:
+                ctx_name = "paper"      # dense thumbnails
+            elif smallest_dim < 1100:
+                ctx_name = "notebook"   # default editor previews + standard exports
+            else:
+                ctx_name = "talk"       # poster-size renders
+            sns.set_theme(style="whitegrid", context=ctx_name)
 
         if kind == "scatter3d":
             fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
@@ -211,6 +243,7 @@ class ExportToImageStep(Step):
             kw["alpha"] = 0.6
         sc = ax.scatter(xs, ys, **kw)
         ax.set_xlabel(x); ax.set_ylabel(y)
+        _apply_axis_locator(ax)
         if "c" in kw:
             cb = ax.figure.colorbar(sc, ax=ax)
             cb.set_label(value)
@@ -221,25 +254,61 @@ class ExportToImageStep(Step):
         sub = df.sort(x)
         ax.plot(sub.get_column(x).to_numpy(), sub.get_column(y).to_numpy())
         ax.set_xlabel(x); ax.set_ylabel(y)
+        _apply_axis_locator(ax)
 
     def _render_hexbin(self, ax, df, x, y, value):
         if not x or not y:
             raise ValueError("hexbin needs both x and y")
         ax.hexbin(df.get_column(x).to_numpy(), df.get_column(y).to_numpy(), gridsize=40, cmap="Greens")
         ax.set_xlabel(x); ax.set_ylabel(y)
+        _apply_axis_locator(ax)
 
     def _render_heatmap(self, ax, df, x, y, value):
         if not (x and y and value):
             raise ValueError("heatmap needs x, y and value")
         import numpy as np
         import seaborn as sns
-        pivot = df.pivot(values=value, index=y, on=x, aggregate_function="mean").fill_null(0)
+        # Sort the Y index when it's a numeric column so the thinned
+        # tick labels span min→max in order, not row order. Same for
+        # the X column. For categorical columns we leave the user's
+        # ordering alone (alphabetising "Q1, Q2, Q3, Q4" or region
+        # names would be wrong).
+        df_for_pivot = df
+        if _is_numeric(df.schema[y]):
+            df_for_pivot = df_for_pivot.sort(y)
+        if _is_numeric(df.schema[x]):
+            df_for_pivot = df_for_pivot.sort(x)
+        pivot = df_for_pivot.pivot(
+            values=value, index=y, on=x, aggregate_function="mean",
+        ).fill_null(0)
         # Convert to a NumPy array + extract row/col labels for seaborn.
         labels_y = pivot.get_column(y).cast(pl.Utf8).to_list()
         cols_x = [c for c in pivot.columns if c != y]
-        mat = np.asarray(pivot.drop(y).to_numpy(), dtype=float)
-        sns.heatmap(mat, ax=ax, cmap="viridis",
-                    xticklabels=cols_x, yticklabels=labels_y, cbar_kws={"label": value})
+        # Sort pivot columns numerically when X is numeric (Polars
+        # pivot's column order follows first-seen, not value order).
+        if _is_numeric(df.schema[x]):
+            try:
+                cols_x = sorted(cols_x, key=lambda v: float(v))
+                mat = np.asarray(
+                    pivot.select([y, *cols_x]).drop(y).to_numpy(), dtype=float,
+                )
+            except (ValueError, TypeError):
+                # Fallback if any column header isn't parseable as float.
+                mat = np.asarray(pivot.drop(y).to_numpy(), dtype=float)
+        else:
+            mat = np.asarray(pivot.drop(y).to_numpy(), dtype=float)
+        # Thin tick labels — without this seaborn writes one label per
+        # row / column. With a 43K-row pivot that produces an illegible
+        # blur on the Y axis (and a similar blur on the X axis when the
+        # X dimension is high-cardinality). Showing the first, last, and
+        # ~8 evenly-spaced labels in between keeps the data range
+        # readable without crowding.
+        sns.heatmap(
+            mat, ax=ax, cmap="viridis",
+            xticklabels=_thin_axis_labels(cols_x, target=10),
+            yticklabels=_thin_axis_labels(labels_y, target=10),
+            cbar_kws={"label": value},
+        )
         ax.set_xlabel(x); ax.set_ylabel(y)
 
     def _render_scatter3d(self, ax, df, x, y, z, value):
@@ -255,6 +324,12 @@ class ExportToImageStep(Step):
             kw["cmap"] = "viridis"
         sc = ax.scatter(xs, ys, zs, **kw)
         ax.set_xlabel(x); ax.set_ylabel(y); ax.set_zlabel(z)
+        # 3-D needs the Z axis capped too; _apply_axis_locator only
+        # touches X+Y, so do Z explicitly here.
+        from matplotlib.ticker import MaxNLocator
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=8, prune="both"))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=8, prune="both"))
+        ax.zaxis.set_major_locator(MaxNLocator(nbins=8, prune="both"))
         if "c" in kw:
             cb = ax.figure.colorbar(sc, ax=ax, shrink=0.7)
             cb.set_label(value)
@@ -271,6 +346,38 @@ def _normalise_sizes(arr):
     if hi == lo:
         return 30
     return 10 + (np.asarray(arr, dtype=float) - lo) / (hi - lo) * 190
+
+
+def _thin_axis_labels(labels: list, target: int = 10) -> list:
+    """Return a list of the same length as ``labels`` where most entries
+    are blank (``""``) and only ~``target`` evenly-spaced positions show
+    their original value. Used for heatmap tick labels — without this
+    seaborn writes one tick label per row/column even when there are
+    thousands, producing an illegible blur on the axis.
+
+    Always keeps the first and last positions so the user can still read
+    the data range; intermediate ticks are spaced as evenly as possible.
+    """
+    n = len(labels)
+    if n <= target:
+        return list(labels)
+    # Pick `target` evenly-spaced indices including first + last.
+    step = (n - 1) / (target - 1)
+    keep = {round(i * step) for i in range(target)}
+    return [labels[i] if i in keep else "" for i in range(n)]
+
+
+def _apply_axis_locator(ax, max_ticks: int = 10) -> None:
+    """Cap continuous-axis tick density on a matplotlib axes. Idempotent
+    and cheap — call from any renderer whose X/Y are numeric. Default
+    matplotlib already uses a locator, but it can drift toward 12+ ticks
+    on tall figures with high-DPR; capping at ~10 keeps labels legible
+    across DPI settings without bespoke spacing code per renderer.
+    """
+    from matplotlib.ticker import MaxNLocator
+
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=max_ticks, prune="both"))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=max_ticks, prune="both"))
 
 
 step = ExportToImageStep(json.loads((Path(__file__).parent / "manifest.json").read_text()))

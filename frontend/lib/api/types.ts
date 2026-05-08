@@ -2098,6 +2098,10 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+            /** Missingdatasetcount */
+            missingDatasetCount?: number;
+            /** Missingoutputcount */
+            missingOutputCount?: number;
         };
         /** PreviewOut */
         PreviewOut: {

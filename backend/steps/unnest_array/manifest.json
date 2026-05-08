@@ -29,5 +29,6 @@
     }
   },
   "preview": { "rowImpact": "may_grow", "schemaImpact": "modifies" },
-  "tags": ["array", "unnest", "explode", "shape"]
+  "tags": ["array", "unnest", "explode", "shape"],
+  "requires": [{"kind": ["array", "vector", "json"]}]
 }

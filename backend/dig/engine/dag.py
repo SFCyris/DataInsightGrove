@@ -10,7 +10,7 @@ from typing import Any
 
 import polars as pl
 
-from dig.engine.pipeline import Node, Pipeline, Reference
+from dig.engine.pipeline import Node, Pipeline, Reference, effective_connector
 from dig.engine.profile import _logical_type
 from dig.engine.registry import connectors, steps
 
@@ -101,7 +101,10 @@ def topo_sort(p: Pipeline) -> list[Node]:
 def _dataset_schema(p: Pipeline, dataset_id: str) -> dict[str, str]:
     """Probe a dataset's schema by reading 0 rows via its connector."""
     spec = next(d for d in p.datasets if d.id == dataset_id)
-    connector = connectors().get(spec.connector)
+    # Trust the URI extension over the persisted connector — schema
+    # inference must agree with the actual reader compile.py picks, or
+    # column-validation steps falsely flag missing columns.
+    connector = connectors().get(effective_connector(spec))
     lf = connector.read(spec.uri, spec.options)
     schema = lf.collect_schema()
     return {name: _logical_type(dtype) for name, dtype in schema.items()}
@@ -136,10 +139,23 @@ def validate_params_against_manifests(p: Pipeline) -> list[str]:
       5. Enum values in `enumValues`.
       6. Pattern (regex) matches for type='string'.
       7. Array `items` validated recursively (only for typed scalar items).
+      8. **column_ref / column_refs reference columns that exist in the
+         upstream's output schema** — catches AI routes that reference
+         columns dropped by an earlier transform (e.g. `linear_regression
+         (y=temperature_c)` after a `correlation_matrix` that emits only
+         `(col_a, col_b, r)`).
 
     Catches UI-shape mismatches at save time instead of crash time.
     """
     errs: list[str] = []
+    # Build per-node input-port schemas once so column_ref checks below
+    # can validate against the actual upstream output. If schema inference
+    # itself fails (a partially-configured sibling branch, say), we
+    # degrade to no-schemas — same behaviour as the pre-existing path.
+    try:
+        all_schemas = infer_schemas(p)
+    except Exception:
+        all_schemas = {}
     for n in p.nodes:
         try:
             step = steps().get(n.step)
@@ -147,6 +163,11 @@ def validate_params_against_manifests(p: Pipeline) -> list[str]:
             errs.append(f"node '{n.id}': unknown step '{n.step}'")
             continue
         params_spec = step.manifest.get("params", {})
+        # Build the per-port input schema map for this node; pass to the
+        # checker so column_ref params can verify their references resolve.
+        node_input_schemas: dict[str, dict[str, str]] = {
+            port: all_schemas.get(ref.ref, {}) for port, ref in n.inputs.items()
+        }
         for pname, pspec in params_spec.items():
             value = n.params.get(pname)
             if pspec.get("required") and value in (None, "", []):
@@ -154,7 +175,10 @@ def validate_params_against_manifests(p: Pipeline) -> list[str]:
                 continue
             if value is None:
                 continue
-            for e in _check_param_value(value, pspec, f"node '{n.id}'.{pname}"):
+            for e in _check_param_value(
+                value, pspec, f"node '{n.id}'.{pname}",
+                input_schemas=node_input_schemas,
+            ):
                 errs.append(e)
     return errs
 
@@ -174,7 +198,13 @@ _PYTYPE_MAP = {
 }
 
 
-def _check_param_value(value: Any, spec: dict[str, Any], where: str) -> list[str]:
+def _check_param_value(
+    value: Any,
+    spec: dict[str, Any],
+    where: str,
+    *,
+    input_schemas: dict[str, dict[str, str]] | None = None,
+) -> list[str]:
     errs: list[str] = []
     ptype = spec.get("type", "string")
     expected = _PYTYPE_MAP.get(ptype, (object,))
@@ -192,6 +222,37 @@ def _check_param_value(value: Any, spec: dict[str, Any], where: str) -> list[str
     # column_refs: every item must be a string.
     if ptype == "column_refs" and not all(isinstance(c, str) for c in value):
         errs.append(f"{where}: column_refs must be a list of strings")
+
+    # column_ref / column_refs: when we have the upstream schema, verify
+    # the referenced column actually exists. Catches AI-suggested
+    # multi-step routes whose later steps reference columns dropped by
+    # an earlier transform (correlation_matrix → linear_regression
+    # was the smoking-gun case).
+    if input_schemas:
+        # Pick the port the manifest names if any (e.g. "left"/"right"
+        # for join keys); otherwise use the union of all input ports.
+        port = spec.get("columnFrom")
+        if port and port in input_schemas:
+            available = set(input_schemas[port].keys())
+        else:
+            available: set[str] = set()
+            for s in input_schemas.values():
+                available.update(s.keys())
+        if available:
+            if ptype == "column_ref" and isinstance(value, str) and value not in available:
+                errs.append(
+                    f"{where}: column {value!r} not found in upstream output "
+                    f"(available: {', '.join(sorted(available)[:8])}"
+                    f"{'…' if len(available) > 8 else ''})"
+                )
+            if ptype == "column_refs" and isinstance(value, list):
+                missing = [c for c in value if isinstance(c, str) and c not in available]
+                if missing:
+                    errs.append(
+                        f"{where}: columns {missing!r} not found in upstream output "
+                        f"(available: {', '.join(sorted(available)[:8])}"
+                        f"{'…' if len(available) > 8 else ''})"
+                    )
 
     # Numeric bounds.
     if ptype in ("number", "integer") and isinstance(value, (int, float)) and not isinstance(value, bool):

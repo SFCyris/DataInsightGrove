@@ -65,6 +65,26 @@ export default function DatasetDetailPage({ params }: PageProps) {
       toast.error(`Couldn't create pipeline: ${e.message}`);
     },
   });
+
+  // "🚀 Get a head start" — quick path to a chart-ful pipeline. Calls the
+  // backend's column-profile heuristic (most variable numeric → histogram,
+  // lowest-cardinality categorical → bar) and lands the user on a pipeline
+  // already rendering 1–3 charts via the live image preview path. The big
+  // blank-canvas vs. multi-step setup gap is the dominant friction for
+  // first-time DIG users; this collapses it to one click.
+  const generateOverview = useMutation({
+    mutationFn: async () => {
+      if (!dataset.data) throw new Error("dataset not loaded");
+      return api.createPipelineFromDataset(dataset.data.id);
+    },
+    onSuccess: (res) => {
+      toast.success(
+        `🚀 Generated overview pipeline — ${(res.document.nodes as { id: string }[] | undefined)?.length ?? 0} chart(s)`,
+      );
+      router.push(`/pipelines/${res.id}`);
+    },
+    onError: (e: Error) => toast.error(`Overview failed: ${e.message}`),
+  });
   const profile = useQuery({
     queryKey: ["dataset", id, "profile"],
     queryFn: () => api.getProfile(id),
@@ -128,15 +148,27 @@ export default function DatasetDetailPage({ params }: PageProps) {
                 </dd>
               </div>
             </dl>
-            <Button
-              size="lg"
-              disabled={dataset.data.status !== "ready" || shaping || shapeInPipeline.isPending}
-              onClick={() => { setShaping(true); shapeInPipeline.mutate(); }}
-              className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
-              title="Create a new pipeline pre-attached to this dataset and open the editor"
-            >
-              {shaping || shapeInPipeline.isPending ? "✨ Opening…" : "✂️ Shape in a pipeline →"}
-            </Button>
+            <div className="flex flex-col items-stretch gap-2">
+              <Button
+                size="lg"
+                disabled={dataset.data.status !== "ready" || generateOverview.isPending || shaping || shapeInPipeline.isPending}
+                onClick={() => generateOverview.mutate()}
+                className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
+                title="Auto-build a 1–3-chart overview pipeline from this dataset's column profile and open it. Charts render live in seconds."
+              >
+                {generateOverview.isPending ? "🚀 Generating…" : "🚀 Generate overview →"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={dataset.data.status !== "ready" || shaping || shapeInPipeline.isPending || generateOverview.isPending}
+                onClick={() => { setShaping(true); shapeInPipeline.mutate(); }}
+                className="text-xs"
+                title="Create an empty pipeline pre-attached to this dataset — start from scratch"
+              >
+                {shaping || shapeInPipeline.isPending ? "✨ Opening…" : "✂️ Or start from scratch"}
+              </Button>
+            </div>
           </div>
         )}
       </motion.header>

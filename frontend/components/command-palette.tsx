@@ -21,6 +21,9 @@ interface Action {
   label: string;
   emoji?: string;
   hint?: string;
+  /** Extra terms folded into the cmdk value for searching only — not
+   *  rendered. Used for step aliases / tags so "merge" finds `join`. */
+  searchHints?: string;
   group: string;
   run: () => void | Promise<void>;
 }
@@ -178,12 +181,21 @@ export function CommandPalette() {
       });
     }
     for (const s of stepsQ.data ?? []) {
+      // The `aliases` array is search-only — surfacing it through the
+      // cmdk value prop makes typing "merge" find `join`, "predict"
+      // find `forecast`, etc. without changing the visible UI. Tags
+      // come along for free.
       out.push({
         id: `step:${s.id}`,
         group: "Steps reference",
         label: s.label,
         emoji: undefined,
         hint: s.description?.slice(0, 80),
+        searchHints: [
+          ...(s.aliases ?? []),
+          ...(s.tags ?? []),
+          s.id,
+        ].join(" "),
         run: () => {
           toast(`${s.label} (${s.id}) — open a pipeline editor and add it from the strip.`);
         },
@@ -239,7 +251,7 @@ export function CommandPalette() {
                     {items.map((a) => (
                       <Command.Item
                         key={a.id}
-                        value={`${a.group} ${a.label} ${a.hint ?? ""}`}
+                        value={`${a.group} ${a.label} ${a.hint ?? ""} ${a.searchHints ?? ""}`}
                         onSelect={() => {
                           a.run();
                           setOpen(false);

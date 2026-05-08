@@ -17,5 +17,7 @@
     "as":     { "type": "string", "label": "New column name", "required": true }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["string", "regex", "extract"]
+  "tags": ["string", "regex", "extract"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["regex", "parse pattern", "match"]
 }

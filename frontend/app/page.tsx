@@ -94,6 +94,12 @@ export default function Home() {
     }
   }, []);
 
+  // "🌱 Try with sample data" — the dominant first-run path. We deliberately
+  // chain ingest → auto-pipeline → editor so a brand-new user lands on a
+  // *rendered chart* within seconds, not on a column grid that looks like
+  // any other table viewer. The PLG-loss risk for a self-hosted data tool
+  // is steepest at the moment between "I installed it" and "I made
+  // something" — collapse that to one click.
   const importSample = useMutation({
     mutationFn: async () => {
       const res = await fetch(`${API_BASE}/datasets/samples/import`, {
@@ -101,11 +107,28 @@ export default function Home() {
         headers: { Accept: "application/json" },
       });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      return res.json();
+      const d = await res.json();
+      // Chase ingest with an overview pipeline so the next route is the
+      // editor with charts already rendering — not the dataset's grid view.
+      // Falls back to opening the dataset if the auto-pipeline fails for
+      // any reason (column profile not ready, etc.).
+      try {
+        const pipeline = await api.createPipelineFromDataset(d.id);
+        return { dataset: d, pipelineId: pipeline.id, chartCount: (pipeline.document?.nodes as { id: string }[] | undefined)?.length ?? 0 };
+      } catch {
+        return { dataset: d, pipelineId: null as string | null, chartCount: 0 };
+      }
     },
-    onSuccess: (d) => {
-      toast.success(`🌱 Sample imported (${d.rowCount?.toLocaleString() ?? "?"} rows). Opening…`);
-      router.push(`/datasets/${d.id}`);
+    onSuccess: ({ dataset, pipelineId, chartCount }) => {
+      if (pipelineId) {
+        toast.success(
+          `🌱 Imported ${dataset.rowCount?.toLocaleString() ?? "?"} rows · 🚀 ${chartCount} chart${chartCount === 1 ? "" : "s"} ready`,
+        );
+        router.push(`/pipelines/${pipelineId}`);
+      } else {
+        toast.success(`🌱 Sample imported (${dataset.rowCount?.toLocaleString() ?? "?"} rows). Opening…`);
+        router.push(`/datasets/${dataset.id}`);
+      }
     },
     onError: (e: Error) => toast.error(`Sample import failed: ${e.message}`),
   });
@@ -227,6 +250,39 @@ export default function Home() {
               <span className="text-emerald-200/80">Data preparation for the rest of us.</span>
             </h1>
           </motion.header>
+
+          {/* First-run zero-state nudge: shown only when the user has no
+              datasets and no pipelines yet. Promotes the chained sample
+              import + auto-pipeline path so the first click ends in a
+              live chart, not an empty editor. The data queries gate this
+              on actual API state (not a localStorage flag) so wiping data
+              re-summons the welcome — the right behaviour for a fresh
+              install or a data reset. */}
+          {datasets.data && datasets.data.length === 0 && pipelines.data && pipelines.data.length === 0 && (
+            <motion.section
+              {...fadeUp}
+              transition={{ ...("transition" in fadeUp ? fadeUp.transition : {}), delay: 0.05 }}
+              className="rounded-xl border border-emerald-400/40 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent backdrop-blur-md p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+            >
+              <div className="text-4xl sm:text-5xl select-none shrink-0" aria-hidden>👋</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-base sm:text-lg font-semibold text-emerald-100">
+                  Welcome — let's make your first chart in under a minute.
+                </p>
+                <p className="text-xs sm:text-sm text-emerald-200/80 leading-relaxed mt-1">
+                  Click below and DIG will import a small demo dataset, profile every column, and auto-build an overview pipeline so your first stop is a chart — not a blank canvas.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                onClick={() => importSample.mutate()}
+                disabled={importSample.isPending}
+                className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400 shrink-0"
+              >
+                {importSample.isPending ? "⏳ Setting up…" : "🚀 Get started"}
+              </Button>
+            </motion.section>
+          )}
 
           {/* Workflow cards */}
           <motion.section

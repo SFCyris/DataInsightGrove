@@ -28,7 +28,7 @@ from urllib.parse import urlparse
 import duckdb
 
 from dig.engine.dag import infer_schemas, topo_sort, validate
-from dig.engine.pipeline import Node, OutputSpec, Pipeline, Reference
+from dig.engine.pipeline import Node, OutputSpec, Pipeline, Reference, effective_connector
 from dig.engine.registry import connectors, steps
 from dig.engine.step import PolarsContext, Step, quote_ident, quote_str
 from dig.storage.files import data_dir
@@ -66,7 +66,10 @@ def _dataset_cte(p: Pipeline, dataset_id: str) -> str:
     their source.
     """
     spec = next(d for d in p.datasets if d.id == dataset_id)
-    if spec.connector == "csv":
+    # Trust the URI extension when it disagrees with the persisted
+    # connector — see effective_connector docstring for the rationale.
+    conn = effective_connector(spec)
+    if conn == "csv":
         # Use DuckDB's read_csv_auto for speed; let it sniff types like our connector does.
         path = urlparse(spec.uri).path if spec.uri.startswith("file://") else spec.uri
         delim = spec.options.get("delimiter", ",")
@@ -77,11 +80,11 @@ def _dataset_cte(p: Pipeline, dataset_id: str) -> str:
             f"SELECT * FROM read_csv_auto({quote_str(path)}, "
             f"delim={quote_str(delim)}, header={'true' if header else 'false'})"
         )
-    elif spec.connector == "parquet":
+    elif conn == "parquet":
         path = urlparse(spec.uri).path if spec.uri.startswith("file://") else spec.uri
         body = f"SELECT * FROM read_parquet({quote_str(path)})"
     else:
-        raise ValueError(f"executor: unsupported connector '{spec.connector}'")
+        raise ValueError(f"executor: unsupported connector '{conn}'")
 
     if _track_lineage(p):
         lineage_col = quote_ident(f"{LINEAGE_COL_PREFIX}{dataset_id}")
@@ -130,6 +133,35 @@ def compile_to_sql(
     sorted_nodes = topo_sort(p)
     ctes: list[str] = []
     overrides = overrides or {}
+
+    # Restrict to terminal's ancestors when given. Without this, an
+    # unconfigured downstream step (e.g. a `join` with empty keys
+    # added but not yet wired) breaks previews of upstream nodes
+    # that don't depend on it. Same restriction `compile_for_browser`
+    # already applies; both must agree because the dispatcher routes
+    # through whichever can handle the chain.
+    if terminal is not None:
+        nodes_by_id = {n.id: n for n in p.nodes}
+        if terminal in nodes_by_id:
+            keep: set[str] = set()
+            queue = [terminal]
+            while queue:
+                nid = queue.pop()
+                if nid in keep:
+                    continue
+                keep.add(nid)
+                node = nodes_by_id.get(nid)
+                if node is None:
+                    continue
+                for ref in node.inputs.values():
+                    if ref.ref in nodes_by_id:
+                        queue.append(ref.ref)
+            sorted_nodes = [n for n in sorted_nodes if n.id in keep]
+        elif any(d.id == terminal for d in p.datasets):
+            # Dataset terminal — datasets are roots, no node is its
+            # ancestor. Drop all nodes so the SELECT just reads the
+            # dataset's CTE.
+            sorted_nodes = []
 
     # Dataset CTEs.
     for d in p.datasets:
@@ -190,6 +222,88 @@ def _terminal_polars_node(p: Pipeline, terminal: str) -> Node | None:
     except KeyError:
         return None
     return node if step.engine_primary == "polars" else None
+
+
+def materialize_polars_ancestors(
+    con: "duckdb.DuckDBPyConnection",
+    p: Pipeline,
+    terminal: str,
+    *,
+    out_dir: Path,
+    sample_rows: int | None,
+    run_id: str = "__preview",
+    pipeline_chain: tuple[str, ...] = (),
+) -> dict[str, str]:
+    """Pre-materialise every Polars-engine step that's an ancestor of the
+    given ``terminal`` node, writing each one's output to a parquet file
+    under ``out_dir`` and returning a ``{node_id: path}`` dict suitable
+    for ``compile_to_sql(overrides=...)``.
+
+    This is the live-preview analogue of the executor's main pre-materialise
+    loop (executor.run): it gives the preview path the same correct
+    semantics for chains where a Polars step feeds another Polars step
+    feeds a chart. Without this, the chart-rendering ``preview-step``
+    endpoint would call ``compile_to_sql`` on the raw Polars-step input
+    and the chart would render against rows that don't include the
+    upstream Polars step's added columns.
+
+    Visits ancestors only (not the terminal itself nor sibling branches),
+    in topological order. SQL ancestors of Polars steps are inlined into
+    the CTE chain via the ``overrides`` mechanism — they don't need
+    separate parquet files.
+    """
+    import polars as pl
+
+    # Walk back from `terminal` collecting ancestor node ids.
+    nodes_by_id = {n.id: n for n in p.nodes}
+    ancestors: set[str] = set()
+    queue = [terminal]
+    while queue:
+        nid = queue.pop()
+        if nid in ancestors:
+            continue
+        node = nodes_by_id.get(nid)
+        if node is None:
+            continue
+        if nid != terminal:
+            ancestors.add(nid)
+        for ref in node.inputs.values():
+            if ref.ref in nodes_by_id:
+                queue.append(ref.ref)
+
+    materialized: dict[str, str] = {}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for node in topo_sort(p):
+        if node.id not in ancestors:
+            continue
+        try:
+            step = steps().get(node.step)
+        except KeyError:
+            continue
+        if step.engine_primary != "polars":
+            continue
+        # Materialise this Polars ancestor — SQL inputs are built using
+        # the running `materialized` dict so chains-of-polars work.
+        input_frames: dict[str, pl.DataFrame] = {}
+        for port, ref in node.inputs.items():
+            up_sql = compile_to_sql(p, terminal=ref.ref, overrides=materialized)
+            if sample_rows:
+                up_sql = f"{up_sql} LIMIT {int(sample_rows)}"
+            input_frames[port] = _materialize_sql_to_polars(con, up_sql)
+        from dig.engine.step import PolarsContext  # local: avoid module cycle
+        ctx = PolarsContext(
+            run_id=run_id, out_dir=out_dir, node_id=node.id, pipeline_chain=pipeline_chain,
+        )
+        try:
+            res = step.execute_polars(input_frames, node.params, ctx)
+        except Exception as e:
+            raise RuntimeError(
+                f"polars step '{node.id}' ({step.id}) failed during preview: {e}"
+            ) from e
+        intermed_path = out_dir / f"{node.id}.parquet"
+        res.output.write_parquet(intermed_path, compression="zstd")
+        materialized[node.id] = str(intermed_path)
+    return materialized
 
 
 def _run_one_output(

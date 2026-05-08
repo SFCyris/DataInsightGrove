@@ -186,6 +186,42 @@ export function setNodeParams(
   };
 }
 
+/** Toggle exposure of a node's param for sub-pipeline composition.
+ *
+ *  When `next` is non-null, sets `node.ui.exposedParams[paramKey]`.
+ *  When `next` is null, removes that key (and the whole `exposedParams`
+ *  object if it becomes empty, to keep the doc tidy).
+ *
+ *  Mirrors `setNodeParams` so the editor can call it the same way.
+ */
+export function setNodeExposedParam(
+  doc: PipelineDocument,
+  nodeId: string,
+  paramKey: string,
+  next: { alias: string; help?: string } | null,
+): PipelineDocument {
+  return {
+    ...doc,
+    nodes: doc.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const ui = (n.ui ?? {}) as { exposedParams?: Record<string, unknown> };
+      const exposed = { ...(ui.exposedParams ?? {}) };
+      if (next === null) {
+        delete exposed[paramKey];
+      } else {
+        exposed[paramKey] = next;
+      }
+      const nextUi = { ...ui };
+      if (Object.keys(exposed).length === 0) {
+        delete (nextUi as { exposedParams?: unknown }).exposedParams;
+      } else {
+        (nextUi as { exposedParams?: unknown }).exposedParams = exposed;
+      }
+      return { ...n, ui: nextUi };
+    }),
+  };
+}
+
 export function ensureTerminalOutput(doc: PipelineDocument): PipelineDocument {
   if (doc.outputs.length > 0 || doc.nodes.length === 0) return doc;
   const last = doc.nodes[doc.nodes.length - 1];

@@ -108,3 +108,10 @@ frontend/public/duckdb-wasm/
 
 # macOS resource forks + extended attribute dumps
 ._*
+
+# Step-pack authoring workspace — sources + built `.dpack` artifacts for
+# the packs we publish. Lives outside git on purpose: edits to a pack's
+# source shouldn't generate noisy commits in the public repo, and built
+# artifacts are reproducible from the source. See
+# Step-Pack-internal/README.md for the workflow.
+Step-Pack-internal/

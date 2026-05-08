@@ -83,5 +83,7 @@
     "embedding",
     "dimensionality-reduction",
     "tsne"
-  ]
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["dimensionality reduction", "embedding", "t-sne"]
 }

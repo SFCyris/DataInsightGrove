@@ -34,7 +34,7 @@
 
    The output adds three columns: `trend`, `seasonal`, `resid`. The `resid` column is what we'll use to spot outliers.
 
-   *(After this step the live grid grows three columns. Hover any header to see the inline distribution sparkline against the run baseline. Per-tutorial screenshot pending — for the general column-header sparkline pattern, see [the v0.6 showcase](README.md#-the-new-pipeline-editor-toolbar).)*
+   *(After this step the live grid grows three columns. Hover any header to see the inline distribution sparkline against the run baseline. Per-tutorial screenshot pending — for the general column-header sparkline pattern, see [the feature showcase](README.md#-the-new-pipeline-editor-toolbar).)*
 
 6. **Add `derive_column` to z-score the residuals.** Set:
    - **Name:** `resid_zscore`

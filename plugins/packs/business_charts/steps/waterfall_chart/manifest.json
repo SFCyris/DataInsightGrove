@@ -1,0 +1,34 @@
+{
+  "id": "waterfall_chart",
+  "version": "1.0.0",
+  "label": "📈 Waterfall chart",
+  "description": "Cumulative-contribution chart. Each row is one bar: positives stack up, negatives stack down, ending at the final total. Bonus row at the right shows the total. Common for revenue / cost-bridge analyses.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "label": {
+      "type": "column_ref", "label": "Label column",
+      "columnFrom": "in", "required": true
+    },
+    "value": {
+      "type": "column_ref", "label": "Value column (signed)",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "title": {
+      "type": "string", "label": "Title", "default": "Waterfall"
+    },
+    "output_path": {
+      "type": "string", "label": "Output path"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "recommendedMaxRows": 60,
+  "tags": ["chart", "business"],
+  "aliases": ["bridge chart", "contribution"],
+  "requires": [{"kind": "numeric"}]
+}

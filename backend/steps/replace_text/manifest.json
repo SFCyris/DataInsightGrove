@@ -16,5 +16,7 @@
     "regex":  { "type": "boolean", "label": "Treat 'find' as regex", "default": false }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["string", "clean", "regex"]
+  "tags": ["string", "clean", "regex"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["substitute", "find replace", "regex replace", "rewrite"]
 }

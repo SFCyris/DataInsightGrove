@@ -37,7 +37,18 @@ export type ColumnAction =
     }
   // Trace this column's lineage back to its dataset roots. The editor
   // opens the <LineagePanel /> drawer scoped to the focused node + column.
-  | { kind: "trace_lineage"; column: string };
+  | { kind: "trace_lineage"; column: string }
+  // Drop an export_to_image step immediately after the focused step,
+  // pre-configured for this column. Numeric columns default to a histogram;
+  // anything else gets a top-N bar chart of value counts. The user lands
+  // on the new step's params with a live PNG preview already rendering.
+  | { kind: "visualize"; column: string; columnType?: string }
+  // Drop ANY visualize-category step (built-in or pack-installed)
+  // immediately after the focused step, pre-wiring `column` into the
+  // chosen step's most-fitting param. The page handler resolves the
+  // step's manifest and decides which param slot to fill based on
+  // type matching (numeric column → numeric param, etc.).
+  | { kind: "visualize_as"; column: string; columnType?: string; stepId: string };
 
 // Conservative fallback when the /types endpoint hasn't loaded (or the user
 // is offline). These mirror the IDs in backend/dig/engine/meta_types.py.
@@ -86,6 +97,20 @@ export function ColumnMenu({
   const [sortOpen, setSortOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveMode, setMoveMode] = useState<"before" | "after" | null>(null);
+
+  // Visualize submenu: when expanded, list every step in the
+  // `visualize` category (built-in + pack-installed). Without this,
+  // the column menu only ever offered a single "Visualize" entry that
+  // hard-coded export_to_image, hiding pack-installed chart kinds
+  // (waterfall, pareto, funnel, box, violin, qq, ecdf …) from this
+  // discovery path entirely.
+  const [visOpen, setVisOpen] = useState(false);
+  const stepsQ = useQuery({
+    queryKey: ["steps"],
+    queryFn: () => api.listSteps(),
+    enabled: visOpen,
+    staleTime: 60_000,
+  });
 
   // Lazy-load the type catalog only when the Cast section opens. Keeps the
   // menu's first-paint instant and avoids a 304 round-trip per right-click.
@@ -301,6 +326,60 @@ export function ColumnMenu({
           label="➕ Derive from this column"
           onClick={() => fire({ kind: "derive_from", column: columnName })}
         />
+        {/* Discoverable entry into chart-making. Default item adds an
+            `export_to_image` step pre-wired with a sensible chart kind
+            for the column's type. The chevron expands a submenu listing
+            EVERY visualize-category step in the registry — built-in
+            chart kinds (export_to_image's auto/histogram/etc.) plus
+            pack-installed steps (funnel, waterfall, pareto, box, violin,
+            …). Without the submenu, pack-installed chart steps never
+            surface from this entry path. */}
+        <Item
+          label={visOpen ? "🖼 Visualize ▾" : "🖼 Visualize ▸"}
+          onClick={() => setVisOpen((v) => !v)}
+        />
+        {visOpen && (
+          <div className="ml-3 my-1 border-l border-border pl-2 space-y-0.5">
+            <Item
+              label="🖼 export_to_image (auto kind)"
+              onClick={() =>
+                fire({ kind: "visualize", column: columnName, columnType })
+              }
+            />
+            {stepsQ.data
+              ?.filter((s) => s.category === "visualize" && s.id !== "export_to_image")
+              .sort((a, b) => a.label.localeCompare(b.label))
+              .map((s) => {
+                const packId = s.source?.startsWith("pack:")
+                  ? s.source.slice(5)
+                  : null;
+                // Same pattern as the QuickAddMenu picker: tint the
+                // pack-step rows + surface the pack name in the
+                // hover tooltip rather than crowding the row with an
+                // inline chip.
+                return (
+                  <PackTintedItem
+                    key={s.id}
+                    label={s.label}
+                    packId={packId}
+                    onClick={() =>
+                      fire({
+                        kind: "visualize_as",
+                        column: columnName,
+                        columnType,
+                        stepId: s.id,
+                      })
+                    }
+                  />
+                );
+              })}
+            {stepsQ.isLoading && (
+              <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                Loading chart kinds…
+              </div>
+            )}
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );
@@ -464,12 +543,40 @@ function CastSection({
   );
 }
 
-function Item({ label, onClick }: { label: string; onClick: () => void }) {
+function Item({ label, onClick }: { label: React.ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className="w-full text-left px-3 py-1.5 hover:bg-muted/60 transition-colors"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Like Item, but tints the row when `packId` is set — communicates
+ *  "this came from an installed pack" without spending horizontal
+ *  space on a label chip. The pack name is surfaced in the tooltip. */
+function PackTintedItem({
+  label,
+  packId,
+  onClick,
+}: {
+  label: string;
+  packId: string | null;
+  onClick: () => void;
+}) {
+  const tooltip = packId ? `${label} · 📦 ${packId}` : label;
+  const cls = packId
+    ? "bg-violet-50/60 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40"
+    : "hover:bg-muted/60";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={tooltip}
+      className={`w-full text-left px-3 py-1.5 rounded transition-colors ${cls}`}
     >
       {label}
     </button>

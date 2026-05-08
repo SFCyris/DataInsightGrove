@@ -20,6 +20,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[1]
 STEPS_DIR = REPO / "backend" / "steps"
 PLUGINS_STEPS_DIR = REPO / "plugins" / "steps"
+PACKS_DIR = REPO / "plugins" / "packs"
 HAND_NOTES = REPO / "docs" / "_steps"
 OUT = REPO / "docs" / "STEPS.md"
 
@@ -30,15 +31,26 @@ CATEGORY_LABELS = {
     "derive":    "🪄 Derive",
     "combine":   "🤝 Combine",
     "aggregate": "📊 Aggregate",
+    "analyze":   "🔬 Analyze",
+    "model":     "🧠 Model",
+    "validate":  "✅ Validate",
+    "visualize": "📈 Visualize",
     "output":    "📤 Output",
     "custom":    "🧩 Custom",
 }
 
-CATEGORY_ORDER = ["ingest", "shape", "clean", "derive", "combine", "aggregate", "output", "custom"]
+# Order matches the editor's 9-outcome picker (clean / shape / derive
+# / combine / aggregate / analyze / model / validate / visualize /
+# output) with `ingest` first and `custom` as the catch-all tail.
+CATEGORY_ORDER = [
+    "ingest", "shape", "clean", "derive", "combine", "aggregate",
+    "analyze", "model", "validate", "visualize", "output", "custom",
+]
 
 
 def collect_manifests() -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
+    # Built-ins + per-step user plugins.
     for base in (STEPS_DIR, PLUGINS_STEPS_DIR):
         if not base.exists():
             continue
@@ -52,6 +64,29 @@ def collect_manifests() -> list[dict[str, Any]]:
                 items.append(json.loads(mf.read_text()))
             except json.JSONDecodeError as e:
                 print(f"⚠️  skipping {sub.name}: {e}", file=sys.stderr)
+    # Pack-installed steps. Each pack lives at plugins/packs/<id>/steps/<step_id>/.
+    # We tag the manifest with `_source: pack:<id>` so the rendered docs can
+    # show provenance — packs ship together so a reader benefits from
+    # knowing which pack a step came from.
+    if PACKS_DIR.exists():
+        for pack_dir in sorted(PACKS_DIR.iterdir()):
+            if not pack_dir.is_dir() or pack_dir.name.startswith("_") or pack_dir.name.startswith("."):
+                continue
+            steps_dir = pack_dir / "steps"
+            if not steps_dir.exists():
+                continue
+            for sub in sorted(steps_dir.iterdir()):
+                if not sub.is_dir():
+                    continue
+                mf = sub / "manifest.json"
+                if not mf.exists():
+                    continue
+                try:
+                    m = json.loads(mf.read_text())
+                    m["_source"] = f"pack:{pack_dir.name}"
+                    items.append(m)
+                except json.JSONDecodeError as e:
+                    print(f"⚠️  skipping pack:{pack_dir.name}/{sub.name}: {e}", file=sys.stderr)
     return items
 
 
@@ -121,6 +156,10 @@ def render_step(manifest: dict[str, Any]) -> str:
         badges.append(f"schema: {preview['schemaImpact']}")
     lines.append(" · ".join(badges))
     lines.append("")
+    src = manifest.get("_source")
+    if src:
+        lines.append(f"📦 Source: `{src}`")
+        lines.append("")
     if tags:
         lines.append("Tags: " + " ".join(f"`{t}`" for t in tags))
         lines.append("")

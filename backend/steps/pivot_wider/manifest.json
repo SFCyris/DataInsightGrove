@@ -17,5 +17,7 @@
                 "enumValues": ["sum","mean","min","max","first"], "default": "sum" }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
-  "tags": ["pivot", "spread", "wide"]
+  "tags": ["pivot", "spread", "wide"],
+  "requires": [{"kind": "any", "min": 2}],
+  "aliases": ["pivot", "cross tab", "crosstab", "long to wide"]
 }

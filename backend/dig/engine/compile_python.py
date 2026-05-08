@@ -20,7 +20,7 @@ from textwrap import dedent
 from typing import Any
 
 from dig.engine.dag import topo_sort, validate
-from dig.engine.pipeline import Pipeline
+from dig.engine.pipeline import Pipeline, effective_connector
 
 
 def _q(s: str) -> str:
@@ -276,13 +276,16 @@ def unsupported_steps(p: Pipeline) -> list[str]:
 
 
 def _dataset_loader(spec) -> str:
-    if spec.connector == "csv":
+    # Trust the URI extension when it disagrees with the persisted
+    # connector; see effective_connector docstring for details.
+    conn = effective_connector(spec)
+    if conn == "csv":
         return f"pl.scan_csv({_q(spec.uri.removeprefix('file://'))})"
-    if spec.connector == "parquet":
+    if conn == "parquet":
         return f"pl.scan_parquet({_q(spec.uri.removeprefix('file://'))})"
-    if spec.connector == "excel":
+    if conn == "excel":
         return f"pl.read_excel({_q(spec.uri.removeprefix('file://'))}).lazy()"
-    return f"pl.scan_parquet({_q(spec.uri.removeprefix('file://'))})  # TODO: unsupported connector {spec.connector!r}"
+    return f"pl.scan_parquet({_q(spec.uri.removeprefix('file://'))})  # TODO: unsupported connector {conn!r}"
 
 
 def compile_to_python(p: Pipeline) -> str:

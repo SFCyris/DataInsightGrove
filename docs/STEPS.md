@@ -2,7 +2,7 @@
 
 This page documents every step DIG ships with. It is **auto-generated** from each step's `manifest.json` plus optional hand-written notes under `docs/_steps/<step_id>.md` — re-run `python scripts/gen-steps-doc.py` whenever you add or change a step.
 
-**54 steps** across ✂️ Shape (10), 🧼 Clean (8), 🪄 Derive (14), 🤝 Combine (3), 📊 Aggregate (5), 📤 Output (5).
+**76 steps** across ✂️ Shape (10), 🧼 Clean (8), 🪄 Derive (18), 🤝 Combine (3), 📊 Aggregate (5), 🔬 Analyze (14), 🧠 Model (8), ✅ Validate (1), 📈 Visualize (4), 📤 Output (4), 🧩 Custom (1).
 
 ## Index
 
@@ -25,7 +25,7 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 - [🧽 Clean whitespace](#clean-whitespace) — Trim leading/trailing whitespace and optionally collapse runs of internal whitespace into a single space.
 - [🪢 Coalesce columns](#coalesce-columns) — First non-null wins.
 - [🪞 Deduplicate](#deduplicate) — Keep one row per group of duplicates.
-- [✅ Data quality expectations](#data-quality-expectations) — Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between).
+- [⏳ Replace outliers](#replace-outliers) — Replace values flagged in an `is_anomaly` (or boolean) column with a rolling-median estimate.
 - [🔤 Replace text](#replace-text) — Find-and-replace inside a string column.
 - [🎯 Round numeric](#round-numeric) — Round a numeric column to N decimal places.
 - [🆙 Uppercase string](#uppercase-string) — Convert a string column to uppercase.
@@ -35,11 +35,15 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 - [🆕 Add column](#add-column) — Add a new column with a typed default value.
 - [📏 Array length](#array-length) — Add a column with the length of an array column.
 - [📦 Bin numeric](#bin-numeric) — Bucket a numeric column into N equal-width bins, or into custom breakpoints.
+- [📅 Business days between](#business-days-between) — Count business days (Mon-Fri excluding holidays) between two date columns per row.
 - [🧭 Convert coordinates](#convert-coordinates) — Lossless conversion between polar, Cartesian, and geographic coordinate systems.
+- [🔄 Convert units](#convert-units) — Convert a numeric column between units.
+- [📅 Date snap](#date-snap) — Snap a date to the start (or end) of a calendar period: week, month, quarter, year.
 - [➕ Derive column](#derive-column) — Add a new column computed from a SQL expression over existing columns.
 - [🧠 Embed text (AI)](#embed-text-ai) — Add a vector column with embeddings of a text column.
 - [📅 Extract date parts](#extract-date-parts) — Pull year, month, day, day-of-week (etc.
 - [🎯 Extract pattern](#extract-pattern) — Extract a regex group from a string column into a new column.
+- [📅 Fiscal year parts](#fiscal-year-parts) — Decompose a date into fiscal-year, fiscal-quarter, and fiscal-month for any fiscal-year start month.
 - [🌍 Geographic distance](#geographic-distance) — Compute great-circle distance (Haversine, in metres) between two lat/lon points.
 - [📦 Extract from JSON](#extract-from-json) — Pull a value out of a JSON column at the given path.
 - [🧮 Math equation](#math-equation) — Add a column computed from a math expression over existing columns.
@@ -61,13 +65,55 @@ This page documents every step DIG ships with. It is **auto-generated** from eac
 - [⏱ Resample (time bucket aggregate)](#resample-time-bucket-aggregate) — Bucket rows into fixed time intervals (e.
 - [🪟 Window aggregate](#window-aggregate) — Add a column computed over a rolling/cumulative window — running sum, rank, lead/lag, etc.
 
+### 🔬 Analyze
+
+- [⏳ ACF + PACF](#acf--pacf) — Compute autocorrelation (ACF) and partial autocorrelation (PACF) at lags 1.
+- [⏳ Augmented Dickey-Fuller](#augmented-dickey-fuller) — Unit-root test.
+- [⏳ Anomaly · rolling z-score](#anomaly--rolling-z-score) — Flag time-series points whose distance from a rolling mean exceeds N standard deviations.
+- [📐 One-way ANOVA](#one-way-anova) — One-way ANOVA: does the mean of `value` differ across the levels of `group`? Returns F-statistic, p-value, between/within group sums-of-squares, η² (eta-squared) effect size.
+- [📐 Bootstrap CI](#bootstrap-ci) — Distribution-free confidence interval around a statistic by resampling with replacement.
+- [⏳ Changepoint detection](#changepoint-detection) — Find rows where the time series shifts in mean.
+- [📐 Chi-squared test](#chi-squared-test) — Chi-squared test of independence between two categorical columns.
+- [📊 Correlation matrix](#correlation-matrix) — Pairwise correlation between numeric columns.
+- [📐 Effect size](#effect-size) — Effect-size measures for two-group comparisons.
+- [⏳ KPSS test](#kpss-test) — Companion to ADF — tests the OPPOSITE null hypothesis.
+- [📐 Two-sample KS test](#two-sample-ks-test) — Two-sample Kolmogorov-Smirnov test — do two groups have the same distribution at all? Distribution-free; works even when neither group is normal.
+- [📐 Mann-Whitney U test](#mann-whitney-u-test) — Non-parametric two-sample test — works without assuming normality.
+- [📐 Multiple-comparison correction](#multiple-comparison-correction) — Adjust p-values for multiple-test inflation.
+- [📐 Two-sample t-test](#two-sample-t-test) — Welch's two-sample independent t-test.
+
+### 🧠 Model
+
+- [🌌 DBSCAN clustering](#dbscan-clustering) — Density-based clustering — finds clusters of arbitrary shape and labels low-density points as noise (cluster id = -1).
+- [🔮 Forecast (time-series)](#forecast-time-series) — Project a time series N steps into the future.
+- [🔮 K-Means clustering](#k-means-clustering) — Partitions rows into K clusters by minimizing within-cluster variance.
+- [📐 Linear regression](#linear-regression) — Ordinary least squares — fit y = β·X + ε.
+- [🧬 PCA (dimensionality reduction)](#pca-dimensionality-reduction) — Principal Component Analysis — reduces N numeric columns to K orthogonal components ordered by variance explained.
+- [🔂 Seasonal decomposition](#seasonal-decomposition) — Decompose a time series into trend, seasonal, and residual components (additive or multiplicative).
+- [🌠 t-SNE (2-D embedding)](#t-sne-2-d-embedding) — t-distributed Stochastic Neighbor Embedding — non-linear dimensionality reduction great for visualizing high-dimensional clusters.
+- [🌌 UMAP (2-D embedding)](#umap-2-d-embedding) — Uniform Manifold Approximation and Projection — modern non-linear dim reduction that preserves both local + global structure better than t-SNE and scales to 100k+ rows.
+
+### ✅ Validate
+
+- [✅ Data quality expectations](#data-quality-expectations) — Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between).
+
+### 📈 Visualize
+
+- [🖼 Export to image](#export-to-image) — Render the data as a PNG/SVG via matplotlib + seaborn.
+- [📈 Funnel chart](#funnel-chart) — Sequential conversion-funnel visualisation.
+- [📈 Pareto chart](#pareto-chart) — Sorted bar chart of category values + cumulative-percentage line on a secondary axis.
+- [📈 Waterfall chart](#waterfall-chart) — Cumulative-contribution chart.
+
 ### 📤 Output
 
 - [🗃 Export to database](#export-to-database) — Write the data to a SQL database table.
 - [💾 Export to file](#export-to-file) — Write the data to disk in CSV, Parquet, Excel, JSON, or NDJSON.
-- [🖼 Export to image](#export-to-image) — Render the data as a PNG/SVG via matplotlib + seaborn.
 - [🔌 Export to JDBC](#export-to-jdbc) — Write rows to any JDBC-accessible database — Oracle, DB2, MS SQL Server, Snowflake, Teradata, Vertica, etc.
 - [🔔 Trigger webhook](#trigger-webhook) — Fire a webhook from inside this pipeline.
+
+### 🧩 Custom
+
+- [🪆 Passthrough](#passthrough) — Identity step — emits its input unchanged.
 
 ---
 
@@ -336,51 +382,26 @@ Tags: `distinct` `unique` `clean`
 | `key` | column_refs |  | — | Dedupe by these columns (empty = whole row) |
 
 
-### ✅ Data quality expectations
+### ⏳ Replace outliers
 
-**ID:** `expectations` · **Version:** `1.1.0`
+**ID:** `replace_outliers` · **Version:** `1.0.0`
 
-Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between). Failures surface in the run's artifacts; optionally fail the run, fire a Slack-compatible webhook, or both. Per-rule severity (error|warning) controls run-failure semantics.
+Replace values flagged in an `is_anomaly` (or boolean) column with a rolling-median estimate. Use this AFTER `anomaly_zscore` to clean a series before forecasting — otherwise outliers leak into the seasonal/trend decomposition and skew the forecast intervals.
 
-🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
 
-Tags: `dq` `data-quality` `expectations` `validation` `slack` `webhook`
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `outlier` `clean`
 
 **Parameters**
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `rules` | array | ✓ | — | List of {kind, column?, args, severity?, label?}. severity ∈ error \| warning (default error). label is a human-readable name for the rule. |
-| `fail_on_violation` | boolean |  | `False` | If true, the step raises and the run is marked failed when any error-severity rule fails. Warning-severity violations never fail the run. |
-| `notify_webhook_url` | string |  | `` | URL to POST a Slack-compatible payload when any rule fails. Works with Slack incoming webhooks, Discord, Mattermost, generic HTTP receivers. |
-| `notify_on` | enum |  | `any_failure` | never: webhook is disabled. any_failure: any rule failure (warning or error). error_only: error-severity only. |
-
-**Use case + example**
-
-**When to use:** tripwires for data quality. Anything that should always be true about your data — uniqueness, ranges, allowed values, regex patterns — encode as an expectation. The step never modifies the data; it only reports violations and (optionally) fails the run.
-
-**Example:**
-
-```json
-{
-  "step": "expectations",
-  "params": {
-    "rules": [
-      {"kind": "unique", "column": "customer_id"},
-      {"kind": "not_null", "column": "email"},
-      {"kind": "between", "column": "age", "min": 0, "max": 120},
-      {"kind": "in", "column": "status", "values": ["active", "churned", "trial"]},
-      {"kind": "regex_match", "column": "email", "pattern": "^[^@]+@[^@]+\\.[^@]+$"},
-      {"kind": "row_count_between", "min": 1000}
-    ],
-    "fail_on_violation": false
-  }
-}
-```
-
-Each rule produces a result entry; the artifacts panel summarizes "5/6 rules passed" and lists each failure inline.
-
-**Tip:** put `expectations` immediately *before* a sink (export) step. That way you fail fast and the bad data never lands in your downstream warehouse.
+| `value` | column_ref | ✓ | — | Value column to clean |
+| `flag` | column_ref | ✓ | — | Typically the `is_anomaly` column from the anomaly_zscore step. |
+| `window` | integer |  | `7` | Number of nearby rows used to compute the replacement median. Smaller = more local; larger = smoother. |
+| `output_column` | string |  | `value_clean` | Name for the cleaned column. Original value column is preserved. |
 
 
 ### 🔤 Replace text
@@ -502,6 +523,28 @@ Tags: `bucket` `discretize` `histogram`
 | `as` | string |  | `bin` | New column name |
 
 
+### 📅 Business days between
+
+**ID:** `business_days_between` · **Version:** `1.0.0`
+
+Count business days (Mon-Fri excluding holidays) between two date columns per row. Honours country-specific holiday calendars via the `holidays` library. Adds `bdays` column with the integer count.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:dates_pack`
+
+Tags: `dates` `business`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `start_column` | column_ref | ✓ | — | Start date column |
+| `end_column` | column_ref | ✓ | — | End date column |
+| `country` | string |  | `US` | US, GB, DE, FR, JP, etc. See https://python-holidays.readthedocs.io/. |
+| `output_column` | string |  | `bdays` | Output column name |
+
+
 ### 🧭 Convert coordinates
 
 **ID:** `convert_coordinates` · **Version:** `1.0.0`
@@ -520,6 +563,48 @@ Tags: `spatial` `geometry` `coordinates` `convert` `polar` `cartesian` `geograph
 | `toType` | enum | ✓ | — | What system to produce. polar↔cartesian conversions are dimension-preserving (2D↔2D, 3D↔3D). geographic↔cartesian uses ECEF (Earth-Centered Earth-Fixed) on the WGS84 ellipsoid; output is 3D. |
 | `sourceColumns` | array | ✓ | — | The columns carrying the source coordinates, in canonical order: cartesian: [x, y, z?]; polar: [r, theta, phi?]; geographic: [lat, lon]. |
 | `outputPrefix` | string |  | `coord_` | Prepended to each generated output column name. Output names follow the canonical order of the target system: cartesian → x/y[/z]; polar → r/theta[/phi]; geographic → lat/lon. |
+
+
+### 🔄 Convert units
+
+**ID:** `convert_units` · **Version:** `1.0.0`
+
+Convert a numeric column between units. Supports temperature, length, mass, volume, time, pressure, energy, power, force, speed, angle, frequency, data sizes, and chemistry (mol / molarity). Both source and target unit must be in the same category — see the unit dropdown for the full list.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `convert` `units` `temperature` `length` `mass` `physics` `chemistry`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `column` | column_ref | ✓ | — | Numeric column holding values in the FROM unit. |
+| `from_unit` | enum | ✓ | — | Unit the source column is currently in. |
+| `to_unit` | enum | ✓ | — | Target unit. Must be in the same category as the FROM unit. |
+| `output_column` | string |  | — | Name for the converted column. Leave empty to overwrite the source column. |
+
+
+### 📅 Date snap
+
+**ID:** `date_snap` · **Version:** `1.0.0`
+
+Snap a date to the start (or end) of a calendar period: week, month, quarter, year. Useful for grouping daily data into weeks-starting-Monday, months-starting-1st, etc. Output is added as a new column or replaces the original.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:dates_pack`
+
+Tags: `dates`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `date_column` | column_ref | ✓ | — | Date column |
+| `period` | enum |  | `week` | Period |
+| `boundary` | enum |  | `start` | Snap to |
+| `output_column` | string |  | `snapped_date` | Output column name |
 
 
 ### ➕ Derive column
@@ -599,6 +684,27 @@ Tags: `string` `regex` `extract`
 | `pattern` | regex | ✓ | — | e.g. ([A-Z]{2}) — group 1 captures two uppercase letters |
 | `group` | integer |  | `1` | Capture group |
 | `as` | string | ✓ | — | New column name |
+
+
+### 📅 Fiscal year parts
+
+**ID:** `fiscal_year_parts` · **Version:** `1.0.0`
+
+Decompose a date into fiscal-year, fiscal-quarter, and fiscal-month for any fiscal-year start month. Common values: 1 (calendar year), 4 (UK government), 7 (Australia), 10 (US federal). Output columns: fy_year, fy_quarter (1-4), fy_month (1-12).
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:dates_pack`
+
+Tags: `dates`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `date_column` | column_ref | ✓ | — | Date column |
+| `fy_start_month` | integer |  | `1` | 1 = calendar; 4 = UK gov; 7 = Australia; 10 = US federal. |
+| `prefix` | string |  | `fy_` | Output column prefix |
 
 
 ### 🌍 Geographic distance
@@ -752,20 +858,61 @@ Tags: `stats` `derive` `standardize`
 
 ### 🔗 Join
 
-**ID:** `join` · **Version:** `1.0.0`
+**ID:** `join` · **Version:** `1.1.0`
 
-Combine two datasets on matching key columns. Supports inner, left, right, full outer.
+Combine rows from two inputs by matching values in key columns. Inner / left / right / full / anti-left / anti-right semantics. Cardinality strip surfaces row-count consequences before you commit; auto-detected key suggestions; per-key match-quality bars catch wrong-column-picked, type-coercion, and zero-overlap cases upfront.
 
-🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 2 · ➡️ outputs: 1 · rows: may_grow · schema: rebuilds
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 2 (`left`, `right`) · ➡️ outputs: 1 · rows: unknown · schema: rebuilds
 
-Tags: `join` `merge`
+Tags: `join` `combine` `merge`
 
 **Parameters**
 
 | Name | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `how` | enum | ✓ | `inner` | Join type |
-| `on` | array |  | — | Key pairs |
+| `kind` | enum | ✓ | `inner` | One of `inner` / `left` / `right` / `full` / `anti_left` / `anti_right`. The bespoke params panel renders this as a 6-icon ladder with set-diagram glyphs — clearer than text labels for new users and clearer than a Venn diagram for users who already know SQL joins. |
+| `keys` | array | ✓ | — | List of key pairs `{left, right, op}`, AND-combined. `op` defaults to `=`; `<`/`<=`/`>`/`>=` are accepted for range joins (`≈` is reserved for fuzzy match — currently falls back to `=` in SQL). |
+| `columnCollisions` | enum |  | `keep_both` | How to resolve columns present on both sides post-key-collapse: `keep_both` suffixes them, `keep_left`/`keep_right` drops one side, `coalesce` falls back to right when left is null. |
+| `suffixes` | array |  | `["_left", "_right"]` | Two-element list applied to collisions when the rule (default or per-column override) is `keep_both`. |
+
+**Bespoke params panel**
+
+The join is the only step in DIG with a hand-built params panel rather than the generic field-renderer. Triggered when the manifest's id is `join`; the panel composes four widgets:
+
+- **Cardinality strip** at top — `left: 50,127  right: 200,043 → result: ~39,099 (1.0× max)`. Color-codes the ratio: green when result ≤ max(left,right), amber when expanding, red when result > 5× max (almost always a wrong key). The numbers are sample-on-sample estimates; the **ratio** generalises from sample to full data far better than absolute counts do.
+- **Join-type icon ladder** — six SVG set-diagrams, one per kind. Hover for a one-line semantics tooltip.
+- **Keys-builder** with three regions:
+  - 🪄 Suggested keys — auto-detected from same/near-name + type-compatibility + ≥80% sample overlap. One-click accept.
+  - Active keys list — `[left col][op][right col][match-quality bar][✕]` per row. The match-quality bar shows green ≥90%, amber 50–89%, red <50% sample overlap; amber/red rows surface a one-line hint with a "show unmatched" affordance.
+  - ➕ Add key
+- **Column collisions panel** — appears only when collisions exist. Lists every column shared between left and right (post-key-collapse), with a per-column resolution picker that overrides the default rule. Suffix editors appear when any collision uses `keep_both`.
+
+The panel design is documented in [`internal/proposals/JOIN_UX.md`](../internal/proposals/JOIN_UX.md). New chart-rich UX surfaces are gated on the same authoring pattern: bespoke widget per param, inline live-grid updates, no modals.
+
+**Use case + example**
+
+```jsonc
+{
+  "id": "n_join_orders",
+  "step": "join",
+  "stepVersion": "1.1.0",
+  "inputs": {
+    "left":  { "ref": "ds_customers" },
+    "right": { "ref": "ds_orders" }
+  },
+  "outputs": ["out"],
+  "params": {
+    "kind": "inner",
+    "keys": [
+      { "left": "customer_id", "right": "customer_id", "op": "=" }
+    ],
+    "columnCollisions": "keep_both",
+    "suffixes": ["_cust", "_order"]
+  }
+}
+```
+
+**Back-compat:** pipelines saved before v1.1 used `how`+`on` instead of `kind`+`keys`. Both names are accepted at runtime — the new ones win when both are present.
 
 
 ### 🧩 Sub-pipeline
@@ -957,6 +1104,812 @@ Tags: `window` `rolling` `rank`
 
 ---
 
+## 🔬 Analyze
+
+### ⏳ ACF + PACF
+
+**ID:** `acf_pacf` · **Version:** `1.0.0`
+
+Compute autocorrelation (ACF) and partial autocorrelation (PACF) at lags 1..N. Output is a long-form DataFrame ready to feed export_to_image (line) for the classic ACF/PACF stem plots used in ARIMA(p,d,q) order selection.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `diagnostics`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Time-series value column |
+| `max_lag` | integer |  | `40` | Max lag |
+
+
+### ⏳ Augmented Dickey-Fuller
+
+**ID:** `adf_test` · **Version:** `1.0.0`
+
+Unit-root test. H0: series has a unit root (= non-stationary). Rejecting H0 (small p-value) means the series is stationary. Required check before ARIMA — non-stationary inputs need differencing first.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `stationarity`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Time-series value column |
+| `regression` | enum |  | `c` | c = constant; ct = constant + linear trend; ctt = + quadratic; n = no constant. |
+
+
+### ⏳ Anomaly · rolling z-score
+
+**ID:** `anomaly_zscore` · **Version:** `1.0.0`
+
+Flag time-series points whose distance from a rolling mean exceeds N standard deviations. Robust to slow drift (it's relative to the local window) and surfaces both isolated spikes and short bursts. Adds `zscore` and `is_anomaly` columns; doesn't drop rows so downstream steps decide what to do.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `anomaly` `outlier` `zscore`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Time-series value column |
+| `window` | integer |  | `30` | Number of rows behind each point used to compute the local mean + stddev. Larger window = slower to react but more stable baseline. |
+| `threshold` | number |  | `3.0` | Points whose \|z-score\| exceeds this are flagged. 2σ ≈ 5% of normal data; 3σ ≈ 0.3%; 4σ ≈ 0.006%. |
+| `min_periods` | integer |  | `10` | Don't flag the first N rows where the rolling stats haven't stabilized yet. |
+
+
+### 📐 One-way ANOVA
+
+**ID:** `anova` · **Version:** `1.0.0`
+
+One-way ANOVA: does the mean of `value` differ across the levels of `group`? Returns F-statistic, p-value, between/within group sums-of-squares, η² (eta-squared) effect size.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column |
+| `group` | column_ref | ✓ | — | Group column |
+
+
+### 📐 Bootstrap CI
+
+**ID:** `bootstrap_ci` · **Version:** `1.0.0`
+
+Distribution-free confidence interval around a statistic by resampling with replacement. Works when the data isn't normal and parametric CIs would lie. Returns mean/median estimate, lower bound, upper bound, and width at the requested confidence level.
+
+🛠 engine: `polars` · ⚠️ non-deterministic · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column |
+| `statistic` | enum |  | `mean` | Statistic |
+| `confidence` | number |  | `0.95` | Confidence level |
+| `n_iter` | integer |  | `2000` | Bootstrap iterations |
+| `seed` | integer |  | `0` | Set to a non-zero value for reproducible CIs. |
+
+
+### ⏳ Changepoint detection
+
+**ID:** `changepoint_detection` · **Version:** `1.0.0`
+
+Find rows where the time series shifts in mean. Uses a rolling-window CUSUM approach — distribution-free, no scipy required. Returns a `is_changepoint` boolean column flagging the rows where the change occurred plus a `cusum` column for the test statistic so you can plot it.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `anomaly`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Time-series value column |
+| `threshold` | number |  | `5.0` | CUSUM threshold (in σ). Higher = fewer detected changes. Default 5σ flags only large shifts. |
+
+
+### 📐 Chi-squared test
+
+**ID:** `chi_square` · **Version:** `1.0.0`
+
+Chi-squared test of independence between two categorical columns. Builds the contingency table, returns chi² statistic, p-value, degrees of freedom, and Cramér's V effect size.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics` `categorical`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `row` | column_ref | ✓ | — | Row column |
+| `col` | column_ref | ✓ | — | Column column |
+
+
+### 📊 Correlation matrix
+
+**ID:** `correlation_matrix` · **Version:** `1.0.0`
+
+Pairwise correlation between numeric columns. Outputs a long-form table (col_a, col_b, r) and renders a heatmap as a side-effect artifact.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+Tags: `stats` `ml` `correlation` `exploratory`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Numeric columns to correlate. Empty = all numeric columns. |
+| `method` | enum | ✓ | `pearson` | Method |
+| `render` | boolean |  | `True` | Render heatmap |
+| `title` | string |  | `Correlation matrix` | Title |
+
+**Use case + example**
+
+**When to use:** quick sanity check before modeling — which numeric columns move together, which are independent, which redundant.
+
+**Example:** stock returns. Compute pairwise correlation across 5 tickers' close-price columns; spot any pair with |r| > 0.9 that you can drop or combine.
+
+```json
+{
+  "step": "correlation_matrix",
+  "params": {
+    "columns": ["AAPL", "MSFT", "NVDA", "AMD", "GOOG"],
+    "method": "pearson",
+    "title": "Tech basket — daily returns"
+  }
+}
+```
+
+**Output:** a long-form `(col_a, col_b, r)` table you can filter further. The rendered heatmap is added to the run's artifacts panel.
+
+![correlation heatmap](images/tutorials/tutorial-pca-flowers.png)
+
+(Sample image is from PCA — the correlation heatmap looks similar but with red/blue divergent palette centered at 0.)
+
+
+### 📐 Effect size
+
+**ID:** `effect_size` · **Version:** `1.0.0`
+
+Effect-size measures for two-group comparisons. Cohen's d (standardized mean difference), Hedges' g (small-sample-corrected d), and Glass' delta. A p-value tells you whether a difference exists; effect size tells you how big it is.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column |
+| `group` | column_ref | ✓ | — | Group column (binary) |
+
+
+### ⏳ KPSS test
+
+**ID:** `kpss_test` · **Version:** `1.0.0`
+
+Companion to ADF — tests the OPPOSITE null hypothesis. H0: series is stationary. Rejecting (small p-value) means non-stationary. Best practice: run BOTH ADF and KPSS; if both agree, you have a confident verdict.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:time_series_pro`
+
+Tags: `time-series` `stationarity`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Time-series value column |
+| `regression` | enum |  | `c` | c = level-stationary; ct = trend-stationary. |
+
+
+### 📐 Two-sample KS test
+
+**ID:** `ks_test` · **Version:** `1.0.0`
+
+Two-sample Kolmogorov-Smirnov test — do two groups have the same distribution at all? Distribution-free; works even when neither group is normal. Use this instead of t_test when you can't assume normality, or as a follow-up when t_test is significant and you want to understand whether the distributions differ in shape (not just mean).
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:statspack`
+
+Tags: `statistics` `hypothesis-test` `distribution`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column (numeric) |
+| `group` | column_ref | ✓ | — | Categorical column with exactly two distinct non-null values. |
+| `alternative` | enum |  | `two-sided` | two-sided = distributions differ; less / greater = one-sided test on the cumulative distribution function. |
+
+
+### 📐 Mann-Whitney U test
+
+**ID:** `mann_whitney` · **Version:** `1.0.0`
+
+Non-parametric two-sample test — works without assuming normality. Use this when t_test's assumptions don't hold or when you have ordinal data. Returns U statistic, p-value, rank-biserial correlation effect size.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics` `non-parametric`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column |
+| `group` | column_ref | ✓ | — | Group column (binary) |
+| `alternative` | enum |  | `two-sided` | Alternative |
+
+
+### 📐 Multiple-comparison correction
+
+**ID:** `multiple_comparison_correction` · **Version:** `1.0.0`
+
+Adjust p-values for multiple-test inflation. Takes a column of raw p-values, returns adjusted p-values + significance flags under the chosen method (Bonferroni, Holm, Benjamini-Hochberg FDR). Without correction, running 20 tests at α=0.05 yields a 64% chance of a false positive somewhere.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+📦 Source: `pack:stats_pro`
+
+Tags: `statistics` `correction`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `p_column` | column_ref | ✓ | — | p-value column |
+| `method` | enum |  | `fdr_bh` | fdr_bh = Benjamini-Hochberg (most common); bonferroni = strictest; holm = step-down Bonferroni; fdr_by = Benjamini-Yekutieli (no independence assumption). |
+| `alpha` | number |  | `0.05` | α |
+
+
+### 📐 Two-sample t-test
+
+**ID:** `t_test` · **Version:** `1.0.0`
+
+Welch's two-sample independent t-test. Compares the mean of `value` between the two groups in `group`, returns t, p-value, df, per-group means + sample sizes. Assumes the value column is roughly normal within each group; use ks_test if you can't assume that.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: rebuilds
+
+📦 Source: `pack:statspack`
+
+Tags: `statistics` `hypothesis-test` `compare-groups`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `value` | column_ref | ✓ | — | Value column (numeric) |
+| `group` | column_ref | ✓ | — | Categorical column with exactly two distinct non-null values. |
+| `alternative` | enum |  | `two-sided` | two-sided = means differ; less = group A < group B; greater = group A > group B (alphabetical order). |
+| `equal_var` | boolean |  | `False` | Off (default) = Welch's t (recommended). On = classical Student's t — only correct when both groups have similar variance. |
+
+
+---
+
+## 🧠 Model
+
+### 🌌 DBSCAN clustering
+
+**ID:** `dbscan` · **Version:** `1.0.0`
+
+Density-based clustering — finds clusters of arbitrary shape and labels low-density points as noise (cluster id = -1). Adds a 'cluster' column and renders a scatter.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `stats` `ml` `clustering` `dbscan` `density`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Feature columns |
+| `eps` | number |  | `0.5` | Two points are neighbors if their distance is below ε. Run on standardized data: 0.3–0.8 is a typical starting range. |
+| `min_samples` | integer |  | `5` | Minimum points within ε for a point to be considered a core point. Heuristic: dim×2. |
+| `scale` | boolean |  | `True` | Standardize features |
+| `output_column` | string |  | `cluster` | Output column name |
+| `render` | boolean |  | `True` | Render scatter plot |
+| `title` | string |  | `DBSCAN clusters` | Title |
+
+
+### 🔮 Forecast (time-series)
+
+**ID:** `forecast` · **Version:** `1.0.0`
+
+Project a time series N steps into the future. Uses Holt-Winters exponential smoothing (handles trend + seasonality) by default. Output extends the source with future timestamps + a 'forecast' column and 95% prediction intervals.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_grow · schema: modifies
+
+Tags: `time-series` `forecast` `prediction` `holt-winters`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `time_column` | column_ref | ✓ | — | Time column |
+| `value_column` | column_ref | ✓ | — | Value column |
+| `horizon` | integer | ✓ | `30` | Steps to forecast |
+| `method` | enum |  | `auto` | 'auto' picks holt_winters when seasonality is plausible, else ets. 'naive' is last-observation-carried-forward. |
+| `seasonal_period` | integer |  | `0` | Observations per season (e.g. 7 for weekly cycles in daily data, 12 for yearly cycles in monthly). 0 = auto-detect. |
+| `render` | boolean |  | `True` | Render forecast plot |
+| `title` | string |  | `Forecast` | Title |
+
+**Use case + example**
+
+**When to use:** project a daily/weekly/monthly time series N steps into the future, with prediction intervals.
+
+**Example:** 30-day stock close forecast.
+
+```json
+{
+  "step": "forecast",
+  "params": {
+    "time_column": "date",
+    "value_column": "close",
+    "horizon": 30,
+    "method": "holt_winters",
+    "seasonal_period": 7
+  }
+}
+```
+
+The output extends the input frame: existing rows get `forecast = null`, new future rows have `forecast` + `forecast_lo` / `forecast_hi` 95% prediction intervals. The artifact image overlays observed + forecast + shaded interval:
+
+![stock forecast](images/tutorials/tutorial-forecast-stock.png)
+
+**Method selection:** `auto` picks `holt_winters` when the seasonal period is plausible, else `ets`. Set explicitly for reproducibility. `naive` (last-observation-carried-forward) is the baseline you should beat.
+
+
+### 🔮 K-Means clustering
+
+**ID:** `kmeans` · **Version:** `1.0.0`
+
+Partitions rows into K clusters by minimizing within-cluster variance. Adds a 'cluster' column and renders a 2-D scatter (uses PCA for dimensionality > 2).
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `stats` `ml` `clustering` `kmeans` `unsupervised`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Numeric columns used for clustering. Empty = all numeric columns. |
+| `k` | integer | ✓ | `4` | Number of clusters (k) |
+| `scale` | boolean |  | `True` | Standardize features |
+| `seed` | integer |  | `42` | Random seed |
+| `output_column` | string |  | `cluster` | Output column name |
+| `render` | boolean |  | `True` | Render scatter plot |
+| `title` | string |  | `K-Means clusters` | Title |
+
+**Use case + example**
+
+**When to use:** group customers / products / sensors into K behavioral clusters. Output is a new `cluster` column you can join back, filter, or render.
+
+**Example:** segment customers by spend + tenure.
+
+```json
+{
+  "step": "kmeans",
+  "params": {
+    "columns": ["monthly_revenue", "tenure_days"],
+    "k": 4,
+    "scale": true,
+    "output_column": "segment"
+  }
+}
+```
+
+If you give kmeans more than 2 features, the auto-rendered scatter projects via PCA so you can still visualize the clusters. The cluster summary (sizes, inertia) lands in the run's artifacts panel.
+
+**Tip:** combine with `correlation_matrix` and the `kmeans` `inertia` metric across several values of K (the elbow heuristic) to pick K. DIG's `k` param doesn't auto-pick K — that's a deliberate decision so you can see the trade-off, not a magic number.
+
+
+### 📐 Linear regression
+
+**ID:** `linear_regression` · **Version:** `1.0.0`
+
+Ordinary least squares — fit y = β·X + ε. Adds a 'predicted' and 'residual' column. Renders the fit (single feature) or actual-vs-predicted (multiple features).
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `stats` `ml` `regression` `linear` `ols`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `y` | column_ref | ✓ | — | Target column (y) |
+| `x_columns` | column_refs | ✓ | — | Feature columns (X) |
+| `fit_intercept` | boolean |  | `True` | Fit intercept |
+| `predicted_column` | string |  | `predicted` | Predicted column name |
+| `residual_column` | string |  | `residual` | Residual column name |
+| `render` | boolean |  | `True` | Render fit / actual-vs-predicted |
+| `title` | string |  | `Linear regression` | Title |
+
+
+### 🧬 PCA (dimensionality reduction)
+
+**ID:** `pca` · **Version:** `1.0.0`
+
+Principal Component Analysis — reduces N numeric columns to K orthogonal components ordered by variance explained. Adds PC1..PCK columns to the data and renders a 2-D scatter of the first two components.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `stats` `ml` `dimensionality-reduction` `pca`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Numeric columns to project. Empty = all numeric columns. |
+| `n_components` | integer |  | `2` | Number of components |
+| `scale` | boolean |  | `True` | Strongly recommended unless your columns are already on the same scale. |
+| `color_by` | column_ref |  | — | Optional categorical or numeric column used to color points in the rendered scatter. |
+| `render` | boolean |  | `True` | Render 2-D scatter (PC1 × PC2) |
+| `title` | string |  | `PCA` | Title |
+
+**Use case + example**
+
+**When to use:** dataset has many numeric columns and you want a 2-D view that captures most of the variance. PCA is fast, deterministic, linear — best baseline for "what does my data look like?".
+
+**Example:** flowers dataset (`samples/flowers-demo.csv`). Project the 4 morphological measurements onto 2 components, color by species.
+
+```json
+{
+  "step": "pca",
+  "params": {
+    "columns": ["petal_length", "petal_width", "sepal_length", "sepal_width"],
+    "n_components": 2,
+    "color_by": "species",
+    "title": "Flowers — PCA"
+  }
+}
+```
+
+The output frame keeps every row and adds `PC1`, `PC2` columns. The rendered scatter shows the components labeled with variance explained:
+
+![PCA scatter](images/tutorials/tutorial-pca-flowers.png)
+
+When >2 components are useful, raise `n_components` — the additional `PC3..PCK` columns are still added to the data, you can use them for downstream `kmeans` / `linear_regression` etc.
+
+
+### 🔂 Seasonal decomposition
+
+**ID:** `seasonal_decompose` · **Version:** `1.0.0`
+
+Decompose a time series into trend, seasonal, and residual components (additive or multiplicative). Adds 3 new columns and renders a 4-panel plot.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: modifies
+
+Tags: `time-series` `seasonal` `decompose` `trend`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `time_column` | column_ref | ✓ | — | Time column |
+| `value_column` | column_ref | ✓ | — | Value column |
+| `model` | enum | ✓ | `additive` | Use 'additive' if seasonal amplitude is roughly constant; 'multiplicative' if it grows/shrinks with the level. |
+| `period` | integer |  | `0` | Number of observations per season (e.g. 7 for daily data with weekly seasonality, 12 for monthly with yearly). 0 = auto-detect from time column frequency. |
+| `render` | boolean |  | `True` | Render decomposition plot |
+| `title` | string |  | `Seasonal decomposition` | Title |
+
+**Use case + example**
+
+**When to use:** understand why a time series looks the way it does — separate the slow trend, the periodic seasonal pattern, and the residual noise.
+
+**Example:** is the recent uptick in our daily revenue real growth, or just the typical month-end seasonal bump?
+
+```json
+{
+  "step": "seasonal_decompose",
+  "params": {
+    "time_column": "date",
+    "value_column": "revenue",
+    "model": "additive",
+    "period": 7
+  }
+}
+```
+
+The output adds `trend`, `seasonal`, `residual` columns. The rendered 4-panel plot lets you eyeball the decomposition:
+
+![seasonal decomposition](images/tutorials/tutorial-seasonal-stock.png)
+
+Use `additive` when seasonal amplitude is roughly constant over time; `multiplicative` when the swings grow / shrink with the level (e.g. growing exponential trend).
+
+
+### 🌠 t-SNE (2-D embedding)
+
+**ID:** `tsne` · **Version:** `1.0.0`
+
+t-distributed Stochastic Neighbor Embedding — non-linear dimensionality reduction great for visualizing high-dimensional clusters. Adds tSNE_1 / tSNE_2 columns and renders a scatter.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: modifies
+
+Tags: `stats` `ml` `embedding` `dimensionality-reduction` `tsne`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Feature columns |
+| `perplexity` | number |  | `30` | Roughly: number of nearest neighbors per point. 5–50 is common; higher for larger datasets. |
+| `max_rows` | integer |  | `5000` | t-SNE is O(n²); above ~10k points is impractical. Larger samples are downsampled. |
+| `scale` | boolean |  | `True` | Standardize features |
+| `seed` | integer |  | `42` | Random seed |
+| `color_by` | column_ref |  | — | Color points by |
+| `render` | boolean |  | `True` | Render scatter |
+| `title` | string |  | `t-SNE` | Title |
+
+
+### 🌌 UMAP (2-D embedding)
+
+**ID:** `umap` · **Version:** `1.0.0`
+
+Uniform Manifold Approximation and Projection — modern non-linear dim reduction that preserves both local + global structure better than t-SNE and scales to 100k+ rows. Adds UMAP_1 / UMAP_2 columns and renders a scatter.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: may_reduce · schema: modifies
+
+Tags: `stats` `ml` `embedding` `dimensionality-reduction` `umap`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `columns` | column_refs |  | — | Feature columns |
+| `n_neighbors` | integer |  | `15` | Smaller → more local structure; larger → more global. 5–50 is typical. |
+| `min_dist` | number |  | `0.1` | How tightly UMAP is allowed to pack points; lower → tighter clumps. |
+| `max_rows` | integer |  | `50000` | Max rows (sampled) |
+| `scale` | boolean |  | `True` | Standardize features |
+| `seed` | integer |  | `42` | Random seed |
+| `color_by` | column_ref |  | — | Color points by |
+| `render` | boolean |  | `True` | Render scatter |
+| `title` | string |  | `UMAP` | Title |
+
+
+---
+
+## ✅ Validate
+
+### ✅ Data quality expectations
+
+**ID:** `expectations` · **Version:** `1.1.0`
+
+Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between). Failures surface in the run's artifacts; optionally fail the run, fire a Slack-compatible webhook, or both. Per-rule severity (error|warning) controls run-failure semantics.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+Tags: `dq` `data-quality` `expectations` `validation` `slack` `webhook`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `rules` | array | ✓ | — | List of {kind, column?, args, severity?, label?}. severity ∈ error \| warning (default error). label is a human-readable name for the rule. |
+| `fail_on_violation` | boolean |  | `False` | If true, the step raises and the run is marked failed when any error-severity rule fails. Warning-severity violations never fail the run. |
+| `notify_webhook_url` | string |  | `` | URL to POST a Slack-compatible payload when any rule fails. Works with Slack incoming webhooks, Discord, Mattermost, generic HTTP receivers. |
+| `notify_on` | enum |  | `any_failure` | never: webhook is disabled. any_failure: any rule failure (warning or error). error_only: error-severity only. |
+
+**Use case + example**
+
+**When to use:** tripwires for data quality. Anything that should always be true about your data — uniqueness, ranges, allowed values, regex patterns — encode as an expectation. The step never modifies the data; it only reports violations and (optionally) fails the run.
+
+**Example:**
+
+```json
+{
+  "step": "expectations",
+  "params": {
+    "rules": [
+      {"kind": "unique", "column": "customer_id"},
+      {"kind": "not_null", "column": "email"},
+      {"kind": "between", "column": "age", "min": 0, "max": 120},
+      {"kind": "in", "column": "status", "values": ["active", "churned", "trial"]},
+      {"kind": "regex_match", "column": "email", "pattern": "^[^@]+@[^@]+\\.[^@]+$"},
+      {"kind": "row_count_between", "min": 1000}
+    ],
+    "fail_on_violation": false
+  }
+}
+```
+
+Each rule produces a result entry; the artifacts panel summarizes "5/6 rules passed" and lists each failure inline.
+
+**Tip:** put `expectations` immediately *before* a sink (export) step. That way you fail fast and the bad data never lands in your downstream warehouse.
+
+
+---
+
+## 📈 Visualize
+
+### 🖼 Export to image
+
+**ID:** `export_to_image` · **Version:** `1.0.0`
+
+Render the data as a PNG/SVG via matplotlib + seaborn. Pick 1 column (distribution), 2 columns (scatter / categorical), or 3 columns (heatmap or 3-D scatter). 'auto' picks a sensible chart from the column types.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+Tags: `export` `image` `plot` `viz` `matplotlib` `seaborn`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `kind` | enum | ✓ | `auto` | 'auto' inspects the columns + types and picks one. Override for explicit control. |
+| `x` | column_ref |  | — | First axis. Required for 2D/3D charts; optional for distribution charts (then samples the chosen value column). |
+| `y` | column_ref |  | — | Second axis. Required for scatter / line / heatmap / scatter3d. |
+| `y2` | column_ref |  | — | Y column |
+| `y3` | column_ref |  | — | Y column |
+| `y4` | column_ref |  | — | Y column |
+| `y5` | column_ref |  | — | Y column |
+| `value` | column_ref |  | — | Third channel — colors a heatmap cell or sizes a scatter marker. |
+| `z` | column_ref |  | — | Z column (3-D scatter) |
+| `title` | string |  | — | Title |
+| `format` | enum | ✓ | `png` | Format |
+| `width` | integer |  | `900` | Width (px) |
+| `height` | integer |  | `600` | Height (px) |
+| `dpi` | integer |  | `144` | DPI |
+| `max_points` | integer |  | `50000` | If the input has more rows than this, the step samples down. Plots aren't useful past a few hundred thousand points. |
+| `path` | string |  | — | Defaults to data/outputs/<run>/<step>.png |
+
+**Use case + example**
+
+**When to use:** end of a pipeline, when you want a chart you can paste into a slide / share / embed in a report.
+
+DIG renders via matplotlib + seaborn — not a web charting library — so the output is publication-grade PNG (or SVG). No JS bundle weight, deterministic, headless-friendly.
+
+**Auto-pick logic:** with `kind = "auto"` the step inspects the columns you fill in plus their types and picks a sensible chart:
+
+| You fill | Types | Auto-picked chart |
+|---|---|---|
+| 1 axis | numeric | histogram (with KDE) |
+| 1 axis | categorical | top-N horizontal bar |
+| 2 axes | num × num | scatter |
+| 2 axes | cat × num | bar (mean per category) |
+| 3 axes | x × y × value | heatmap (pivot) |
+| 3 axes | all numeric | 3-D scatter |
+
+**Example — bar chart:**
+
+```json
+{
+  "step": "export_to_image",
+  "params": {
+    "kind": "bar_counts",
+    "x": "region",
+    "title": "💰 Revenue by region"
+  }
+}
+```
+
+![bar chart by region](images/tutorials/tutorial-bar-by-region.png)
+
+**Example — heatmap (region × product):**
+
+```json
+{
+  "step": "export_to_image",
+  "params": {
+    "kind": "heatmap",
+    "x": "region",
+    "y4": "product",
+    "value": "revenue",
+    "title": "🔥 Revenue heatmap"
+  }
+}
+```
+
+![heatmap region × product](images/tutorials/tutorial-heatmap-sales.png)
+
+**Tip:** the file is written under `data/outputs/<run_id>/<step>.png` by default. Set `path` to override (relative paths are resolved against the run dir; absolute paths land where you put them).
+
+
+### 📈 Funnel chart
+
+**ID:** `funnel_chart` · **Version:** `1.0.0`
+
+Sequential conversion-funnel visualisation. Each row is a stage; the bar shrinks step-by-step. Drop-off labels show the percentage retained vs. the previous stage.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+📦 Source: `pack:business_charts`
+
+Tags: `chart` `business` `conversion`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `stage` | column_ref | ✓ | — | Stage column |
+| `value` | column_ref | ✓ | — | Count / value column |
+| `title` | string |  | `Funnel` | Title |
+| `output_path` | string |  | — | Output path |
+
+
+### 📈 Pareto chart
+
+**ID:** `pareto_chart` · **Version:** `1.0.0`
+
+Sorted bar chart of category values + cumulative-percentage line on a secondary axis. The 80/20 chart — useful for showing which few categories drive most of the total.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+📦 Source: `pack:business_charts`
+
+Tags: `chart` `business`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `label` | column_ref | ✓ | — | Label column |
+| `value` | column_ref | ✓ | — | Value column |
+| `top_n` | integer |  | `20` | Top N categories |
+| `title` | string |  | `Pareto` | Title |
+| `output_path` | string |  | — | Output path |
+
+
+### 📈 Waterfall chart
+
+**ID:** `waterfall_chart` · **Version:** `1.0.0`
+
+Cumulative-contribution chart. Each row is one bar: positives stack up, negatives stack down, ending at the final total. Bonus row at the right shows the total. Common for revenue / cost-bridge analyses.
+
+🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
+
+📦 Source: `pack:business_charts`
+
+Tags: `chart` `business`
+
+**Parameters**
+
+| Name | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `label` | column_ref | ✓ | — | Label column |
+| `value` | column_ref | ✓ | — | Value column (signed) |
+| `title` | string |  | `Waterfall` | Title |
+| `output_path` | string |  | — | Output path |
+
+
+---
+
 ## 📤 Output
 
 ### 🗃 Export to database
@@ -1077,89 +2030,6 @@ Tags: `export` `sink` `file`
 **Tip:** the path is resolved relative to the run output dir (`data/outputs/<run_id>/`). Use absolute paths only when you intentionally want to write outside that — e.g. into a share you've mounted.
 
 
-### 🖼 Export to image
-
-**ID:** `export_to_image` · **Version:** `1.0.0`
-
-Render the data as a PNG/SVG via matplotlib + seaborn. Pick 1 column (distribution), 2 columns (scatter / categorical), or 3 columns (heatmap or 3-D scatter). 'auto' picks a sensible chart from the column types.
-
-🛠 engine: `polars` · ⬅️ inputs: 1 · ➡️ outputs: 1 · rows: preserves · schema: preserves
-
-Tags: `export` `image` `plot` `viz` `matplotlib` `seaborn`
-
-**Parameters**
-
-| Name | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `kind` | enum | ✓ | `auto` | 'auto' inspects the columns + types and picks one. Override for explicit control. |
-| `x` | column_ref |  | — | First axis. Required for 2D/3D charts; optional for distribution charts (then samples the chosen value column). |
-| `y` | column_ref |  | — | Second axis. Required for scatter / line / heatmap / scatter3d. |
-| `y2` | column_ref |  | — | Y column |
-| `y3` | column_ref |  | — | Y column |
-| `y4` | column_ref |  | — | Y column |
-| `y5` | column_ref |  | — | Y column |
-| `value` | column_ref |  | — | Third channel — colors a heatmap cell or sizes a scatter marker. |
-| `z` | column_ref |  | — | Z column (3-D scatter) |
-| `title` | string |  | — | Title |
-| `format` | enum | ✓ | `png` | Format |
-| `width` | integer |  | `900` | Width (px) |
-| `height` | integer |  | `600` | Height (px) |
-| `dpi` | integer |  | `144` | DPI |
-| `max_points` | integer |  | `50000` | If the input has more rows than this, the step samples down. Plots aren't useful past a few hundred thousand points. |
-| `path` | string |  | — | Defaults to data/outputs/<run>/<step>.png |
-
-**Use case + example**
-
-**When to use:** end of a pipeline, when you want a chart you can paste into a slide / share / embed in a report.
-
-DIG renders via matplotlib + seaborn — not a web charting library — so the output is publication-grade PNG (or SVG). No JS bundle weight, deterministic, headless-friendly.
-
-**Auto-pick logic:** with `kind = "auto"` the step inspects the columns you fill in plus their types and picks a sensible chart:
-
-| You fill | Types | Auto-picked chart |
-|---|---|---|
-| 1 axis | numeric | histogram (with KDE) |
-| 1 axis | categorical | top-N horizontal bar |
-| 2 axes | num × num | scatter |
-| 2 axes | cat × num | bar (mean per category) |
-| 3 axes | x × y × value | heatmap (pivot) |
-| 3 axes | all numeric | 3-D scatter |
-
-**Example — bar chart:**
-
-```json
-{
-  "step": "export_to_image",
-  "params": {
-    "kind": "bar_counts",
-    "x": "region",
-    "title": "💰 Revenue by region"
-  }
-}
-```
-
-![bar chart by region](images/tutorials/tutorial-bar-by-region.png)
-
-**Example — heatmap (region × product):**
-
-```json
-{
-  "step": "export_to_image",
-  "params": {
-    "kind": "heatmap",
-    "x": "region",
-    "y4": "product",
-    "value": "revenue",
-    "title": "🔥 Revenue heatmap"
-  }
-}
-```
-
-![heatmap region × product](images/tutorials/tutorial-heatmap-sales.png)
-
-**Tip:** the file is written under `data/outputs/<run_id>/<step>.png` by default. Set `path` to override (relative paths are resolved against the run dir; absolute paths land where you put them).
-
-
 ### 🔌 Export to JDBC
 
 **ID:** `export_to_jdbc` · **Version:** `1.0.0`
@@ -1201,3 +2071,20 @@ Tags: `webhook` `trigger` `notify` `side-effect` `integration`
 | `webhookLabel` | string |  | — | Label of the global webhook to fire. Manage webhooks in Settings → 🔔 Global webhooks. Leave blank to make this a placeholder step you'll wire up later. |
 | `extraPayload` | string |  | — | Merged into the default payload — useful for tagging the call with stage info, e.g. {"stage": "after-cleansing"}. |
 | `failOnError` | boolean |  | `False` | Off (default): a 5xx or timeout from the receiver is logged but the pipeline continues. On: a webhook failure aborts the pipeline at this step. |
+
+
+---
+
+## 🧩 Custom
+
+### 🪆 Passthrough
+
+**ID:** `passthrough` · **Version:** `1.0.0`
+
+Identity step — emits its input unchanged. Used internally by the sub-pipeline inliner to keep the wrapper node id alive in the flat DAG so callers (compile terminal selection, downstream wiring, lineage) don't need to know about inlining.
+
+🛠 engine: `sql` · 🌐 browser: `sql` · ⬅️ inputs: 1 · ➡️ outputs: 1
+
+**Parameters**
+
+_(no parameters)_

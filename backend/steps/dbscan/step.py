@@ -14,6 +14,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, DEFAULT_FIGSIZE
 
 
 def _is_numeric(dtype: pl.DataType) -> bool:
@@ -129,7 +130,7 @@ class DBSCANStep(Step):
         # Noise gets a fixed gray; clusters cycle through tab10.
         palette = sns.color_palette("tab10", n_colors=max(len([u for u in uniq if u != -1]), 3))
 
-        fig, ax = plt.subplots(figsize=(7, 5), dpi=144)
+        fig, ax = plt.subplots(figsize=DEFAULT_FIGSIZE, dpi=DEFAULT_DPI)
         cluster_idx = 0
         for c in uniq:
             m = [lbl == c for lbl in labels]
@@ -148,7 +149,7 @@ class DBSCANStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

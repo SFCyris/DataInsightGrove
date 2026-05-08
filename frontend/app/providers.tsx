@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
 import { ServerStatusOverlay } from "@/components/server-status-overlay";
 import { MacTitlebar } from "@/components/mac-titlebar";
+import { AiKeepalive } from "@/components/ai-keepalive";
 
 function ThemeWatcher() {
   // Make sure the store boots and the system-theme listener attaches.
@@ -27,6 +28,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           below the band. */}
       <MacTitlebar />
       <ServerStatusOverlay />
+      <AiKeepalive />
       {children}
       <CommandPalette />
       <ShortcutsCheatsheet />

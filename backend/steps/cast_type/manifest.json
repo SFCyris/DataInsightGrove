@@ -38,5 +38,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["cast", "type"]
+  "tags": ["cast", "type"],
+  "aliases": ["parse", "convert type", "change type", "retype", "to integer", "to date"]
 }

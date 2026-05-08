@@ -15,6 +15,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, WIDE_FIGSIZE
 
 
 def _detect_period(times) -> int:
@@ -207,7 +208,7 @@ class ForecastStep(Step):
         history = df.filter(~pl.col("is_forecast"))
         future = df.filter(pl.col("is_forecast"))
 
-        fig, ax = plt.subplots(figsize=(10, 5), dpi=144)
+        fig, ax = plt.subplots(figsize=WIDE_FIGSIZE, dpi=DEFAULT_DPI)
         ax.plot(
             history.get_column(tcol).to_numpy(),
             history.get_column(vcol).to_numpy(),
@@ -230,7 +231,7 @@ class ForecastStep(Step):
         # same pipeline would otherwise overwrite each other's PNG.
         slug = ctx.node_id or self.id
         out_path = ctx.out_dir / f"{slug}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

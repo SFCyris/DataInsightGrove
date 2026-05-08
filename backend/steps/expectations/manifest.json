@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "label": "✅ Data quality expectations",
   "description": "Assert data quality rules (unique, not_null, between, in, regex_match, row_count_between, null_fraction, cardinality_between). Failures surface in the run's artifacts; optionally fail the run, fire a Slack-compatible webhook, or both. Per-rule severity (error|warning) controls run-failure semantics.",
-  "category": "clean",
+  "category": "validate",
   "engine": { "primary": "polars", "browser": "none", "deterministic": true },
   "io": {
     "inputs": { "min": 1, "max": 1, "ports": ["in"] },
@@ -37,5 +37,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["dq", "data-quality", "expectations", "validation", "slack", "webhook"]
+  "tags": ["dq", "data-quality", "expectations", "validation", "slack", "webhook"],
+  "aliases": ["validation", "validate", "assertions", "data quality", "dq", "great expectations"]
 }

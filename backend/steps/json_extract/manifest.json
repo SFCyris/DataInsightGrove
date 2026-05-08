@@ -36,5 +36,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["json", "extract", "path", "derive"]
+  "tags": ["json", "extract", "path", "derive"],
+  "requires": [{"kind": ["json", "string"]}],
+  "aliases": ["json path", "extract from json", "jsonpath"]
 }

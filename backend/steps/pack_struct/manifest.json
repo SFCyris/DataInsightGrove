@@ -32,5 +32,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["struct", "pack", "spatial", "compose"]
+  "tags": ["struct", "pack", "spatial", "compose"],
+  "requires": [{"kind": "any", "min": 2}]
 }
