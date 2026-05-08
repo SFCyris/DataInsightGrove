@@ -52,5 +52,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["embedding", "vector", "ml", "openai", "ollama", "ai"]
+  "tags": ["embedding", "vector", "ml", "openai", "ollama", "ai"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["embedding", "sentence transformer", "nlp", "semantic"]
 }

@@ -71,5 +71,7 @@
     "ml",
     "dimensionality-reduction",
     "pca"
-  ]
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["dimensionality reduction", "principal component"]
 }

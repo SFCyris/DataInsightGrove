@@ -18,5 +18,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["reorder", "rearrange", "move", "order"]
+  "tags": ["reorder", "rearrange", "move", "order"],
+  "requires": [{"kind": "any", "min": 2}],
+  "aliases": ["move columns", "rearrange columns"]
 }

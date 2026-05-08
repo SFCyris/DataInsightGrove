@@ -107,8 +107,8 @@
         },
         "step": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_]*$",
-          "description": "Step type identifier matching a registered manifest's id."
+          "pattern": "^([a-z][a-z0-9_]*|pipeline:[A-Z0-9]{26})$",
+          "description": "Step type identifier matching a registered manifest's id. The form `pipeline:<ULID>` references another pipeline that has been published as a reusable step (its document declares `metadata.publishedAsStep`)."
         },
         "stepVersion": {
           "type": "string",
@@ -143,7 +143,21 @@
           "properties": {
             "x": { "type": "number" },
             "y": { "type": "number" },
-            "label": { "type": "string" }
+            "label": { "type": "string" },
+            "note": { "type": "string" },
+            "exposedParams": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["alias"],
+                "properties": {
+                  "alias": { "type": "string", "minLength": 1 },
+                  "help": { "type": "string" }
+                }
+              },
+              "description": "Map of param-key → { alias, help } declaring which params surface as customisable when this pipeline is published as a reusable step."
+            }
           },
           "description": "Layout/visual hints. Stored in the pipeline so layout is portable, but kept separate from semantics."
         }

@@ -15,6 +15,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { aiApi, ApiError, type AiGeneratedStep } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { ThinkingLabel } from "@/components/positive-loader";
 
 export default function NewStepPage() {
   const reduce = useReducedMotion();
@@ -134,7 +135,7 @@ export default function NewStepPage() {
         </div>
 
         <Button onClick={onGenerate} disabled={generating || !description.trim()} size="sm">
-          {generating ? "⏳ Generating (30–60s for cold local model)…" : "✨ Generate step"}
+          {generating ? <ThinkingLabel text="Generating (30–60s for cold local model)…" /> : "✨ Generate step"}
         </Button>
       </motion.section>
 

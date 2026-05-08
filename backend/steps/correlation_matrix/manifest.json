@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "label": "\ud83d\udcca Correlation matrix",
   "description": "Pairwise correlation between numeric columns. Outputs a long-form table (col_a, col_b, r) and renders a heatmap as a side-effect artifact.",
-  "category": "model",
+  "category": "analyze",
   "engine": {
     "primary": "polars",
     "browser": "none",
@@ -63,5 +63,7 @@
     "ml",
     "correlation",
     "exploratory"
-  ]
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["correlations", "heatmap", "pearson", "spearman", "kendall"]
 }

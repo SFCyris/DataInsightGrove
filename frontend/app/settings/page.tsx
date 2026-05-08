@@ -19,6 +19,7 @@ import { api, aiApi, API_BASE } from "@/lib/api/client";
 import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord, AiProbeOut } from "@/lib/api/client";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { DirectoryPickerModal } from "@/components/directory-picker-modal";
+import { PacksSection } from "@/components/settings/packs-section";
 import { fmtInt } from "@/lib/format-number";
 
 const THEMES: { id: Theme; emoji: string; label: string }[] = [
@@ -31,7 +32,7 @@ const SAMPLE_OPTIONS = [10_000, 50_000, 100_000, 500_000, 1_000_000];
 
 type SectionId =
   | "appearance" | "expertise" | "preview" | "storage" | "performance"
-  | "ai" | "jdbc" | "webhooks" | "security" | "about";
+  | "ai" | "jdbc" | "webhooks" | "packs" | "security" | "about";
 
 const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "appearance",  emoji: "🎨", label: "Appearance",       help: "Theme + motion (per browser)" },
@@ -42,6 +43,7 @@ const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "ai",          emoji: "✨", label: "AI assistant",     help: "Local Ollama or BYOK provider" },
   { id: "jdbc",        emoji: "🔌", label: "JDBC drivers",     help: "Saved JAR + class registry" },
   { id: "webhooks",    emoji: "🔔", label: "Global webhooks",  help: "Fire on every run" },
+  { id: "packs",       emoji: "📦", label: "Step Packs",       help: "Add/remove step plugin bundles" },
   { id: "security",    emoji: "🔐", label: "Security & API",   help: "Endpoints + auth" },
   { id: "about",       emoji: "ℹ️", label: "About",            help: "Versions, license, links" },
 ];
@@ -75,7 +77,13 @@ export default function SettingsPage() {
     <main id="main" className="flex flex-1 min-h-0">
       {/* Sidebar */}
       <aside className="w-64 shrink-0 border-r border-border bg-card/30 flex flex-col">
-        <div className="px-5 py-5 flex items-center gap-3 border-b border-border">
+        {/* Top-left back/home — same convention as every other page. */}
+        <div className="px-3 pt-3 pb-1">
+          <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            ← Home
+          </Link>
+        </div>
+        <div className="px-5 py-4 flex items-center gap-3 border-b border-border">
           <span className="text-2xl select-none" role="img" aria-label="Settings">⚙️</span>
           <div>
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground">DIG</p>
@@ -108,11 +116,6 @@ export default function SettingsPage() {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-border">
-          <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            ← Home
-          </Link>
-        </div>
       </aside>
 
       {/* Section content */}
@@ -125,6 +128,7 @@ export default function SettingsPage() {
         {section === "ai"          && <AiSection />}
         {section === "jdbc"        && <JdbcSection />}
         {section === "webhooks"    && <WebhooksSection />}
+        {section === "packs"       && <PacksSection />}
         {section === "security"    && <SecuritySection />}
         {section === "about"       && <AboutSection />}
       </motion.section>
@@ -427,7 +431,7 @@ function AiSection() {
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.listSettings });
   const aiKeys = [
     "ai_enabled", "ai_provider", "ai_endpoint", "ai_model",
-    "ai_api_key", "ai_max_tokens", "ai_temperature",
+    "ai_api_key", "ai_max_tokens", "ai_temperature", "ai_ping_interval_s",
   ];
   const aiSettings = (settingsQ.data ?? []).filter((s) => aiKeys.includes(s.key));
   aiSettings.sort((a, b) => aiKeys.indexOf(a.key) - aiKeys.indexOf(b.key));
@@ -554,12 +558,15 @@ function AiSection() {
 }
 
 /**
- * Custom row for the ai_model setting — text input + datalist of models
- * fetched from the configured endpoint's /v1/models. The datalist works
- * exactly like a normal text input: user can type anything (including
- * model names not yet pulled locally), but autocomplete suggests known
- * options. When no models are returned (endpoint unreachable, blank,
- * or doesn't support /models), we silently fall back to plain text input.
+ * Model picker — a real `<select>` populated from the endpoint's /models,
+ * with a "Custom…" fallback that flips to a text input when the user
+ * wants to type a model name not yet pulled locally (or when the
+ * endpoint doesn't expose /models).
+ *
+ * Why a select (not a datalist text input): browsers heuristically treat
+ * a text input adjacent to a type=password field as a username, then
+ * offer password-manager autofill UI on it. A `<select>` is unambiguous
+ * — no autofill, no inline suggestion strip, real keyboard semantics.
  */
 function ModelPickerRow({
   setting, models, isFetchingModels, onSave,
@@ -569,41 +576,80 @@ function ModelPickerRow({
   isFetchingModels: boolean;
   onSave: (key: string, value: unknown) => void;
 }) {
-  const [draft, setDraft] = useState<string>(
-    setting.value === null || setting.value === undefined ? "" : String(setting.value),
-  );
-  const isDirty = draft !== (setting.value === null || setting.value === undefined ? "" : String(setting.value));
-  const datalistId = `${setting.key}-models`;
+  const current = setting.value === null || setting.value === undefined ? "" : String(setting.value);
+  const [draft, setDraft] = useState<string>(current);
+  // Custom mode = user typed a model name not in the fetched list.
+  // Auto-detect on first render: if the saved value isn't in models,
+  // start in custom mode so the input is editable.
+  const inList = !current || models.includes(current);
+  const [customMode, setCustomMode] = useState<boolean>(!inList);
+  const isDirty = draft !== current;
+
+  // When models load AFTER the initial render and the saved value is
+  // present in the fetched list, drop out of custom mode automatically.
+  useEffect(() => {
+    if (!isFetchingModels && current && models.includes(current) && customMode && draft === current) {
+      setCustomMode(false);
+    }
+    // Only re-run when the inputs change — ignore draft so the user
+    // toggling custom mode manually isn't reverted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, isFetchingModels, current]);
 
   return (
     <Field label={setting.label} hint={setting.help}>
       <div className="flex gap-2">
-        <input
-          type="text"
-          list={datalistId}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={setting.default ? String(setting.default) : "Default"}
-          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
-          // Suppress browser password-manager autofill on this field. Firefox
-          // heuristically offers password-manager UI on text inputs that
-          // sit next to a type=password field (the API key below); the
-          // attributes below tell every major manager (Firefox built-in,
-          // 1Password, LastPass, Bitwarden) to leave this one alone.
-          name="dig-ai-model"
-          autoComplete="off"
-          data-1p-ignore="true"
-          data-lpignore="true"
-          data-form-type="other"
-        />
-        {/* HTML5 datalist — browser shows the suggestions on focus / type.
-            When the array is empty (endpoint silent or unreachable) the
-            input behaves exactly like a plain text input, no extra UI. */}
-        <datalist id={datalistId}>
-          {models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
+        {customMode ? (
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={setting.default ? String(setting.default) : "model-id"}
+            className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
+            name="dig-ai-model"
+            autoComplete="off"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+          />
+        ) : (
+          <select
+            value={draft}
+            onChange={(e) => {
+              if (e.target.value === "__custom__") {
+                setCustomMode(true);
+                setDraft("");
+              } else {
+                setDraft(e.target.value);
+              }
+            }}
+            className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
+            name="dig-ai-model"
+            autoComplete="off"
+          >
+            {/* Allow blank as the explicit "use server default" choice. */}
+            {!draft && <option value="">— pick a model —</option>}
+            {/* If the saved value isn't in the fetched list (rare race),
+                still show it so the user sees the truth. */}
+            {draft && !models.includes(draft) && (
+              <option value={draft}>{draft} (current)</option>
+            )}
+            {models.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+            <option value="__custom__">✏️ Custom… (type a model name)</option>
+          </select>
+        )}
+        {customMode && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setCustomMode(false); setDraft(current); }}
+            title="Cancel — return to dropdown"
+          >
+            ↩
+          </Button>
+        )}
         <Button
           size="sm"
           variant={isDirty ? "default" : "ghost"}
@@ -613,15 +659,19 @@ function ModelPickerRow({
           Save
         </Button>
       </div>
-      {/* Status line: shows what we found, lets the user understand
-          why the dropdown might be empty. */}
+      {/* Status line. */}
       {isFetchingModels ? (
         <p className="text-[10px] text-muted-foreground mt-1">⏳ Fetching available models from endpoint…</p>
       ) : models.length > 0 ? (
         <p className="text-[10px] text-muted-foreground mt-1">
-          ↓ {models.length} model{models.length === 1 ? "" : "s"} available at endpoint — type to filter, or pick from the dropdown
+          ↓ {models.length} model{models.length === 1 ? "" : "s"} found at endpoint
+          {customMode && " — switch back to dropdown to pick from the list"}
         </p>
-      ) : null}
+      ) : (
+        <p className="text-[10px] text-muted-foreground mt-1">
+          ⚠️ Endpoint didn&apos;t return a model list — type a model name manually.
+        </p>
+      )}
     </Field>
   );
 }
@@ -632,8 +682,50 @@ function JdbcSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["jdbc-drivers"], queryFn: api.listJdbcDrivers });
   const [draft, setDraft] = useState<{ id?: string; name: string; driverClass: string; jarPath: string; urlTemplate: string; notes: string } | null>(null);
+  // Inline connection-test state — kept on the same component as the draft
+  // form so the test result lives next to the inputs that drove it. URL/
+  // creds are intentionally NOT part of `draft` because they're ad-hoc
+  // (only used to run the test), never persisted to the driver record.
+  const [testOpen, setTestOpen] = useState(false);
+  const [testInputs, setTestInputs] = useState({ url: "", username: "", password: "" });
+  const [testResult, setTestResult] = useState<import("@/lib/api/client").JdbcTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
 
-  const empty = () => setDraft({ name: "", driverClass: "", jarPath: "", urlTemplate: "", notes: "" });
+  // Reset test state when the user switches between drivers / opens the
+  // form for a new entry; otherwise the green check from one driver
+  // misleadingly carries over to the next.
+  const resetTest = () => {
+    setTestOpen(false);
+    setTestInputs({ url: "", username: "", password: "" });
+    setTestResult(null);
+  };
+
+  const empty = () => {
+    resetTest();
+    setDraft({ name: "", driverClass: "", jarPath: "", urlTemplate: "", notes: "" });
+  };
+
+  const runTest = async () => {
+    if (!draft) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const out = await api.testJdbcDriver({
+        driverClass: draft.driverClass.trim(),
+        jarPath: draft.jarPath.trim(),
+        url: testInputs.url.trim() || null,
+        username: testInputs.username || null,
+        password: testInputs.password || null,
+      });
+      setTestResult(out);
+    } catch (e) {
+      // testJdbcDriver only throws on network / 5xx — surface it the same
+      // way as a failed test so the user has one place to look.
+      setTestResult({ ok: false, message: (e as Error).message });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const save = async () => {
     if (!draft) return;
@@ -695,10 +787,13 @@ function JdbcSection() {
                 )}
               </div>
               <div className="flex gap-1 shrink-0">
-                <Button size="sm" variant="ghost" onClick={() => setDraft({
-                  id: d.id, name: d.name, driverClass: d.driverClass,
-                  jarPath: d.jarPath, urlTemplate: d.urlTemplate ?? "", notes: d.notes ?? "",
-                })}>Edit</Button>
+                <Button size="sm" variant="ghost" onClick={() => {
+                  resetTest();
+                  setDraft({
+                    id: d.id, name: d.name, driverClass: d.driverClass,
+                    jarPath: d.jarPath, urlTemplate: d.urlTemplate ?? "", notes: d.notes ?? "",
+                  });
+                }}>Edit</Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(d.id)}>🗑️</Button>
               </div>
             </li>
@@ -718,17 +813,139 @@ function JdbcSection() {
                    value={draft.urlTemplate} onChange={(v) => setDraft({ ...draft, urlTemplate: v })} />
             <Input label="Notes (optional)" placeholder="Compatible with our 12c + 19c instances"
                    value={draft.notes} onChange={(v) => setDraft({ ...draft, notes: v })} />
+            {/* ── 🔌 Test connection ─────────────────────────────────
+                Lets the user verify the driver class + JAR path work
+                BEFORE saving (and BEFORE attempting a real ingest at
+                pipeline time, which is where bad creds normally surface
+                with a much noisier error). The URL + credentials live on
+                this collapsible panel only — they're not part of the
+                saved driver record because they tend to vary per
+                environment / per dataset. */}
+            <div className="border-t border-emerald-300/30 pt-3">
+              <button
+                type="button"
+                onClick={() => setTestOpen((v) => !v)}
+                aria-expanded={testOpen}
+                className="text-xs font-medium text-foreground/80 hover:text-foreground flex items-center gap-1.5"
+              >
+                <span>🔌 Test connection</span>
+                <span className="text-muted-foreground" aria-hidden>{testOpen ? "▴" : "▾"}</span>
+                {testResult && (
+                  <span className={[
+                    "ml-2 text-[11px] tabular-nums",
+                    testResult.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400",
+                  ].join(" ")}>
+                    {testResult.ok ? "✓" : "✗"} {testResult.ok && testResult.latencyMs != null ? `${testResult.latencyMs}ms` : ""}
+                  </span>
+                )}
+              </button>
+              {testOpen && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    The URL + credentials here are <strong>used only for this test</strong> — they aren't saved to the driver record. Pipelines that use this driver supply their own URL and creds at ingest time.
+                  </p>
+                  <Input
+                    label="JDBC URL"
+                    placeholder={draft.urlTemplate || "jdbc:postgresql://host:5432/dbname"}
+                    mono
+                    value={testInputs.url}
+                    onChange={(v) => { setTestInputs({ ...testInputs, url: v }); setTestResult(null); }}
+                  />
+                  <Input
+                    label="Username (optional)"
+                    placeholder="dig"
+                    value={testInputs.username}
+                    onChange={(v) => { setTestInputs({ ...testInputs, username: v }); setTestResult(null); }}
+                  />
+                  <PasswordInput
+                    label="Password (optional)"
+                    value={testInputs.password}
+                    onChange={(v) => { setTestInputs({ ...testInputs, password: v }); setTestResult(null); }}
+                  />
+                  <div className="flex gap-2 items-center">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={runTest}
+                      disabled={
+                        testing ||
+                        !draft.driverClass.trim() ||
+                        !draft.jarPath.trim()
+                      }
+                    >
+                      {testing ? "⏳ Testing…" : "🔌 Run test"}
+                    </Button>
+                    {testing && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Up to 15s timeout
+                      </span>
+                    )}
+                  </div>
+                  {testResult && (
+                    <div
+                      className={[
+                        "rounded-md border p-2.5 text-xs space-y-0.5",
+                        testResult.ok
+                          ? "border-emerald-300/60 bg-emerald-50/60 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-100"
+                          : "border-rose-300/60 bg-rose-50/60 text-rose-900 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-100",
+                      ].join(" ")}
+                    >
+                      <p className="font-medium">
+                        {testResult.ok ? "✅ " : "❌ "}{testResult.message}
+                      </p>
+                      {testResult.serverInfo && (
+                        <p className="text-[11px] opacity-80 font-mono">
+                          {testResult.serverInfo}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={save}
                 disabled={!draft.name.trim() || !draft.driverClass.trim() || !draft.jarPath.trim()}>
                 💾 Save
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setDraft(null); resetTest(); }}>Cancel</Button>
             </div>
           </div>
         )}
       </Card>
     </Page>
+  );
+}
+
+/** Password input with a show/hide toggle. Uses the same Field wrapper as
+ *  the rest of the settings form so the label column / input column line
+ *  up across rows. */
+function PasswordInput({ label, value, onChange }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <Field label={label}>
+      <div className="flex items-stretch rounded-md border border-input focus-within:ring-2 focus-within:ring-ring/40 overflow-hidden">
+        <input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete="off"
+          className="flex-1 bg-background px-2 py-1 text-sm font-mono outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((s) => !s)}
+          aria-label={show ? "Hide password" : "Show password"}
+          className="px-2 text-xs text-muted-foreground hover:text-foreground border-l border-input"
+        >
+          {show ? "🙈" : "👁"}
+        </button>
+      </div>
+    </Field>
   );
 }
 

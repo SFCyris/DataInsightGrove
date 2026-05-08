@@ -42,21 +42,54 @@ async def _latest_snapshot(
 
 
 async def _trim_history(session: AsyncSession, pipeline_id: str, keep: int) -> None:
-    """Keep only the `keep` most recent snapshots for this pipeline."""
-    # Use a correlated subquery so the keeper-set lives in SQL and the planner
-    # can reason about it. The previous shape pulled `keep` ULIDs into Python
-    # and round-tripped them as a `notin_(...)` parameter list — fine at the
-    # default of 50, but unbounded once `DIG_PIPELINE_HISTORY_MAX` is raised.
-    keep_subq = (
+    """Trim pipeline history with two retention budgets:
+
+      - **Autosaves** (`triggered_by='autosave'`): only the 5 most recent.
+        The crash-recovery use case doesn't need a long tail; without this,
+        a few minutes of typing through 60 autosaves would push every
+        labeled checkpoint out of the window.
+      - **Everything else** (manual_save / run_start / import / restore):
+        up to `keep` recent. These carry user intent so we treat them as
+        first-class.
+
+    Implemented as two independent DELETEs because SQLite rejects
+    `UNION` over `SELECT … ORDER BY … LIMIT` inside a `NOT IN` subquery.
+    Each category has its own keep-set carved out by a correlated
+    sub-query, which the planner handles cleanly.
+    """
+    # 1. Trim autosaves to 5 most recent.
+    autosave_keep_subq = (
         select(PipelineHistory.id)
-        .where(PipelineHistory.pipeline_id == pipeline_id)
+        .where(
+            PipelineHistory.pipeline_id == pipeline_id,
+            PipelineHistory.triggered_by == "autosave",
+        )
+        .order_by(PipelineHistory.created_at.desc())
+        .limit(5)
+    ).scalar_subquery()
+    await session.execute(
+        delete(PipelineHistory).where(
+            PipelineHistory.pipeline_id == pipeline_id,
+            PipelineHistory.triggered_by == "autosave",
+            PipelineHistory.id.notin_(autosave_keep_subq),
+        )
+    )
+
+    # 2. Trim everything-else (manual_save, run_start, import, restore) to `keep`.
+    other_keep_subq = (
+        select(PipelineHistory.id)
+        .where(
+            PipelineHistory.pipeline_id == pipeline_id,
+            PipelineHistory.triggered_by != "autosave",
+        )
         .order_by(PipelineHistory.created_at.desc())
         .limit(keep)
     ).scalar_subquery()
     await session.execute(
         delete(PipelineHistory).where(
             PipelineHistory.pipeline_id == pipeline_id,
-            PipelineHistory.id.notin_(keep_subq),
+            PipelineHistory.triggered_by != "autosave",
+            PipelineHistory.id.notin_(other_keep_subq),
         )
     )
 
@@ -82,8 +115,18 @@ async def snapshot_pipeline(
     """
     h = document_hash(document)
     latest = await _latest_snapshot(session, pipeline_id)
+    # Dedup by document hash for transient triggers (autosave / run_start),
+    # but always record explicit user actions ("manual_save" with a label,
+    # imports, restores) — these carry intent that the hash alone doesn't
+    # express. Without the carve-out, a Save-with-label right after an
+    # autosave would silently drop the label.
     if latest and latest.document_hash == h:
-        return None
+        explicit = triggered_by in ("manual_save", "import", "restore")
+        # For manual_save with no reason and identical bytes, still dedup —
+        # otherwise hammering the Save button would create stacks of empty
+        # checkpoints that aren't useful.
+        if not (explicit and (change_reason or triggered_by != "manual_save")):
+            return None
 
     summary: str | None = None
     if latest is not None:

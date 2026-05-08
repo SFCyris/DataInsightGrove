@@ -11,6 +11,12 @@ import { api } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { TemplatesDialog } from "@/components/templates-dialog";
 import { HelpLink } from "@/components/help-link";
+import { PipelineCard } from "@/components/pipeline-card";
+import {
+  LibraryToolbar,
+  filterAndSortLibrary,
+  useLibraryView,
+} from "@/components/library-toolbar";
 
 export default function PipelinesPage() {
   const reduce = useReducedMotion();
@@ -20,6 +26,10 @@ export default function PipelinesPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const list = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines });
+  const libView = useLibraryView("dig.pipelines.libraryView");
+  const visiblePipelines = list.data
+    ? filterAndSortLibrary(list.data, libView)
+    : [];
 
   const create = useMutation({
     mutationFn: (n: string) => api.createPipeline(n),
@@ -92,6 +102,8 @@ export default function PipelinesPage() {
       )}
       <motion.header {...fadeUp} className="flex items-center justify-between">
         <div className="flex items-center gap-3">
+          {/* Back/home is always at top-left for consistency. */}
+          <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>← Home</Link>
           <span className="text-2xl select-none" role="img" aria-label="Grove">🌳</span>
           <div>
             <p className="text-xs uppercase tracking-widest text-muted-foreground">DIG</p>
@@ -100,7 +112,6 @@ export default function PipelinesPage() {
             </h1>
           </div>
         </div>
-        <Link href="/" className={buttonVariants({ variant: "ghost" })}>← Home</Link>
       </motion.header>
 
       <motion.section
@@ -161,9 +172,19 @@ export default function PipelinesPage() {
       </motion.section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs uppercase tracking-widest text-muted-foreground">
-          📚 Library
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs uppercase tracking-widest text-muted-foreground shrink-0">
+            📚 Library
+          </h2>
+        </div>
+        {list.data && list.data.length > 0 && (
+          <LibraryToolbar
+            view={libView}
+            totalCount={list.data.length}
+            resultCount={visiblePipelines.length}
+            itemNoun="pipeline"
+          />
+        )}
         {list.isLoading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[0,1,2].map(i => (<div key={i} className="h-20 rounded-xl bg-muted/40 animate-pulse" />))}
@@ -175,39 +196,23 @@ export default function PipelinesPage() {
             No pipelines yet. Name one above and start shaping data.
           </div>
         )}
-        {list.data && list.data.length > 0 && (
+        {list.data && list.data.length > 0 && visiblePipelines.length === 0 && (
+          <div className="text-center py-12 text-sm text-muted-foreground">
+            <div className="text-3xl mb-2 select-none" aria-hidden>🔍</div>
+            No pipelines match <code className="px-1.5 py-0.5 rounded bg-muted">{libView.query}</code>.
+            <button
+              type="button"
+              onClick={() => libView.setQuery("")}
+              className="ml-2 underline hover:no-underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {list.data && visiblePipelines.length > 0 && (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 list-none">
-            {list.data.map((p, i) => (
-              <motion.li
-                key={p.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 320, damping: 30, delay: 0.04 * i }}
-              >
-                <Link
-                  href={`/pipelines/${p.id}`}
-                  className="block p-4 rounded-xl border border-border bg-card hover:border-foreground/30 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xl">🛤</span>
-                    <p className="font-medium truncate flex-1">{p.name}</p>
-                  </div>
-                  <dl className="grid grid-cols-3 gap-2 text-xs text-muted-foreground tabular-nums">
-                    <div>
-                      <dt className="opacity-60 uppercase tracking-wider">Datasets</dt>
-                      <dd className="font-medium text-foreground">{p.datasetCount}</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-60 uppercase tracking-wider">Steps</dt>
-                      <dd className="font-medium text-foreground">{p.nodeCount}</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-60 uppercase tracking-wider">Outputs</dt>
-                      <dd className="font-medium text-foreground">{p.outputCount}</dd>
-                    </div>
-                  </dl>
-                </Link>
-              </motion.li>
+            {visiblePipelines.map((p, i) => (
+              <PipelineCard key={p.id} p={p} index={i} />
             ))}
           </ul>
         )}

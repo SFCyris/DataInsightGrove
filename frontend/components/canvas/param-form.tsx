@@ -6,6 +6,7 @@ import { api } from "@/lib/api/client";
 import type { ParamSpec, StepManifest } from "@/lib/api/client";
 import { FilterBuilder } from "@/components/canvas/filter-builder";
 import { FixExpressionButton } from "@/components/canvas/fix-expression";
+import { JoinPanel } from "@/components/canvas/join-widgets";
 
 interface Props {
   manifest: StepManifest;
@@ -13,6 +14,31 @@ interface Props {
   onChange: (next: Record<string, unknown>) => void;
   /** Map of port name -> available column names from the upstream node. */
   upstreamColumns: Record<string, string[]>;
+  /** Optional — when provided, each param row gets an "expose" toggle
+   *  that flips entries on `node.ui.exposedParams`. Used to surface
+   *  customisable params on a published reusable step. */
+  exposedParams?: Record<string, { alias: string; help?: string }>;
+  onExposeParam?: (
+    paramKey: string,
+    next: { alias: string; help?: string } | null,
+  ) => void;
+  /** Context required for the bespoke join panel. Optional so steps
+   *  that don't use it (everything except `join`) keep working
+   *  unchanged; pass for `join` and the param form short-circuits to
+   *  `<JoinPanel>` instead of the generic per-param rendering. */
+  pipelineId?: string;
+  etag?: number;
+  /** Map of port name → upstream node id. The join panel looks up
+   *  `left` and `right` to fetch sample rows from each input. */
+  inputRefs?: Record<string, string | null | undefined>;
+  /** Eligible upstream sources for the join's input dropdowns
+   *  (datasets + non-descendant nodes). */
+  eligibleSources?: Array<{ id: string; kind: "dataset" | "node"; label: string }>;
+  /** Callback to rewire one of the join's input ports. Owner of this
+   *  callback decides terminal-mutate vs. mid-chain-branch. */
+  onSetInputRef?: (port: string, newRef: string) => void;
+  /** Callback to flip left ↔ right (with key swap, kind flip, etc.). */
+  onSwapJoinSides?: () => void;
 }
 
 function isVisible(spec: ParamSpec, values: Record<string, unknown>): boolean {
@@ -26,8 +52,39 @@ function isVisible(spec: ParamSpec, values: Record<string, unknown>): boolean {
 const inputCls =
   "w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring/40";
 
-export function ParamForm({ manifest, values, onChange, upstreamColumns }: Props) {
+export function ParamForm({
+  manifest, values, onChange, upstreamColumns, exposedParams, onExposeParam,
+  pipelineId, etag, inputRefs, eligibleSources, onSetInputRef, onSwapJoinSides,
+}: Props) {
   const set = (name: string, value: unknown) => onChange({ ...values, [name]: value });
+
+  // Bespoke join panel — replaces the generic per-param rendering with
+  // the cardinality strip + icon-ladder + suggestion-first keys
+  // builder + collisions panel. Only fires when the page wired through
+  // the context props; falls back to standard rendering otherwise (so
+  // this still works in surfaces that don't have pipelineId/etag, e.g.
+  // a future "preview manifest in the picker" affordance).
+  if (
+    manifest.id === "join"
+    && pipelineId != null
+    && etag != null
+    && inputRefs != null
+  ) {
+    return (
+      <JoinPanel
+        pipelineId={pipelineId}
+        etag={etag}
+        params={values}
+        onChange={onChange}
+        leftRef={inputRefs.left}
+        rightRef={inputRefs.right}
+        eligibleSources={eligibleSources ?? []}
+        onSetInputRef={onSetInputRef}
+        onSwapSides={onSwapJoinSides}
+      />
+    );
+  }
+
   const entries = Object.entries(manifest.params);
   if (entries.length === 0) {
     return (
@@ -40,8 +97,22 @@ export function ParamForm({ manifest, values, onChange, upstreamColumns }: Props
     <div className="space-y-3">
       {entries.map(([name, spec]) => {
         if (!isVisible(spec, values)) return null;
+        const exposure = exposedParams?.[name];
         return (
-          <Field key={name} name={name} spec={spec} value={values[name]} onSet={set} upstreamColumns={upstreamColumns} />
+          <Field
+            key={name}
+            name={name}
+            spec={spec}
+            value={values[name]}
+            onSet={set}
+            upstreamColumns={upstreamColumns}
+            exposed={exposure}
+            onToggleExpose={
+              onExposeParam
+                ? (next) => onExposeParam(name, next)
+                : undefined
+            }
+          />
         );
       })}
     </div>
@@ -54,13 +125,47 @@ interface FieldProps {
   value: unknown;
   onSet: (name: string, value: unknown) => void;
   upstreamColumns: Record<string, string[]>;
+  /** Current exposure state for this param. Falsy = not exposed. */
+  exposed?: { alias: string; help?: string };
+  /** When provided, the field shows an "Expose" toggle that calls
+   *  this with `null` to remove the exposure or `{ alias, help }` to
+   *  set/update it. When undefined, the toggle is hidden entirely
+   *  (e.g. when the consumer is editing a non-published pipeline). */
+  onToggleExpose?: (next: { alias: string; help?: string } | null) => void;
 }
 
-function Field({ name, spec, value, onSet, upstreamColumns }: FieldProps) {
+function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExpose }: FieldProps) {
   const label = (
-    <label className="block text-xs font-medium text-foreground mb-1">
-      {spec.label}
-      {spec.required && <span className="text-destructive ml-0.5">*</span>}
+    <label className="flex items-center justify-between gap-2 mb-1">
+      <span className="block text-xs font-medium text-foreground">
+        {spec.label}
+        {spec.required && <span className="text-destructive ml-0.5">*</span>}
+      </span>
+      {onToggleExpose && (
+        // Expose-this-param toggle. When on, the param surfaces on
+        // the synthesised manifest of the published step (after
+        // metadata.publishedAsStep is set on the pipeline). Click =
+        // toggle; default alias is the param key.
+        <button
+          type="button"
+          onClick={() =>
+            onToggleExpose(exposed ? null : { alias: name, help: spec.help })
+          }
+          title={
+            exposed
+              ? `Param is exposed as "${exposed.alias}". Click to hide.`
+              : "Expose this param so consumers of this published step can override it."
+          }
+          className={[
+            "shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors",
+            exposed
+              ? "border-violet-400/60 bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-700/60"
+              : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground",
+          ].join(" ")}
+        >
+          {exposed ? `🪆 ${exposed.alias}` : "🪆 expose"}
+        </button>
+      )}
     </label>
   );
   const help = spec.help ? (

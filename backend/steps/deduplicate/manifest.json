@@ -17,5 +17,6 @@
     }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "preserves" },
-  "tags": ["distinct", "unique", "clean"]
+  "tags": ["distinct", "unique", "clean"],
+  "aliases": ["unique", "distinct", "dedupe", "drop duplicates"]
 }

@@ -8,6 +8,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { DatasetCard } from "@/components/dataset-card";
 import { HelpLink } from "@/components/help-link";
+import {
+  LibraryToolbar,
+  filterAndSortLibrary,
+  useLibraryView,
+} from "@/components/library-toolbar";
 
 export default function DatasetsPage() {
   const reduce = useReducedMotion();
@@ -21,6 +26,10 @@ export default function DatasetsPage() {
       return false;
     },
   });
+  const libView = useLibraryView("dig.datasets.libraryView");
+  const visibleDatasets = datasets.data
+    ? filterAndSortLibrary(datasets.data, libView)
+    : [];
 
   const fadeUp = reduce
     ? { initial: false, animate: { opacity: 1, y: 0 } }
@@ -34,6 +43,10 @@ export default function DatasetsPage() {
     <main id="main" className="flex flex-1 flex-col p-8 gap-8 max-w-6xl w-full mx-auto">
       <motion.header {...fadeUp} className="flex items-center justify-between">
         <div className="flex items-center gap-3">
+          {/* Back/home is always at top-left for consistency. */}
+          <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+            ← Home
+          </Link>
           <span className="text-2xl select-none" role="img" aria-label="Grove">
             🌳
           </span>
@@ -61,23 +74,24 @@ export default function DatasetsPage() {
           >
             ✨ Generate connector
           </Link>
-          <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-            ← Home
-          </Link>
         </div>
       </motion.header>
 
       <UploadDropzone />
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            <span className="mr-1">📚</span> Library
-          </h2>
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {datasets.data?.length ?? 0} dataset{datasets.data?.length === 1 ? "" : "s"}
-          </span>
-        </div>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          <span className="mr-1">📚</span> Library
+        </h2>
+
+        {datasets.data && datasets.data.length > 0 && (
+          <LibraryToolbar
+            view={libView}
+            totalCount={datasets.data.length}
+            resultCount={visibleDatasets.length}
+            itemNoun="dataset"
+          />
+        )}
 
         {datasets.isLoading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -99,9 +113,23 @@ export default function DatasetsPage() {
           </motion.div>
         )}
 
-        {datasets.data && datasets.data.length > 0 && (
+        {datasets.data && datasets.data.length > 0 && visibleDatasets.length === 0 && (
+          <div className="text-center py-12 text-sm text-muted-foreground">
+            <div className="text-3xl mb-2 select-none" aria-hidden>🔍</div>
+            No datasets match <code className="px-1.5 py-0.5 rounded bg-muted">{libView.query}</code>.
+            <button
+              type="button"
+              onClick={() => libView.setQuery("")}
+              className="ml-2 underline hover:no-underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {datasets.data && visibleDatasets.length > 0 && (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 list-none">
-            {datasets.data.map((d, i) => (
+            {visibleDatasets.map((d, i) => (
               <DatasetCard key={d.id} d={d} index={i} />
             ))}
           </ul>

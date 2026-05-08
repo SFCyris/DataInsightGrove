@@ -85,5 +85,7 @@
     "forecast",
     "prediction",
     "holt-winters"
-  ]
+  ],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}],
+  "aliases": ["prediction", "predict", "time series", "holt winters", "ets", "arima"]
 }

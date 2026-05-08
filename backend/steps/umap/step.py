@@ -13,6 +13,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, SQUARE_FIGSIZE
 
 
 def _is_numeric(dtype: pl.DataType) -> bool:
@@ -92,7 +93,7 @@ class UMAPStep(Step):
         title = params.get("title") or "UMAP"
         color_by = params.get("color_by")
 
-        fig, ax = plt.subplots(figsize=(7, 6), dpi=144)
+        fig, ax = plt.subplots(figsize=SQUARE_FIGSIZE, dpi=DEFAULT_DPI)
         xs = df.get_column("UMAP_1").to_numpy()
         ys = df.get_column("UMAP_2").to_numpy()
 
@@ -122,7 +123,7 @@ class UMAPStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

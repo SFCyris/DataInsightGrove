@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 from dig import __version__
 from dig.api import ai as ai_api
 from dig.api import datasets as datasets_api
+from dig.api import packs as packs_api
 from dig.api import pipelines as pipelines_api
 from dig.api import schedules as schedules_api
 from dig.api import settings as settings_api
@@ -195,6 +196,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_api.router)
     app.include_router(schedules_api.router)
     app.include_router(templates_api.router)
+    app.include_router(packs_api.router)
 
     # Serve in-repo docs as static files so the frontend's HelpLink components
     # can deep-link to specific sections of getting_started.md, etc.

@@ -209,6 +209,13 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
         "type": "float",
         "validate": lambda v: _validate_float(v, lo=0.0, hi=2.0),
     },
+    "ai_ping_interval_s": {
+        "default": 0,
+        "label": "Ping interval (seconds)",
+        "help": "When > 0, the UI sends a tiny ping to the LLM every N seconds to keep it loaded in memory. Useful for local Ollama / llama.cpp which unload idle models. 0 = off. A safe default is 5 seconds.",
+        "type": "integer",
+        "validate": lambda v: _validate_positive_int(v, lo=0, hi=600),
+    },
 }
 
 
@@ -481,6 +488,150 @@ async def delete_driver(
         raise HTTPException(404, "driver not found")
     await session.delete(d)
     await session.commit()
+
+
+# ── JDBC test connection ─────────────────────────────────────────────────
+# Exercises the same _connect() the connector uses, on the form values the
+# user has typed. Returns the result in the body (ok=true/false) so the UI
+# never sees an HTTP error for a bad cred / unreachable host — those are
+# legitimate "test results", not API failures.
+
+
+class JdbcTestIn(BaseModel):
+    """Ad-hoc test parameters. Not persisted — the URL + credentials are
+    only used to open and close one connection. The driverClass and jarPath
+    are the same as the saved driver record."""
+    driverClass: str = Field(min_length=1, max_length=255)
+    jarPath: str = Field(min_length=1)
+    url: str | None = Field(
+        default=None,
+        description=(
+            "Optional JDBC URL. With a URL, we try a real connection. Without, "
+            "we only verify the JAR exists and the driver class can be loaded."
+        ),
+    )
+    username: str | None = None
+    password: str | None = None
+
+
+class JdbcTestOut(BaseModel):
+    ok: bool
+    # Human-readable summary the UI shows next to the green check / red X.
+    # Examples:
+    #   "Connected · PostgreSQL 16.2"
+    #   "Driver class loaded (no URL given for full test)"
+    #   "Authentication failed: password authentication failed for user 'demo'"
+    message: str
+    latencyMs: int | None = None
+    # Set when the JDBC driver reports its product name + version. Useful as
+    # a sanity check that the user pointed at the database they intended.
+    serverInfo: str | None = None
+
+
+@drivers_router.post("/test", response_model=JdbcTestOut)
+async def test_driver_connection(body: JdbcTestIn) -> JdbcTestOut:
+    """Attempt a quick connect using the supplied JDBC params.
+
+    Always returns 200 — the body's ``ok`` flag tells the UI whether the
+    test succeeded. Failures land in ``message`` so the user sees the
+    underlying JDBC driver error verbatim (which is invariably the most
+    useful thing for diagnosing a bad URL / firewall / wrong creds).
+    """
+    import asyncio as _asyncio
+    import time as _time
+
+    from connectors.jdbc.connector import _connect, _resolve_jars  # type: ignore[import-not-found]
+
+    # Cheap pre-flight: stat the jar before paying for the JVM. Bad paths
+    # are by far the most common cause of a failed test — surfacing them
+    # without firing up the JVM keeps "fix typo, retry" cheap.
+    try:
+        _resolve_jars(body.jarPath)
+    except (FileNotFoundError, ValueError) as e:
+        return JdbcTestOut(ok=False, message=str(e))
+
+    if not body.url:
+        # No URL → we can't actually connect. Verifying the driver class
+        # *registers* loosely (jaydebeapi finds it via the jar manifest),
+        # but the user really wants the full handshake — tell them so.
+        return JdbcTestOut(
+            ok=False,
+            message=(
+                "Provide a JDBC URL to run a real connection test "
+                "(jar + driver class look reachable)."
+            ),
+        )
+
+    options = {
+        "driverClass": body.driverClass,
+        "jarPath": body.jarPath,
+        "username": body.username,
+        "password": body.password,
+    }
+
+    def _try_connect() -> tuple[bool, str, str | None]:
+        # Returns (ok, message, server_info_or_none).
+        t0 = _time.perf_counter()
+        try:
+            conn = _connect(body.url or "", options)
+        except FileNotFoundError as e:
+            return False, str(e), None
+        except ValueError as e:
+            # Our own validation (bad URL prefix, missing required fields).
+            return False, str(e), None
+        except Exception as e:  # noqa: BLE001
+            # jaydebeapi wraps the JDBC SQLException — the str() form is
+            # already the most actionable thing we can show. Strip the
+            # noisy java stack trace prefix when present.
+            msg = str(e)
+            if "java.sql." in msg:
+                msg = msg.split("java.sql.")[-1]
+            return False, msg, None
+        try:
+            # Pull product name + version via JDBC's DatabaseMetaData when
+            # available; this is the canonical sanity check ("yes, you
+            # really did reach the right database"). Best-effort: drivers
+            # that don't expose it just fall back to "Connected".
+            server: str | None = None
+            try:
+                meta = conn.jconn.getMetaData()
+                product = meta.getDatabaseProductName()
+                version = meta.getDatabaseProductVersion()
+                if product:
+                    server = f"{product} {version}".strip()
+            except Exception:  # noqa: BLE001
+                server = None
+            elapsed = int((_time.perf_counter() - t0) * 1000)
+            msg = f"Connected · {elapsed}ms"
+            return True, msg, server
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Bound the test — a hung TCP connect can wait a *long* time. 15 s is
+    # generous for legit slow VPNs and short for hostile networks.
+    try:
+        ok, message, server = await _asyncio.wait_for(
+            _asyncio.to_thread(_try_connect), timeout=15.0,
+        )
+    except _asyncio.TimeoutError:
+        return JdbcTestOut(
+            ok=False,
+            message=(
+                "Connection test timed out after 15s. Check the URL, "
+                "the host's reachability, and any firewalls / VPN."
+            ),
+        )
+
+    latency_ms: int | None = None
+    if ok and " · " in message and message.endswith("ms"):
+        try:
+            latency_ms = int(message.split(" · ")[-1].rstrip("ms"))
+        except ValueError:
+            latency_ms = None
+    return JdbcTestOut(ok=ok, message=message, latencyMs=latency_ms, serverInfo=server)
 
 
 # ---- Global webhooks ------------------------------------------------------

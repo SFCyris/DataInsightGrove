@@ -16,5 +16,7 @@
     "drop":      { "type": "boolean", "label": "Drop the original column", "default": false }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["string", "split"]
+  "tags": ["string", "split"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["parse", "separate", "tokenize", "delimiter"]
 }

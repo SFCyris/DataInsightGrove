@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { api, ApiError } from "@/lib/api/client";
+import { PositiveLoader } from "@/components/positive-loader";
 
 interface LineageSource {
   dataset_id: string;
@@ -104,7 +105,13 @@ export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Prop
 
             <div className="overflow-y-auto flex-1 p-4 space-y-4">
               {loading && (
-                <p className="text-sm text-muted-foreground">⏳ Looking up source rows…</p>
+                <div className="grid place-items-center py-8">
+                  <PositiveLoader
+                    variant="rendering"
+                    primary="Looking up source rows…"
+                    size="sm"
+                  />
+                </div>
               )}
 
               {error && (

@@ -6,10 +6,32 @@
  */
 import type { components, paths } from "./types";
 
-export const API_BASE =
-  (typeof window !== "undefined" && (window as { __DIG_API__?: string }).__DIG_API__) ||
-  process.env.NEXT_PUBLIC_DIG_API ||
-  "http://127.0.0.1:8090";
+/**
+ * API base URL — resolved in priority order:
+ *
+ *   1. window.__DIG_API__         (runtime override, e.g. set by Mac .app)
+ *   2. NEXT_PUBLIC_DIG_API env    (build-time, embedded into the bundle)
+ *   3. Same hostname as the page  (when running in a browser) — so visiting
+ *      `http://10.0.0.5:3000` from a phone on the LAN talks to the backend
+ *      at `http://10.0.0.5:8090`, not the phone's own loopback. This is
+ *      what "DIG --global" mode relies on.
+ *   4. http://127.0.0.1:8090      (SSR / Node fallback)
+ */
+function _resolveApiBase(): string {
+  if (typeof window !== "undefined") {
+    const w = window as { __DIG_API__?: string };
+    if (w.__DIG_API__) return w.__DIG_API__;
+  }
+  if (process.env.NEXT_PUBLIC_DIG_API) return process.env.NEXT_PUBLIC_DIG_API;
+  if (typeof window !== "undefined") {
+    const proto = window.location.protocol === "https:" ? "https:" : "http:";
+    // Default API port is 8090 — overridable via NEXT_PUBLIC_DIG_API.
+    return `${proto}//${window.location.hostname}:8090`;
+  }
+  return "http://127.0.0.1:8090";
+}
+
+export const API_BASE = _resolveApiBase();
 
 /**
  * Bearer token for the DIG API.
@@ -101,6 +123,26 @@ export interface StepManifest {
   params: Record<string, ParamSpec>;
   preview?: { rowImpact?: string; schemaImpact?: string };
   tags?: string[];
+  /** Search synonyms — surfaced by the picker's intent ranker, not
+   *  rendered. See `lib/step-search.ts` for the ranking algorithm. */
+  aliases?: string[];
+  /** Upstream-schema preconditions used by the picker to grey out
+   *  steps that can't run against the current node. See
+   *  lib/step-requirements.ts for the predicate vocabulary. */
+  requires?: import("../step-requirements").RequirementClause[];
+  /** Where this step came from. `'builtin'` for in-tree steps,
+   *  `'pack:<id>'` for pack-installed, `'plugin'` for AI-generated
+   *  one-off plugins. Picker renders a provenance chip when this
+   *  starts with `pack:` so users can see what their installs added. */
+  source?: string;
+  /** Soft upper bound on input rows for a usable visualization. The
+   *  editor renders a "data is dense — consider aggregating first"
+   *  banner above the live chart preview when the upstream node's
+   *  row count exceeds this value. Two shapes:
+   *    - integer       single-kind charts (funnel / pareto / waterfall)
+   *    - { kind: N }   multi-kind charts (export_to_image); frontend
+   *                    looks up `params.kind`, falls back to `_default`. */
+  recommendedMaxRows?: number | Record<string, number>;
 }
 
 export interface ConnectorManifest {
@@ -175,6 +217,47 @@ export interface RunOutputPage {
 export interface NodeStatus {
   ok: boolean;
   error?: string;
+}
+
+// ---- Step Packs ---------------------------------------------------------
+
+export interface PackConflict {
+  step_id: string;
+  existing_source: string;
+}
+
+export interface StagedPack {
+  pack_id: string;
+  version: string;
+  label: string;
+  description: string;
+  license?: string | null;
+  author?: string | null;
+  homepage?: string | null;
+  readme?: string | null;
+  steps: string[];
+  connectors: string[];
+  python_requirements: string[];
+  declared_checksum?: string | null;
+  computed_checksum: string;
+  conflicts: PackConflict[];
+}
+
+export interface InstalledPack {
+  id: string;
+  version: string;
+  label: string;
+  description?: string | null;
+  license?: string | null;
+  author?: string | null;
+  homepage?: string | null;
+  enabled: boolean;
+  steps: string[];
+  connectors: string[];
+  python_requirements: string[];
+  checksum?: string | null;
+  installed_at: string;
+  updated_at: string;
 }
 
 // ---- Templates (public gallery) ----------------------------------------
@@ -322,10 +405,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       detail = await res.text();
     }
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`, detail);
+    // Surface the backend's actual error in `Error.message` rather than just
+    // "400 Bad Request". FastAPI puts the message in `detail` (string for
+    // raise HTTPException(...), or a list of validation errors). Without
+    // this, the editor's preview-error box reads "400 Bad Request" and
+    // humanizeSqlError has nothing to pattern-match.
+    const msg = _extractErrorMessage(detail) ?? `${res.status} ${res.statusText}`;
+    throw new ApiError(res.status, msg, detail);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+function _extractErrorMessage(detail: unknown): string | null {
+  if (detail == null) return null;
+  if (typeof detail === "string") return detail.trim() || null;
+  if (typeof detail === "object") {
+    // FastAPI HTTPException → { detail: string }
+    // FastAPI request validation → { detail: [{loc, msg, type}, ...] }
+    const d = (detail as { detail?: unknown }).detail;
+    if (typeof d === "string") return d.trim() || null;
+    if (Array.isArray(d)) {
+      const msgs = d
+        .map((e) => {
+          if (typeof e === "string") return e;
+          if (e && typeof e === "object" && "msg" in e) {
+            const loc = Array.isArray((e as { loc?: unknown }).loc)
+              ? ((e as { loc: unknown[] }).loc).join(".")
+              : null;
+            const m = String((e as { msg: unknown }).msg);
+            return loc ? `${loc}: ${m}` : m;
+          }
+          return null;
+        })
+        .filter(Boolean);
+      return msgs.length ? msgs.join("; ") : null;
+    }
+    // Fall back to a JSON dump of the object — better than nothing if the
+    // shape is unexpected, since at least the user can see the structure.
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export const api = {
@@ -403,6 +527,64 @@ export const api = {
   listSteps: () => request<StepManifest[]>("/steps"),
   getStep: (id: string) => request<StepManifest>(`/steps/${id}`),
 
+  // ---- Step Packs ----
+  listPacks: () => request<InstalledPack[]>("/packs"),
+  uploadPack: async (file: File): Promise<StagedPack> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const headers: Record<string, string> = {};
+    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const res = await fetch(`${API_BASE}/packs/upload`, {
+      method: "POST", body: fd, headers,
+    });
+    if (!res.ok) {
+      let detail: unknown;
+      try { detail = await res.json(); } catch { detail = await res.text(); }
+      const msg = (detail && typeof detail === "object" && "detail" in detail)
+        ? String((detail as { detail: unknown }).detail)
+        : `${res.status} ${res.statusText}`;
+      throw new ApiError(res.status, msg, detail);
+    }
+    return (await res.json()) as StagedPack;
+  },
+  installPack: (pack_id: string, version: string) =>
+    request<{
+      ok: boolean;
+      pack_id: string;
+      version: string;
+      installed_at: string;
+      dep_install: {
+        requirements: string[];
+        success: boolean;
+        elapsed_sec: number;
+        output: string;
+        skipped_reason: string | null;
+      } | null;
+    }>("/packs/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pack_id, version }),
+    }),
+  discardPendingPack: (pack_id: string, version: string) =>
+    request<{ ok: boolean }>(
+      `/packs/_pending/${encodeURIComponent(pack_id)}?version=${encodeURIComponent(version)}`,
+      { method: "DELETE" },
+    ),
+  togglePack: (pack_id: string, enabled: boolean) =>
+    request<{ ok: boolean; id: string; enabled: boolean }>(
+      `/packs/${encodeURIComponent(pack_id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      },
+    ),
+  uninstallPack: (pack_id: string) =>
+    request<{ ok: boolean; uninstalled: string }>(
+      `/packs/${encodeURIComponent(pack_id)}`,
+      { method: "DELETE" },
+    ),
+
   // ---- Pipelines ----
   listPipelines: () => request<PipelineSummary[]>("/pipelines"),
   createPipeline: (name: string, document?: PipelineDocument) =>
@@ -424,6 +606,11 @@ export const api = {
     >("/pipelines/templates/list"),
   createFromTemplate: (slug: string) =>
     request<PipelineDoc>(`/pipelines/templates/${slug}`, { method: "POST" }),
+  /** Generate an "overview" pipeline (parallel chart steps) from a dataset's
+   *  column profile. Used by the "🚀 Generate overview" CTA on the dataset
+   *  page and the first-run starter card on the home page. */
+  createPipelineFromDataset: (datasetId: string) =>
+    request<PipelineDoc>(`/pipelines/from-dataset/${datasetId}`, { method: "POST" }),
   exportPipeline: (id: string) =>
     request<{
       $dig: string;
@@ -439,11 +626,27 @@ export const api = {
       body: JSON.stringify(envelope),
     }),
   getPipeline: (id: string) => request<PipelineDoc>(`/pipelines/${id}`),
-  updatePipeline: (id: string, document: PipelineDocument, expectedEtag?: number) =>
+  updatePipeline: (
+    id: string,
+    document: PipelineDocument,
+    expectedEtag?: number,
+    opts?: { triggeredBy?: "manual_save" | "autosave" | "import" | "restore"; changeReason?: string | null },
+  ) =>
     request<PipelineDoc>(`/pipelines/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ document, expectedEtag }),
+      body: JSON.stringify({
+        document,
+        expectedEtag,
+        triggeredBy: opts?.triggeredBy,
+        changeReason: opts?.changeReason,
+      }),
+    }),
+  clonePipeline: (id: string, name: string, fromSnapshotId?: string) =>
+    request<PipelineDoc>(`/pipelines/${id}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, fromSnapshotId }),
     }),
   deletePipeline: (id: string) =>
     request<void>(`/pipelines/${id}`, { method: "DELETE" }),
@@ -507,12 +710,24 @@ export const api = {
     }),
   validatePipeline: (id: string) =>
     request<ValidateResult>(`/pipelines/${id}/validate`, { method: "POST" }),
-  fetchCompile: (id: string, sampleRows?: number, terminal?: string, signal?: AbortSignal) => {
+  fetchCompile: (
+    id: string,
+    sampleRows?: number,
+    terminal?: string,
+    signal?: AbortSignal,
+    terminalViewMode?: "matched" | "unmatched_left" | "unmatched_right",
+  ) => {
     const q = new URLSearchParams({
       sample_rows: String(sampleRows ?? 100000),
       target: "browser",
     });
     if (terminal) q.set("terminal", terminal);
+    // The default viewMode 'matched' is the same as omitting the
+    // param — keep the URL clean so cache keys aren't perturbed for
+    // non-join steps where this is irrelevant.
+    if (terminalViewMode && terminalViewMode !== "matched") {
+      q.set("terminalViewMode", terminalViewMode);
+    }
     return request<{
       sql: string;
       files: Array<{ name: string; url: string; format: string }>;
@@ -539,6 +754,29 @@ export const api = {
       sampleRows: number;
       elapsedMs: number;
     }>(`/pipelines/${id}/preview?${q}`, { method: "POST", signal: opts.signal });
+  },
+  /** Run a single Polars-engine step on sampled upstream data and return
+   *  the resulting DataFrame as JSON rows. Used by the editor as a
+   *  transparent fallback when DuckDB-WASM can't run the focused step
+   *  (any step with `engine.browser: "none"` — anomaly_zscore, rolling,
+   *  forecast, seasonal_decompose, …). Returns the same shape as
+   *  `previewOnBackend` so the grid renders it identically. */
+  previewStepRows: (
+    id: string,
+    opts: { terminal: string; sampleRows?: number; previewLimit?: number; signal?: AbortSignal },
+  ) => {
+    const q = new URLSearchParams({
+      terminal: opts.terminal,
+      sample_rows: String(opts.sampleRows ?? 20000),
+      preview_limit: String(opts.previewLimit ?? 500),
+    });
+    return request<{
+      columns: Array<{ name: string; type: string }>;
+      rows: Array<Record<string, unknown>>;
+      rowCount: number;
+      sampleRows: number;
+      elapsedMs: number;
+    }>(`/pipelines/${id}/preview-step-rows?${q}`, { method: "POST", signal: opts.signal });
   },
 
   // ---- Runs ----
@@ -643,6 +881,15 @@ export const api = {
     }),
   deleteJdbcDriver: (id: string) =>
     request<void>(`/jdbc-drivers/${id}`, { method: "DELETE" }),
+  /** Try a quick connect against the supplied params and return the result
+   *  — never throws on a failed connection (the response body's `ok` flag
+   *  carries that). Only throws on outright API errors (network down, 500). */
+  testJdbcDriver: (body: JdbcTestInput) =>
+    request<JdbcTestResult>("/jdbc-drivers/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
 
   // ---- Filesystem browser (settings directory picker) ----
   browseDir: (path?: string) =>
@@ -699,6 +946,27 @@ export interface JdbcDriverInput {
 }
 export interface JdbcDriverRecord extends JdbcDriverInput {
   id: string;
+}
+
+/** Ad-hoc connection test parameters. URL + creds are not persisted —
+ *  one-off use for the "🔌 Test connection" affordance in Settings → JDBC. */
+export interface JdbcTestInput {
+  driverClass: string;
+  jarPath: string;
+  url?: string | null;
+  username?: string | null;
+  password?: string | null;
+}
+
+export interface JdbcTestResult {
+  ok: boolean;
+  /** Human-readable summary — "Connected · 87ms" on success, the JDBC
+   *  driver's own error message on failure. */
+  message: string;
+  latencyMs?: number | null;
+  /** Server product + version reported via DatabaseMetaData when the
+   *  driver exposes it. */
+  serverInfo?: string | null;
 }
 
 export interface GlobalWebhookInput {
@@ -837,6 +1105,63 @@ export interface AiSuggestion {
   confidence: "high" | "medium" | "low";
 }
 
+export interface AiVizSuggestion {
+  step_id: string;
+  params: Record<string, unknown>;
+  title: string;
+  why: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface AiSuggestVisualizationsOut {
+  domain: string;
+  domain_confidence: "high" | "medium" | "low";
+  suggestions: AiVizSuggestion[];
+  model?: string | null;
+  /** When set, the LLM returned no usable content — surface as
+   *  "No suitable domain or visualization identified" in the UI. */
+  reason?: string | null;
+}
+
+export interface AiColumnMeaning {
+  name: string;
+  meaning: string;
+}
+
+export interface AiExplainDatasetOut {
+  narrative: string;
+  domain: string;
+  confidence: "high" | "medium" | "low";
+  columns: AiColumnMeaning[];
+  model?: string | null;
+  reason?: string | null;
+}
+
+export interface AiPipelineStepSuggestion {
+  step_id: string;
+  params: Record<string, unknown>;
+  rationale: string;
+  outcome?: string | null;
+  /** For `step_id == "join"` only — the ref id (dataset alias or
+   *  upstream node id) the validator chose for the right input
+   *  port. The frontend wires this when applying the route. */
+  right_ref?: string | null;
+}
+
+export interface AiPipelineRoute {
+  title: string;
+  why: string;
+  steps: AiPipelineStepSuggestion[];
+  confidence: "high" | "medium" | "low";
+}
+
+export interface AiSuggestPipelineStepsOut {
+  domain: string;
+  routes: AiPipelineRoute[];
+  model?: string | null;
+  reason?: string | null;
+}
+
 export interface AiSuggestNextIn {
   pipeline_id: string;
   focused_node_id?: string | null;
@@ -927,6 +1252,43 @@ export const aiApi = {
     ),
   suggestNextStep: (body: AiSuggestNextIn) =>
     request<AiSuggestNextOut>("/ai/suggest-next-step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  // The three Hints-panel AI endpoints accept either a registered
+  // dataset id (legacy) OR a pipeline-doc node id (any focused node —
+  // dataset alias OR step output). When `node_id` is set the backend
+  // pulls schema + samples from that node's actual output via the
+  // pipeline's chosen sampling method; the prompt is also rephrased
+  // for derived contexts. `pipeline_id` is required.
+  suggestVisualizations: (body: {
+    pipeline_id: string;
+    node_id?: string | null;
+    dataset_id?: string | null;
+  }) =>
+    request<AiSuggestVisualizationsOut>("/ai/suggest-visualizations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  explainDataset: (body: {
+    pipeline_id: string;
+    node_id?: string | null;
+    dataset_id?: string | null;
+  }) =>
+    request<AiExplainDatasetOut>("/ai/explain-dataset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  suggestPipelineSteps: (body: {
+    pipeline_id: string;
+    node_id?: string | null;
+    dataset_id?: string | null;
+    goal?: string | null;
+  }) =>
+    request<AiSuggestPipelineStepsOut>("/ai/suggest-pipeline-steps", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

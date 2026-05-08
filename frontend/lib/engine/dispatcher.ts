@@ -3,6 +3,7 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 import { tableFromIPC, type Table } from "apache-arrow";
 import { API_BASE, api } from "@/lib/api/client";
+import { wrapWithSampling, type SamplingConfig } from "@/lib/sampling";
 import { getDb } from "./duckdb";
 
 export interface PreviewResult {
@@ -42,7 +43,22 @@ export function requiresSpatialExtension(sql: string): boolean {
  * the live grid's focused-step view so users can see the data after each step. */
 export async function previewPipeline(
   pipelineId: string,
-  opts: { sampleRows?: number; previewLimit?: number; terminal?: string; signal?: AbortSignal } = {},
+  opts: {
+    sampleRows?: number;
+    previewLimit?: number;
+    terminal?: string;
+    signal?: AbortSignal;
+    sampling?: SamplingConfig | null;
+    /** When set, the dispatcher knows whether the focused step is
+     *  chart-producing. For chart-producing steps we skip the
+     *  rows-fallback because the user wants the chart image preview
+     *  (handled by `StepImageOrFallback`), not the underlying rows. */
+    terminalStepId?: string;
+    /** When the terminal node is a join, the diagnostic preview can be
+     *  flipped to show only the unmatched left or right rows (anti-*).
+     *  No-op for non-join terminals. */
+    terminalViewMode?: "matched" | "unmatched_left" | "unmatched_right";
+  } = {},
 ): Promise<PreviewResult> {
   const sampleRows = opts.sampleRows ?? 100_000;
   const previewLimit = opts.previewLimit ?? 500;
@@ -50,7 +66,47 @@ export async function previewPipeline(
   // Pass the abort signal so the actual fetch can be cancelled mid-flight
   // — not just short-circuited after the response arrives. Without this,
   // typing fast through 5 nodes piles up 5 in-flight compile POSTs server-side.
-  const compile = await api.fetchCompile(pipelineId, sampleRows, opts.terminal, opts.signal);
+  let compile;
+  try {
+    compile = await api.fetchCompile(
+      pipelineId, sampleRows, opts.terminal, opts.signal, opts.terminalViewMode,
+    );
+  } catch (err) {
+    if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");
+    // Transparent fallback for Polars-only steps. The backend's
+    // compile_for_browser raises:
+    //   "step '<id>' has browser engine 'polars'; only 'sql' is supported"
+    // for steps like anomaly_zscore, forecast, rolling, seasonal_decompose,
+    // changepoint_detection, etc. From the user's perspective they don't
+    // care that DuckDB-WASM can't run it — if the backend CAN, we should
+    // just route there and stream rows back into the same grid.
+    //
+    // Exception: chart-producing steps (export_to_image, forecast,
+    // seasonal_decompose) — the user wants the rendered chart image,
+    // not the underlying rows. The editor's StepImageOrFallback path
+    // handles those by rendering the image inline. We let the error
+    // bubble for these so that path triggers.
+    //
+    // Why a hard step-id list (not a category-based check): kmeans,
+    // pca, tsne, dbscan all live in `model` and have `render` params
+    // too, but their primary output is the row-level scoring/clustering
+    // dataframe — users expect rows in the grid, not a chart preview.
+    // Forecast + seasonal_decompose are the genuine chart-first steps
+    // in the model category.
+    const msg = (err as Error).message ?? "";
+    const isPolarsOnlyError = /has\s+browser\s+engine\s+'(?:polars|none)'/i.test(msg);
+    const chartFirst = new Set([
+      "export_to_image",
+      "forecast",
+      "seasonal_decompose",
+    ]);
+    const isChartFirst =
+      opts.terminalStepId != null && chartFirst.has(opts.terminalStepId);
+    if (isPolarsOnlyError && opts.terminal && !isChartFirst) {
+      return previewStepOnBackend(pipelineId, opts);
+    }
+    throw err;
+  }
   if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");
 
   // Pre-flight check: if the compiled SQL touches the spatial extension,
@@ -74,8 +130,16 @@ export async function previewPipeline(
       await db.registerFileURL(f.name, url, duckdb.DuckDBDataProtocol.HTTP, false);
     }
 
-    // Wrap the compiled SQL with a preview LIMIT for the grid.
-    const previewSql = `SELECT * FROM (${compile.sql}) AS __pipeline LIMIT ${previewLimit}`;
+    // Wrap the compiled SQL with the user-chosen sampling method for
+    // the grid. When `opts.sampling` is provided (the editor passes the
+    // doc's metadata.sampling here), the compiled pipeline output is
+    // sampled accordingly, then a previewLimit is applied so the grid
+    // never tries to render more than ~500 rows. When sampling is not
+    // set, we fall back to the historical "first N" behavior.
+    const sampledInner = opts.sampling
+      ? wrapWithSampling(compile.sql, opts.sampling)
+      : compile.sql;
+    const previewSql = `SELECT * FROM (${sampledInner}) AS __preview LIMIT ${previewLimit}`;
     const arrow = await conn.query(previewSql);
     const table = arrow as unknown as Table;
     const columns = table.schema.fields.map((f) => ({
@@ -98,8 +162,8 @@ export async function previewPipeline(
 
     if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");
 
-    // Total row count for the un-LIMIT'd pipeline (within the sample).
-    const countSql = `SELECT count(*) AS c FROM (${compile.sql}) AS __pipeline`;
+    // Total row count for the sampled pipeline (within the sample).
+    const countSql = `SELECT count(*) AS c FROM (${sampledInner}) AS __pipeline`;
     const countArrow = await conn.query(countSql);
     const countTable = countArrow as unknown as Table;
     const rowCount = Number(countTable.getChild("c")?.get(0) ?? 0);
@@ -115,6 +179,34 @@ export async function previewPipeline(
   } finally {
     await conn.close();
   }
+}
+
+/** Backend-side single-step preview for Polars-only terminals.
+ *  Materialises the upstream as Polars frames, runs the focused step's
+ *  `execute_polars`, and returns its DataFrame as rows. The grid renders
+ *  it identically to a WASM result; the only difference is the "via
+ *  backend" badge from `ranLocally: false`. */
+async function previewStepOnBackend(
+  pipelineId: string,
+  opts: { sampleRows?: number; previewLimit?: number; terminal?: string; signal?: AbortSignal },
+): Promise<PreviewResult> {
+  const sampleRows = opts.sampleRows ?? 20000;
+  const previewLimit = opts.previewLimit ?? 500;
+  const t0 = performance.now();
+  const res = await api.previewStepRows(pipelineId, {
+    terminal: opts.terminal!,
+    sampleRows,
+    previewLimit,
+    signal: opts.signal,
+  });
+  return {
+    columns: res.columns,
+    rows: res.rows,
+    rowCount: res.rowCount,
+    sampleRows: res.sampleRows ?? sampleRows,
+    elapsedMs: res.elapsedMs ?? Math.round(performance.now() - t0),
+    ranLocally: false,
+  };
 }
 
 /** Backend-side preview — DuckDB on the server runs the same compiled SQL

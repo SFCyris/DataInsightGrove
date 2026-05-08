@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { PositiveLoader } from "@/components/positive-loader";
 
 interface Props {
   pipelineId: string;
@@ -103,7 +104,9 @@ export function SqlView({ pipelineId, open, onClose, terminal }: Props) {
 
             <div className="flex-1 overflow-auto p-4">
               {compileQ.isLoading && (
-                <p className="text-sm text-muted-foreground">⏳ Compiling…</p>
+                <div className="grid place-items-center py-8">
+                  <PositiveLoader variant="compiling" />
+                </div>
               )}
               {compileQ.error && (
                 <p className="text-sm text-destructive">

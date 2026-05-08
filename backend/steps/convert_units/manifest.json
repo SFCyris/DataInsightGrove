@@ -92,5 +92,7 @@
   "preview": {
     "rowImpact": "preserves",
     "schemaImpact": "modifies"
-  }
+  },
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["unit conversion", "metric", "imperial", "celsius", "fahrenheit"]
 }

@@ -98,6 +98,167 @@ If shipping a placeholder, label it as such in the UI itself ("placeholder — w
 
 ---
 
+## Transparent frontend/backend processing
+
+**The user does not care where computation runs.** They click, edit, or
+focus a step — they expect the right outcome to appear. Whether it
+computed in DuckDB-WASM, in the backend, in a sub-pipeline expansion,
+or via a fallback chain is an implementation detail that **must stay
+invisible**.
+
+Many tools fail this principle by leaking architecture into the UI:
+"Run on backend", "Switch to server mode", "Live preview not
+available". Each of those is a small failure of design — the tool
+admitting its limitations and pushing the work onto the user. DIG
+must not do this.
+
+**Rules**:
+
+1. **Never expose the WASM/backend choice as a routine UI state.**
+   No "DuckDB-WASM can't run this", no "click Run on backend to see
+   it" as a default surface. The dispatcher routes silently.
+2. **Never block on a fallback button.** If the in-browser path
+   fails, the frontend's dispatcher transparently calls the backend
+   path and streams the result into the same surface (grid, chart,
+   etc.). The user sees the outcome, not the routing.
+3. **Architectural restrictions are bugs to engineer around, not
+   labels to hang in the UI.** Polars-only steps fed by Polars-only
+   steps need a recursive ancestor materializer; that's an
+   engineering job, not a UX excuse.
+4. **The only time it's OK to surface "ran on backend"** is as a
+   tiny, dismissible badge (`🌐 via backend` chip on the live grid
+   status row) for users who want to know — never as a CTA, never as
+   an error.
+5. **For genuinely-broken states** (bad params, missing source,
+   syntax error) the warning UI is correct. But "this needs polars"
+   / "this is a chart step" / "this depends on an upstream polars
+   step" are NOT broken states — they're routine routing decisions.
+
+This applies across every layer: editor preview, run executor, schema
+inference, lineage, sub-pipeline composition. **If the system can
+produce the answer, it should — without asking.**
+
+The current dispatcher (`frontend/lib/engine/dispatcher.ts`) implements
+this with a multi-tier fallback:
+
+```
+previewPipeline()
+  ├─ chart-first step (export_to_image / forecast / seasonal_decompose)
+  │   └→ /preview-step (image)        — backend pre-materializes Polars
+  │                                      ancestors then renders the chart
+  │
+  ├─ WASM compile fails (browser engine 'polars' or 'none')
+  │   ├─ visualize-category? → falls through to image-fallback
+  │   └─ otherwise → /preview-step-rows (rows fallback, transparent)
+  │
+  ├─ SQL touches spatial extension
+  │   └→ /preview (backend DuckDB with spatial loaded)
+  │
+  └─ default → DuckDB-WASM in browser
+```
+
+Whichever branch wins, the result lands in the same `<LiveGrid>` (or
+`<StepImagePreview>` for charts) and the user is none the wiser.
+
+## Loading states — `<PositiveLoader>` and the six principles
+
+**Every in-progress state in DIG must use the shared
+`<PositiveLoader>` component** (`frontend/components/positive-loader.tsx`).
+Don't roll your own spinner; extend the shared component if you need
+a new variant.
+
+The component encodes six UX-perception principles, each load-bearing:
+
+| Principle | Implementation |
+|---|---|
+| **No error language** | No ⚠️, no red/yellow. Stays warm — emerald shimmer, neutral text. In-progress is not failure. |
+| **Animated focal point** | Rotating emoji every 700ms with spring-pop. Movement gives the eye something to track before text registers. |
+| **RAIL latency staircase** | Doherty (~400ms) instant feel · Response (~2s) tip appears · Patience (~8s) longer recovery tip. Never silent for long. |
+| **Indeterminate over false-progress** | Shimmer bar (1.6s loop) avoids lying about completion %. Only show determinate progress when there's a true bounded count. |
+| **Elapsed timer** | Numbers help patience — "5s elapsed" feels finite vs unbounded silence. Kicks in after 1s, tabular-nums for stable width. |
+| **Reduced motion respected** | OS or settings opt-out → static icon + text, no rotations, no shimmer. |
+
+References: Don Norman's *The Design of Everyday Things* on system
+feedback; Steven Hoober's *Designing Mobile Interfaces* on progress
+affordances; Nielsen Norman Group's RAIL guidance on latency thresholds.
+
+### Three preset variants
+
+| Variant | Emoji | Default text | Use case |
+|---|---|---|---|
+| `computing` | 🔬 🧮 ✨ | Computing… | LLM calls, chart rendering |
+| `rendering` | 🔎 ⚙ ✨ | Loading data… | Data fetches, page loads, lineage |
+| `compiling` | 🛠 🔌 ⚙ | Compiling… | DAG/SQL compilation |
+
+Three sizes: `sm` (badges, tight panels), `md` (default), `lg` (dialog
+hero). Plus `<PositiveLoaderInline>` for compact single-line indicators.
+
+### Where the shared loader is used today
+
+- Page-level "Loading pipeline…" (`app/pipelines/[id]/page.tsx`)
+- Chart-first focused step (`components/canvas/step-image-preview.tsx`)
+- Live-grid empty state + recomputing badge (`components/grid/live-grid.tsx`)
+- Dataset-grid initial mount (`components/grid/dataset-grid.tsx`)
+- SQL view dialog (`components/canvas/sql-view.tsx`)
+- AI explain pipeline drawer (`components/canvas/explain-pipeline.tsx`)
+- Lineage drawer (`components/canvas/lineage-drawer.tsx`)
+
+### When to deviate
+
+Never. If you think a new loading state needs different framing,
+extend the shared component (add a new variant or accept a `primary`
+override) rather than rolling a one-off. The visual consistency is
+itself a UX principle — users learn "rotating emoji + shimmer =
+working" once and recognize it everywhere.
+
+## Established patterns (v0.6.x)
+
+### Back / home navigation — top-LEFT, always
+
+Every top-level page has a back-or-home affordance in the **upper-left corner** of the page header. Same convention as macOS apps' window-level back button, browsers' back arrow, and the pipeline editor's `←` back button. Don't hide it in the bottom of a sidebar (settings used to do this — fixed) or stuff it on the right (datasets, pipelines, gallery used to do this — fixed).
+
+Implementation: a tiny `<BackHome>` shared component lives at [`frontend/components/back-home.tsx`](../frontend/components/back-home.tsx). Pages with their own custom header (pipeline editor, datasets/[id]) embed `← Datasets` / `← Pipelines` in the same upper-left position.
+
+### Bottom region — always reserved, glued to viewport
+
+The pipeline editor's bottom region (🛤 Strip or 🕸 Graph view) is **pinned to the bottom of the browser viewport**, never pushed off-screen by tall data grids. The data grid above scrolls internally; the strip / graph stays visible.
+
+- **Strip** has a deterministic 58px height — no resize handle, hard-set.
+- **Graph** uses the persisted `graphHeight` (default 300px, range 120-700) with a 4px drag-resize handle above it. The handle is invisible until hover, cursor-row-resize, then shows a small `⋯` glyph centered.
+
+Implementation: the editor's `<main>` uses `h-screen overflow-hidden` so `flex-col` children stay capped at the viewport. The bottom region uses `style={{ height: graphHeight }}` only when in graph view; strip view falls back to auto + `min-h-[40px]` so empty pipelines still reserve space.
+
+### Step-source row tints in the picker
+
+Three distinct tints distinguish where a step came from:
+
+| Source | Row tint | Hover tooltip |
+|---|---|---|
+| Built-in | (no tint, neutral hover) | Step description |
+| Pack step (`source: "pack:<id>"`) | Faint **violet** background | `<label> · 📦 <pack_id> — <description>` |
+| Pipeline step (`source: "pipeline:<id>"`) | Faint **emerald** background | `<label> · 🪆 composite from another pipeline — <description>` |
+
+Greyed (requirements unmet) state is opacity-based, not color-based, so it stacks correctly with any tint.
+
+### Floating param-row toggles
+
+The 🪆 **expose** pill in the param-form's label row is the model for "small toggle that lives next to the field it modifies, not in a separate panel." Two states:
+
+- Default — neutral border, "🪆 expose" label
+- Active — violet background + border, alias label ("🪆 filterExpr")
+
+Click toggles between them. Don't add a separate "expose params" management page — the toggles are already in the right place.
+
+### Status badges that double as actions
+
+The sub-pipeline pin badge (`🪆 Sub-pipeline · pinned to v2`) shows status info AND houses the upgrade button when relevant. One component, three states (up-to-date / behind / unavailable). Avoids the trap of "info panel + separate action panel" duplication.
+
+### Long-duration toasts for blocked actions
+
+Cycle-detection errors get a **12-second toast** (vs the standard 4s) because the message includes a chain like `parent → dep → … → parent` that takes a moment to read + parse. Save-failure toasts that the user must address get the long duration. Routine confirmations stay short.
+
+---
+
 ## SSR + hydration safety — the rules
 
 DIG runs the same React tree two places: **on the server (Node)** during SSR, and **in your browser** when the page hydrates. They have to produce byte-identical HTML on first render or React throws a "hydration mismatch" warning and re-renders the entire subtree on the client (visible flicker, wasted CPU, the user briefly seeing wrong text). On Mac the WKWebView surfaces these as red error overlays.

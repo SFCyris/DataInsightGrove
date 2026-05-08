@@ -15,5 +15,7 @@
     "drop":    { "type": "boolean", "label": "Drop the source columns", "default": false }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["coalesce", "merge", "null"]
+  "tags": ["coalesce", "merge", "null"],
+  "requires": [{"kind": "any", "min": 2}],
+  "aliases": ["fillna", "ifnull", "missing values", "null handling", "fill nulls"]
 }

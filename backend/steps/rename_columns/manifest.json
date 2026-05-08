@@ -24,5 +24,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["rename"]
+  "tags": ["rename"],
+  "aliases": ["alias", "rename"]
 }

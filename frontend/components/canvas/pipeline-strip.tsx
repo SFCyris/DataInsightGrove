@@ -37,8 +37,13 @@ interface Props {
 // FilterBuilder itself emits; anything fancier renders as raw SQL (truncated).
 function readablePredicate(sql: string): string {
   const s = sql.trim();
-  // identifier (quoted or bare)
-  const idRe = /("([^"]|"")+"|[A-Za-z_][A-Za-z0-9_]*)/.source;
+  // identifier (quoted or bare). The inner alternation is wrapped in
+  // (?:…) — non-capturing — so the whole identifier is exactly group 1
+  // of any consuming regex. Without `?:` the nested group consumed
+  // index 2, shifting the value capture to index 3 and crashing
+  // `stripLit(undefined)` whenever the identifier was bare (the common
+  // case, e.g. `city = 'Austin'`).
+  const idRe = /("(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_]*)/.source;
   const stripIdent = (m: string) => (m.startsWith('"') ? m.slice(1, -1).replace(/""/g, '"') : m);
   const stripLit = (lit: string) => {
     const t = lit.trim();

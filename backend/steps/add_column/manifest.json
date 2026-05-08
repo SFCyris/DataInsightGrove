@@ -42,5 +42,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["add", "new", "column", "default", "fill", "constant"]
+  "tags": ["add", "new", "column", "default", "fill", "constant"],
+  "aliases": ["constant column", "default value", "literal column"]
 }

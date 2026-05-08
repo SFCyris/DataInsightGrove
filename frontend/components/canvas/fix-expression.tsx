@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { aiApi, ApiError, type AiFixExpressionOut } from "@/lib/api/client";
+import { ThinkingLabel } from "@/components/positive-loader";
 
 interface Props {
   /** Current value of the expression field. */
@@ -196,7 +197,7 @@ export function FixExpressionButton({ expression, columns, kind, error, onApply 
                 {result ? (
                   <>
                     <Button variant="outline" size="sm" onClick={ask} disabled={loading}>
-                      {loading ? "⏳ Asking…" : "Try again"}
+                      {loading ? <ThinkingLabel text="Asking…" /> : "Try again"}
                     </Button>
                     <Button size="sm" onClick={apply}>
                       ✓ Apply
@@ -204,7 +205,7 @@ export function FixExpressionButton({ expression, columns, kind, error, onApply 
                   </>
                 ) : (
                   <Button size="sm" onClick={ask} disabled={loading}>
-                    {loading ? "⏳ Asking…" : "✨ Suggest fix"}
+                    {loading ? <ThinkingLabel text="Asking…" /> : "✨ Suggest fix"}
                   </Button>
                 )}
               </footer>

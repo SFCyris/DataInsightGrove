@@ -84,6 +84,94 @@ The framework auto-validates the manifest on load. A bad manifest fails registra
 
 `visibleWhen: { otherParam: value }` makes the field conditional on another param's exact value. Equality only — keep it simple.
 
+## Chart steps
+
+Chart steps render an image artifact (PNG/SVG) instead of a tabular
+output. They use `category: "visualize"`, `engine.primary: "polars"`,
+`engine.browser: "none"`, and an `output_path` (or similar) param to
+declare where the artifact lands. See
+[`backend/steps/export_to_image/`](../backend/steps/export_to_image/)
+for the canonical reference and the business-charts pack at
+[`plugins/packs/business_charts/`](../plugins/packs/business_charts/)
+for single-kind chart examples (funnel / pareto / waterfall).
+
+### Inline preview is automatic
+
+A chart step's image is rendered inline above the live grid the
+moment a user focuses the node — no extra wiring needed. The
+detection rule (in `frontend/app/pipelines/[id]/page.tsx`'s
+`isChartFirstStep`) is **manifest-driven**:
+
+- Any step with `category: "visualize"` and `engine.browser !== "sql"`
+  is treated as chart-first.
+- Plus `forecast` and `seasonal_decompose` (model-category steps
+  that emit a chart preview as their headline output) — hardcoded
+  exceptions; everything else flows from category.
+
+Adding a new viz pack? Just declare the manifest fields above —
+your chart step automatically gets the inline image preview, the
+"▶ Run on backend" fallback when the upstream chain can't be
+sampled in-memory, and the AI density warning (next).
+
+### Density warning — `recommendedMaxRows`
+
+Charts that depend on reasonable data density (scatter overplots
+past ~5K, heatmap smears past ~50K, funnel stages should stay tens
+not thousands) declare a soft upper bound on input rows in their
+manifest. The editor renders a banner above the chart preview
+**only when the upstream node's row count exceeds this value** —
+suggesting [Continue] / [🎲 Sample] (the latter flips
+`metadata.sampling` to `random` at the threshold size).
+
+Two manifest shapes:
+
+```jsonc
+// Single-kind chart — one threshold for the whole step.
+{
+  "id": "funnel_chart",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none" },
+  "params": { /* … */ },
+  "recommendedMaxRows": 30        // funnel stages should be tiny
+}
+```
+
+```jsonc
+// Multi-kind chart — per-kind map keyed by the `kind` param, with
+// `_default` for kinds not explicitly listed.
+{
+  "id": "export_to_image",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none" },
+  "params": {
+    "kind": { "type": "enum", "enumValues": ["scatter", "heatmap", "histogram", /* … */] },
+    /* … */
+  },
+  "recommendedMaxRows": {
+    "_default":  50000,
+    "scatter":    5000,
+    "scatter3d":  5000,
+    "line":      10000,
+    "heatmap":   50000,
+    "hexbin":   200000,
+    "histogram": 500000,
+    "bar_counts": 50000
+  }
+}
+```
+
+The field is fully optional — chart steps without it just don't
+get the banner. Authoring tip: pick thresholds based on visual
+readability, not render time. The point is "past this point the
+picture stops being a useful read" — render speed is a downstream
+concern that often correlates but isn't the same thing.
+
+The schema for the `recommendedMaxRows` field lives in
+[`shared/schemas/step-manifest.schema.json`](../shared/schemas/step-manifest.schema.json)
+(it accepts either an integer or the per-kind map) and the runtime
+detection lives in
+[`frontend/components/canvas/chart-density-warning.tsx`](../frontend/components/canvas/chart-density-warning.tsx).
+
 ## Connectors
 
 Same pattern at `backend/connectors/<id>/` (or `plugins/connectors/<id>/`):

@@ -76,5 +76,7 @@
     "clustering",
     "kmeans",
     "unsupervised"
-  ]
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["cluster", "clustering", "k-means", "centroids"]
 }

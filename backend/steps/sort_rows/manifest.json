@@ -24,5 +24,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["sort", "order"]
+  "tags": ["sort", "order"],
+  "aliases": ["order by", "rank", "ascending", "descending"]
 }

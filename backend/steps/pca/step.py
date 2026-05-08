@@ -13,6 +13,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, DEFAULT_FIGSIZE, SQUARE_FIGSIZE
 
 
 def _is_numeric(dtype: pl.DataType) -> bool:
@@ -103,10 +104,10 @@ class PCAStep(Step):
         sub = df.select([c for c in ("PC1", "PC2", color_by) if c and c in df.columns]).drop_nulls()
         if sub.height == 0:
             # Nothing to plot; return an empty placeholder.
-            fig, ax = plt.subplots(figsize=(6, 4), dpi=144)
+            fig, ax = plt.subplots(figsize=DEFAULT_FIGSIZE, dpi=DEFAULT_DPI)
             ax.text(0.5, 0.5, "no rows after PCA", ha="center", va="center")
             out_path = ctx.out_dir / f"{self.id}.png"
-            fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+            fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
             plt.close(fig)
             return {"kind": "image", "format": "png", "path": str(out_path), "chart": "scatter", "title": title}
 
@@ -114,7 +115,7 @@ class PCAStep(Step):
         if sub.height > 50_000:
             sub = sub.sample(n=50_000, seed=42)
 
-        fig, ax = plt.subplots(figsize=(7, 5), dpi=144)
+        fig, ax = plt.subplots(figsize=SQUARE_FIGSIZE, dpi=DEFAULT_DPI)
         xs = sub.get_column("PC1").to_numpy()
         ys = sub.get_column("PC2").to_numpy()
         if color_by and color_by in sub.columns:
@@ -146,7 +147,7 @@ class PCAStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

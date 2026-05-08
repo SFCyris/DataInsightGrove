@@ -45,6 +45,9 @@ from dig.ai.features.generate_step import (
 )
 from dig.ai.safety import lint_plugin_python
 from dig.ai.features.suggest_next import suggest_next_step
+from dig.ai.features.suggest_visualizations import suggest_visualizations
+from dig.ai.features.explain_dataset import explain_dataset
+from dig.ai.features.suggest_pipeline_steps import suggest_pipeline_steps
 from pathlib import Path as _Path
 from dig.engine.registry import steps as steps_registry
 from dig.storage.db import get_session
@@ -54,6 +57,79 @@ from sqlalchemy import select as sa_select
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+async def _collect_other_inputs(
+    session: AsyncSession,
+    pipeline_id: str,
+    focused_id: str | None,
+) -> list[dict[str, Any]]:
+    """Mirror of the frontend's `eligibleSourcesFor`: every dataset +
+    every non-descendant node in the pipeline, except the focused
+    node itself. Each entry is `{ref, label, schema}` for the AI's
+    join-suggestion path.
+
+    Empty list when:
+      - the pipeline has only one source (nothing to join with);
+      - `focused_id` is invalid (we don't know what would cycle).
+    """
+    from dig.engine.dag import infer_schemas
+    from dig.engine.pipeline import Pipeline
+    from dig.engine.pipeline_step_inline import inline_sub_pipelines
+
+    prow = await session.get(PipelineRow, pipeline_id)
+    if prow is None:
+        return []
+    flat_doc = await inline_sub_pipelines(session, prow.document or {})
+    p = Pipeline.model_validate(flat_doc)
+    try:
+        schemas = infer_schemas(p)
+    except Exception:
+        schemas = {}
+
+    nodes_by_id = {n.id: n for n in p.nodes}
+    dataset_ids = {d.id for d in p.datasets}
+    dataset_labels = {d.id: (d.label or d.id) for d in p.datasets}
+    node_labels = {n.id: ((n.ui.label if n.ui else None) or n.step) for n in p.nodes}
+
+    # Forbidden refs: the focused node + any descendant of it. Walk
+    # forward from focused_id following inputs in reverse — i.e. find
+    # every node whose chain CONTAINS focused_id. Datasets are never
+    # descendants.
+    forbidden: set[str] = set()
+    if focused_id and focused_id in nodes_by_id:
+        forbidden.add(focused_id)
+        # BFS forward by inverting the input edges.
+        children: dict[str, list[str]] = {}
+        for n in p.nodes:
+            for ref in n.inputs.values():
+                children.setdefault(ref.ref, []).append(n.id)
+        queue = [focused_id]
+        while queue:
+            cur = queue.pop()
+            for child in children.get(cur, []):
+                if child not in forbidden:
+                    forbidden.add(child)
+                    queue.append(child)
+
+    out: list[dict[str, Any]] = []
+    for did in dataset_ids:
+        if did in forbidden:
+            continue
+        out.append({
+            "ref": did,
+            "label": dataset_labels.get(did, did),
+            "schema": schemas.get(did, {}),
+        })
+    for n in p.nodes:
+        if n.id in forbidden:
+            continue
+        out.append({
+            "ref": n.id,
+            "label": node_labels.get(n.id, n.id),
+            "schema": schemas.get(n.id, {}),
+        })
+    return out
 
 
 # ---- Schemas --------------------------------------------------------------
@@ -541,6 +617,282 @@ async def suggest_next_endpoint(
         raise HTTPException(502, str(e)) from e
 
     return SuggestNextOut(suggestions=result["suggestions"], model=result["model"])
+
+
+class ExplainDatasetIn(BaseModel):
+    pipeline_id: str = Field(
+        description=(
+            "Pipeline whose document supplies the project name, sampling "
+            "config, and (when node_id is set) the chain of applied steps."
+        ),
+    )
+    node_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional id of the focused node (a step OR a dataset alias inside "
+            "the pipeline). When set, samples come from that node's actual "
+            "output via the pipeline's chosen sampling method, and the prompt "
+            "is rephrased for derived contexts. When omitted, falls back to "
+            "the upstream dataset's cached profile (legacy behavior)."
+        ),
+    )
+    dataset_id: str | None = Field(
+        default=None,
+        description=(
+            "Back-compat: the registered dataset's row id. Equivalent to "
+            "passing the dataset's pipeline-doc alias as `node_id`. Ignored "
+            "when `node_id` is set."
+        ),
+    )
+
+
+class ColumnMeaning(BaseModel):
+    name: str
+    meaning: str
+
+
+class ExplainDatasetOut(BaseModel):
+    narrative: str
+    domain: str
+    confidence: str
+    columns: list[ColumnMeaning]
+    model: str | None = None
+    reason: str | None = None
+
+
+@router.post("/explain-dataset", response_model=ExplainDatasetOut)
+async def explain_dataset_endpoint(
+    body: ExplainDatasetIn,
+    session: AsyncSession = Depends(get_session),
+) -> ExplainDatasetOut:
+    """Domain-aware narrative + per-column meanings for the focused node.
+
+    Works on either a registered dataset OR any step output. When
+    focused on a step, samples are pulled from that step's actual
+    output via the pipeline's chosen sampling method, and the prompt
+    is rephrased to "given the original dataset and these steps, what
+    does the current output represent?".
+    """
+    cfg = await load_config(session)
+    if not cfg.enabled:
+        raise HTTPException(400, "AI is disabled — enable it in Settings → AI")
+
+    from dig.ai.node_context import build_ai_node_context
+    try:
+        ctx = await build_ai_node_context(
+            session, body.pipeline_id, body.node_id or body.dataset_id,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+    try:
+        result = await explain_dataset(
+            cfg,
+            dataset_name=ctx.dataset_name,
+            project_name=ctx.project_name,
+            schema=ctx.schema,
+            sample_values=ctx.sample_values or None,
+            source_uri=ctx.source_uri,
+            connector=ctx.connector,
+            applied_steps=ctx.applied_steps or None,
+            is_derived=ctx.is_derived,
+        )
+    except AiError as e:
+        raise HTTPException(502, str(e)) from e
+
+    return ExplainDatasetOut(
+        narrative=result["narrative"],
+        domain=result["domain"],
+        confidence=result["confidence"],
+        columns=[ColumnMeaning(**c) for c in result["columns"]],
+        model=result.get("model"),
+        reason=result.get("reason"),
+    )
+
+
+class PipelineStepIn(BaseModel):
+    step_id: str
+    params: dict[str, Any]
+    rationale: str
+    outcome: str | None = None
+    # Only set for `step_id == "join"` — the ref id (dataset alias or
+    # node id) the validator chose for the right input port. Frontend
+    # wires this when applying the route.
+    right_ref: str | None = None
+
+
+class PipelineRouteOut(BaseModel):
+    title: str
+    why: str
+    confidence: str
+    steps: list[PipelineStepIn]
+
+
+class SuggestPipelineStepsIn(BaseModel):
+    pipeline_id: str
+    node_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional id of the focused node. When set, suggestions are "
+            "framed around that node's actual output (sampled per the "
+            "pipeline's chosen method). Applying a route mid-pipeline "
+            "branches off the focused node — see frontend apply path."
+        ),
+    )
+    dataset_id: str | None = Field(
+        default=None,
+        description="Back-compat: equivalent to passing the dataset's pipeline-doc alias as `node_id`.",
+    )
+    goal: str | None = None
+
+
+class SuggestPipelineStepsOut(BaseModel):
+    domain: str
+    routes: list[PipelineRouteOut]
+    model: str | None = None
+    reason: str | None = None
+
+
+@router.post("/suggest-pipeline-steps", response_model=SuggestPipelineStepsOut)
+async def suggest_pipeline_steps_endpoint(
+    body: SuggestPipelineStepsIn,
+    session: AsyncSession = Depends(get_session),
+) -> SuggestPipelineStepsOut:
+    """Domain-aware multi-step transform suggestions for a dataset.
+
+    Returns 1-3 ordered "routes" (chains of 1-4 steps) that together
+    yield meaningful derived datasets — vectorize → similarity, parse
+    → resample → forecast, etc. Each route is rendered as a card the
+    user can apply with one click.
+    """
+    cfg = await load_config(session)
+    if not cfg.enabled:
+        raise HTTPException(400, "AI is disabled — enable it in Settings → AI")
+
+    from dig.ai.node_context import build_ai_node_context
+    try:
+        ctx = await build_ai_node_context(
+            session, body.pipeline_id, body.node_id or body.dataset_id,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+    catalog = [s.manifest for s in steps_registry().all()]
+
+    # Gather every other in-scope input (datasets + non-descendant nodes)
+    # so the AI can propose a `join` step with auto-filled keys. We mirror
+    # the frontend's `eligibleSourcesFor` logic: drop the focused node
+    # itself + any of its descendants (those would create a cycle).
+    other_inputs = await _collect_other_inputs(
+        session, body.pipeline_id, body.node_id or body.dataset_id,
+    )
+
+    try:
+        result = await suggest_pipeline_steps(
+            cfg,
+            dataset_name=ctx.dataset_name,
+            project_name=ctx.project_name,
+            schema=ctx.schema,
+            sample_values=ctx.sample_values or None,
+            source_uri=ctx.source_uri,
+            connector=ctx.connector,
+            goal=body.goal,
+            step_catalog=catalog,
+            other_inputs=other_inputs or None,
+        )
+    except AiError as e:
+        raise HTTPException(502, str(e)) from e
+
+    return SuggestPipelineStepsOut(
+        domain=result["domain"],
+        routes=[PipelineRouteOut(**r) for r in result["routes"]],
+        model=result.get("model"),
+        reason=result.get("reason"),
+    )
+
+
+class SuggestVisualizationsIn(BaseModel):
+    pipeline_id: str
+    node_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional id of the focused node. When set, viz suggestions "
+            "are tailored to that node's actual output (sampled per the "
+            "pipeline's chosen method) rather than the upstream dataset."
+        ),
+    )
+    dataset_id: str | None = Field(
+        default=None,
+        description="Back-compat: equivalent to passing the dataset's pipeline-doc alias as `node_id`.",
+    )
+
+
+class VizSuggestionOut(BaseModel):
+    step_id: str
+    params: dict[str, Any]
+    title: str
+    why: str
+    confidence: str
+
+
+class SuggestVisualizationsOut(BaseModel):
+    domain: str
+    domain_confidence: str
+    suggestions: list[VizSuggestionOut]
+    model: str | None = None
+    # Set when the LLM returned no usable content. Frontend uses this
+    # to render the "no suitable domain or visualization identified"
+    # message rather than a generic error.
+    reason: str | None = None
+
+
+@router.post("/suggest-visualizations", response_model=SuggestVisualizationsOut)
+async def suggest_visualizations_endpoint(
+    body: SuggestVisualizationsIn,
+    session: AsyncSession = Depends(get_session),
+) -> SuggestVisualizationsOut:
+    """Domain-aware visualization suggestions for a dataset.
+
+    The Hints panel calls this when a dataset is focused. The LLM
+    inspects the column names + types + the project / pipeline name
+    to infer the domain, then suggests 1–3 chart kinds tailored to
+    that domain — pre-populated with the right column choices.
+    """
+    cfg = await load_config(session)
+    if not cfg.enabled:
+        raise HTTPException(400, "AI is disabled — enable it in Settings → AI")
+
+    from dig.ai.node_context import build_ai_node_context
+    try:
+        ctx = await build_ai_node_context(
+            session, body.pipeline_id, body.node_id or body.dataset_id,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
+
+    catalog = [s.manifest for s in steps_registry().all()]
+
+    try:
+        result = await suggest_visualizations(
+            cfg,
+            dataset_name=ctx.dataset_name,
+            project_name=ctx.project_name,
+            schema=ctx.schema,
+            sample_values=ctx.sample_values or None,
+            source_uri=ctx.source_uri,
+            connector=ctx.connector,
+            step_catalog=catalog,
+        )
+    except AiError as e:
+        raise HTTPException(502, str(e)) from e
+
+    return SuggestVisualizationsOut(
+        domain=result["domain"],
+        domain_confidence=result["domain_confidence"],
+        suggestions=[VizSuggestionOut(**s) for s in result["suggestions"]],
+        model=result.get("model"),
+        reason=result.get("reason"),
+    )
 
 
 @router.post("/generate-step", response_model=GeneratedStepOut)

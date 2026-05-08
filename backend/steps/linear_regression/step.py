@@ -14,6 +14,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, DEFAULT_FIGSIZE
 
 
 class LinearRegressionStep(Step):
@@ -104,7 +105,7 @@ class LinearRegressionStep(Step):
         if sub.height > 50_000:
             sub = sub.sample(n=50_000, seed=42)
 
-        fig, ax = plt.subplots(figsize=(7, 5), dpi=144)
+        fig, ax = plt.subplots(figsize=DEFAULT_FIGSIZE, dpi=DEFAULT_DPI)
         if len(x_cols) == 1:
             xs = sub.get_column(x_cols[0]).to_numpy()
             ys = sub.get_column(y).to_numpy()
@@ -128,7 +129,7 @@ class LinearRegressionStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

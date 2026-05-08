@@ -15,5 +15,7 @@
     "lowercase":{ "type": "boolean", "label": "Lowercase the result", "default": false }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["string", "trim", "clean"]
+  "tags": ["string", "trim", "clean"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["trim", "strip"]
 }

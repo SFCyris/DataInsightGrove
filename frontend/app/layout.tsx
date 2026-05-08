@@ -26,6 +26,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "./providers";
 import { SandboxBanner } from "@/components/sandbox-banner";
+import { DemoBanner } from "@/components/demo-banner";
 
 export const metadata: Metadata = {
   // The literal ™ is fine in document.title — modern browsers render it cleanly.
@@ -82,6 +83,10 @@ export default function RootLayout({
           Skip to main content
         </a>
         <Providers>
+          {/* DemoBanner only renders when NEXT_PUBLIC_DIG_DEMO is set;
+              SandboxBanner is the existing dev-mode notice. Both are
+              cheap no-ops in production builds. */}
+          <DemoBanner />
           <SandboxBanner />
           {children}
         </Providers>

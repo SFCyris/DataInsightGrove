@@ -19,7 +19,7 @@ contributions today.
 > contributions** (pull requests). This may change in the future, but for
 > now please don't open a PR — it'll be politely closed.
 
-Why: DIG is in beta (v0.5.0), the architecture is still settling, and the
+Why: DIG is in beta, the architecture is still settling, and the
 maintainer wants the code to converge with a single voice before opening
 the contribution surface. When that changes, this document will be updated
 and a `CODEOWNERS` + PR-template + contributor-license-agreement workflow
@@ -84,4 +84,3 @@ fork — the AGPL is designed to make this work cleanly.
 ---
 
 This document will be updated when the contribution policy changes.
-Last updated: 2026-05-02 (v0.5.0).

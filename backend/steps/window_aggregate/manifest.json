@@ -30,5 +30,6 @@
     "as":         { "type": "string", "label": "New column name", "required": true }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["window", "rolling", "rank"]
+  "tags": ["window", "rolling", "rank"],
+  "aliases": ["partition", "lead lag", "running total", "row number"]
 }

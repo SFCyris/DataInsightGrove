@@ -45,6 +45,14 @@ class PipelineSummary(BaseModel):
     etag: int
     createdAt: datetime
     updatedAt: datetime
+    # ── Data-health flags so the pipelines list can show a "⚠ Missing data"
+    # badge when an input dataset has been deleted or a previous run's
+    # output files have been removed from disk. Counts (not booleans) so
+    # the UI can show "2 missing inputs" in a tooltip rather than a vague
+    # warning. Both default to 0 — pipelines created or saved without
+    # local-file references will always read as healthy.
+    missingDatasetCount: int = 0
+    missingOutputCount: int = 0
 
 
 class PipelineDoc(BaseModel):
@@ -65,6 +73,21 @@ class CreatePipelineRequest(BaseModel):
 class UpdatePipelineRequest(BaseModel):
     document: dict[str, Any]
     expectedEtag: int | None = None
+    # When omitted, defaults to "manual_save" for backward compatibility with
+    # external integrations. The editor passes "autosave" so the snapshot
+    # retention policy treats it as transient (last 5 only) instead of as a
+    # first-class checkpoint.
+    triggeredBy: str | None = Field(default=None, pattern="^(manual_save|autosave|import|restore)$")
+    # Optional free-text label/note. Only persisted when triggeredBy is
+    # "manual_save" — autosaves don't carry meaningful labels.
+    changeReason: str | None = None
+
+
+class ClonePipelineRequest(BaseModel):
+    name: str
+    # Optional — clone the document at a specific snapshot. Defaults to
+    # cloning the current live document.
+    fromSnapshotId: str | None = None
 
 
 class RunRequest(BaseModel):
@@ -96,7 +119,70 @@ def _empty_doc(name: str, pid: str) -> dict[str, Any]:
     }
 
 
-def _summary(row: PipelineRow) -> PipelineSummary:
+# Connectors that resolve to local files we can stat. Other connectors
+# (rest, jdbc, sftp, …) read from remote sources whose availability we
+# can't cheaply check from the API process — those are skipped, treated as
+# "available" for the purposes of the missing-data badge.
+_LOCAL_FILE_CONNECTORS = frozenset({"parquet", "csv", "xlsx", "excel", "json", "jsonl"})
+
+
+def _local_path(uri: str | None) -> str | None:
+    """Return a stat-able local path for ``uri``, or None if it isn't local.
+
+    URIs in pipeline documents come from dataset registration: parquet caches
+    are stored as ``file:///abs/path.parquet`` (the Dataset row's storage_uri
+    after the file:// prefix is added), and uploaded sources may also be
+    file:// URIs. Anything with a non-file scheme (https, jdbc, …) is treated
+    as remote.
+    """
+    if not uri:
+        return None
+    if uri.startswith("file://"):
+        return uri[len("file://") :]
+    if "://" not in uri:
+        # Bare path — treat as local.
+        return uri
+    return None
+
+
+def _count_missing_datasets(doc: dict[str, Any]) -> int:
+    """Count dataset references in ``doc.datasets[]`` whose backing file is
+    missing. Skips non-local connectors (we can't check those without a
+    network round-trip)."""
+    missing = 0
+    for ds in doc.get("datasets", []) or []:
+        if not isinstance(ds, dict):
+            continue
+        connector = str(ds.get("connector", "")).lower()
+        if connector not in _LOCAL_FILE_CONNECTORS:
+            continue
+        path = _local_path(ds.get("uri"))
+        if path is None:
+            # Connector says local but URI isn't stat-able — treat as healthy
+            # rather than scaring the user with a false positive.
+            continue
+        if not os.path.exists(path):
+            missing += 1
+    return missing
+
+
+def _count_missing_outputs(latest_run: Run | None) -> int:
+    """Count output files from the most recent successful run that no longer
+    exist on disk. ``None`` (no runs yet) returns 0 — an unrun pipeline isn't
+    "missing" output, it's just unrun."""
+    if latest_run is None or not latest_run.output_paths:
+        return 0
+    missing = 0
+    for raw in latest_run.output_paths:
+        path = _local_path(raw)
+        if path is None:
+            continue
+        if not os.path.exists(path):
+            missing += 1
+    return missing
+
+
+def _summary(row: PipelineRow, latest_run: Run | None = None) -> PipelineSummary:
     doc = row.document or {}
     return PipelineSummary(
         id=row.id,
@@ -107,6 +193,8 @@ def _summary(row: PipelineRow) -> PipelineSummary:
         etag=row.etag,
         createdAt=row.created_at,
         updatedAt=row.updated_at,
+        missingDatasetCount=_count_missing_datasets(doc),
+        missingOutputCount=_count_missing_outputs(latest_run),
     )
 
 
@@ -155,7 +243,22 @@ async def list_pipelines(
         .limit(capped)
         .offset(max(0, offset))
     )
-    return [_summary(r) for r in res.scalars().all()]
+    rows = res.scalars().all()
+    # Batch-fetch the latest succeeded run per pipeline so the missing-output
+    # check on _summary() doesn't fan out into N queries. We pull all
+    # succeeded runs for the page's pipelines in one shot, sorted newest-
+    # first, and keep the first row per pipeline_id.
+    latest_runs: dict[str, Run] = {}
+    if rows:
+        runs_res = await session.execute(
+            select(Run)
+            .where(Run.pipeline_id.in_([r.id for r in rows]))
+            .where(Run.status == "succeeded")
+            .order_by(Run.pipeline_id, Run.created_at.desc())
+        )
+        for run in runs_res.scalars().all():
+            latest_runs.setdefault(run.pipeline_id, run)
+    return [_summary(r, latest_runs.get(r.id)) for r in rows]
 
 
 @router.post("", response_model=PipelineDoc, status_code=201)
@@ -213,16 +316,75 @@ async def update_pipeline(
     name = doc.get("name")
     if name:
         row.name = str(name)
+    # Cycle detection: a parent referencing a sub-pipeline whose closure
+    # includes itself would create an infinite expansion at compile time.
+    # Reject with a 409 so the editor can surface a helpful warning.
+    from dig.engine.pipeline_step import check_no_cycle as _check_no_cycle
+    try:
+        await _check_no_cycle(session, pipeline_id, doc)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+
     row.document = doc
     row.etag = (row.etag or 0) + 1
     # History snapshot (deduped by document hash — UI-coord-only saves no-op).
+    # `triggeredBy` defaults to "manual_save" for back-compat; the editor
+    # passes "autosave" for incidental keystroke-driven saves so retention
+    # can keep them on a short tail.
+    trigger = req.triggeredBy or "manual_save"
+    reason = req.changeReason if trigger == "manual_save" else None
     await snapshot_pipeline(
-        session, pipeline_id, doc, row.etag, triggered_by="manual_save"
+        session, pipeline_id, doc, row.etag,
+        triggered_by=trigger, change_reason=reason,
     )
     await session.commit()
     # broadcast (Phase 5 will use this for multi-session sync)
     await hub.publish(f"pipeline:{pipeline_id}", {"event": "changed", "etag": row.etag})
     return _doc(row)
+
+
+@router.post("/{pipeline_id}/clone", response_model=PipelineDoc, status_code=201)
+async def clone_pipeline(
+    pipeline_id: str,
+    req: ClonePipelineRequest,
+    session: AsyncSession = Depends(get_session),
+) -> PipelineDoc:
+    """Save As — clone an existing pipeline to a new id with a new name.
+
+    Optionally clones from a specific history snapshot rather than the live
+    document. The new pipeline gets a fresh etag=1 and an "import"-tagged
+    initial snapshot so its history starts clean.
+    """
+    src = await session.get(PipelineRow, pipeline_id)
+    if src is None:
+        raise HTTPException(404, "pipeline not found")
+
+    if req.fromSnapshotId:
+        from dig.storage.models import PipelineHistory
+        snap = await session.get(PipelineHistory, req.fromSnapshotId)
+        if snap is None or snap.pipeline_id != pipeline_id:
+            raise HTTPException(404, "snapshot not found for this pipeline")
+        source_doc = dict(snap.document)
+    else:
+        source_doc = dict(src.document or {})
+
+    # Mint a fresh id and rewrite the doc so it owns its new identity.
+    from ulid import ULID
+    new_id = str(ULID())
+    new_doc = dict(source_doc)
+    new_doc["id"] = new_id
+    new_doc["name"] = req.name
+
+    new_row = PipelineRow(id=new_id, name=req.name, document=new_doc, etag=1)
+    session.add(new_row)
+    await session.flush()
+    await snapshot_pipeline(
+        session, new_id, new_doc, 1,
+        triggered_by="import",
+        change_reason=f"Save As from {pipeline_id}",
+    )
+    await session.commit()
+    return _doc(new_row)
 
 
 @router.delete("/{pipeline_id}", status_code=204)
@@ -583,8 +745,22 @@ async def validate_pipeline(
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
+    # Inline-expand sub-pipelines BEFORE pydantic validation so the
+    # validator (and downstream schema inference) sees a flat DAG.
+    # Without this, every node whose step is `pipeline:<id>` shows up
+    # as "unknown step" in the editor's per-node status panel.
+    from dig.engine.pipeline_step_inline import inline_sub_pipelines
     try:
-        p = Pipeline.model_validate(row.document)
+        flat_doc = await inline_sub_pipelines(session, row.document or {})
+    except ValueError as e:
+        return {
+            "ok": False,
+            "errors": [str(e)],
+            "schemas": {},
+            "nodeStatus": {},
+        }
+    try:
+        p = Pipeline.model_validate(flat_doc)
     except Exception as e:
         return {
             "ok": False,
@@ -861,12 +1037,152 @@ async def create_from_template(
     return _doc(row)
 
 
+@router.post("/from-dataset/{dataset_id}", response_model=PipelineDoc, status_code=201)
+async def create_overview_from_dataset(
+    dataset_id: str, session: AsyncSession = Depends(get_session)
+) -> PipelineDoc:
+    """Generate a 1–3-step "overview" pipeline from a dataset's column profile.
+
+    The pipeline contains an ``export_to_image`` node per chart, each reading
+    directly from the dataset (parallel, not chained). The frontend opens the
+    new pipeline and the live image preview renders inline within a second.
+
+    Chart-pick heuristics — same shape as the column-menu ``Visualize`` action,
+    upgraded for "show me a few different angles":
+
+      • Most-variable numeric column   → histogram (the column with the
+        highest std/mean ratio so a tightly-clustered field doesn't pip a
+        wide-range one with a similar absolute std).
+      • Lowest-cardinality categorical → bar of top-N value counts (we want
+        the column the user is most likely to want to "slice by").
+      • Second-most-variable numeric   → histogram (a complementary view of
+        spread; only emitted when at least two numeric columns exist).
+
+    Returns a fresh PipelineDoc — caller routes the user straight to
+    ``/pipelines/<id>`` and the editor's StepImagePreview takes it from there.
+    """
+    from dig.storage.models import Dataset as _Dataset
+
+    d = await session.get(_Dataset, dataset_id)
+    if d is None:
+        raise HTTPException(404, "dataset not found")
+    if not d.storage_uri:
+        raise HTTPException(409, "dataset is still ingesting — try again in a moment")
+
+    columns = d.columns or []
+    if not columns:
+        raise HTTPException(400, "dataset has no profiled columns yet")
+
+    def _is_numeric(t: str) -> bool:
+        s = (t or "").lower()
+        return any(k in s for k in ("int", "float", "double", "decimal", "number"))
+
+    def _is_textual(t: str) -> bool:
+        s = (t or "").lower()
+        return any(k in s for k in ("string", "varchar", "utf8", "text"))
+
+    # Score numerics by std/mean (coefficient of variation) so a column whose
+    # values cluster tightly doesn't beat a column with the same absolute std
+    # but a much wider spread. Fallback to raw std for columns without a mean
+    # (rare; happens with all-NULL or all-zero columns).
+    def _variation(c: dict[str, Any]) -> float:
+        std = c.get("std")
+        mean = c.get("mean")
+        if std is None:
+            return -1.0
+        if mean is None or mean == 0:
+            return float(std)
+        return float(std) / max(abs(float(mean)), 1e-9)
+
+    numeric = [c for c in columns if _is_numeric(c.get("type", ""))]
+    numeric.sort(key=_variation, reverse=True)
+    categorical = [
+        c for c in columns
+        if _is_textual(c.get("type", ""))
+        and 2 <= (c.get("distinctCount") or 0) <= 20
+    ]
+    categorical.sort(key=lambda c: c.get("distinctCount") or 0)
+
+    nodes: list[dict[str, Any]] = []
+    outputs: list[dict[str, Any]] = []
+
+    def _add_chart(node_id: str, kind: str, x_col: str, label_emoji: str, x_offset: int) -> None:
+        nodes.append({
+            "id": node_id,
+            "step": "export_to_image",
+            "stepVersion": "1.0.0",
+            "inputs": {"in": {"port": "out", "ref": "ds_main"}},
+            "outputs": ["out"],
+            "params": {
+                "kind": kind,
+                "x": x_col,
+                "title": f"{x_col} — {'distribution' if kind == 'histogram' else 'top values'}",
+                "format": "png",
+            },
+            "ui": {"x": x_offset, "y": 100, "label": f"{label_emoji} {x_col}"},
+        })
+        outputs.append({
+            "id": f"o_{node_id}",
+            "name": f"{x_col}_chart",
+            "from": {"port": "out", "ref": node_id},
+        })
+
+    if numeric:
+        _add_chart("n_chart_hist", "histogram", numeric[0]["name"], "📊", 280)
+    if categorical:
+        _add_chart("n_chart_bar", "bar_counts", categorical[0]["name"], "🏷", 540)
+    if len(numeric) >= 2:
+        _add_chart("n_chart_hist2", "histogram", numeric[1]["name"], "📊", 800)
+
+    if not nodes:
+        # No numerics, no low-cardinality categoricals — fall back to a chart
+        # of the first column (whatever it is). Better than refusing to make
+        # an overview for what is, by definition, an unusually shaped dataset.
+        first = columns[0]
+        kind = "histogram" if _is_numeric(first.get("type", "")) else "bar_counts"
+        _add_chart("n_chart_default", kind, first["name"], "📊", 280)
+
+    pid = str(ULID())
+    name = f"📊 {d.name} — overview"
+    doc = {
+        "schemaVersion": 1,
+        "id": pid,
+        "name": name,
+        "datasets": [{
+            "id": "ds_main",
+            # The pipeline reads from the dataset's *cached parquet* path,
+            # so the connector here is always "parquet" — regardless of the
+            # original ingest connector (csv, xlsx, jdbc, …). Using
+            # d.connector here was a bug: the CSV reader would try to read
+            # the parquet bytes as CSV and the schema-inference path would
+            # come back empty, leaving column dropdowns blank in the editor
+            # and the live image preview unable to find any columns.
+            "connector": "parquet",
+            "uri": d.storage_uri,
+            "label": d.name,
+        }],
+        "nodes": nodes,
+        "outputs": outputs,
+    }
+
+    row = PipelineRow(id=pid, name=name, document=doc, etag=1)
+    session.add(row)
+    # Snapshot so the user has a baseline to diff their tweaks against —
+    # same pattern as templates and imports.
+    await snapshot_pipeline(
+        session, pid, doc, 1, triggered_by="import",
+    )
+    await session.commit()
+    return _doc(row)
+
+
 @router.post("/{pipeline_id}/compile", response_model=CompileOut)
 async def compile_pipeline(
     pipeline_id: str,
     target: str = "browser",
     sample_rows: int | None = 100_000,
     terminal: str | None = None,
+    terminalViewMode: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Compile the pipeline to SQL + virtual-file bindings for browser execution.
@@ -877,12 +1193,23 @@ async def compile_pipeline(
     `terminal` selects the focus node — pass a node id to compile only the
     pipeline up to that step (used by the live-grid focused-step preview).
     Defaults to the last node in topological order.
+
+    `terminalViewMode` is meaningful only when the terminal node is a join.
+    Passing 'unmatched_left' / 'unmatched_right' rewrites the focused join's
+    kind to the matching anti-* variant for diagnostic preview ("why didn't
+    these rows match?"). 'matched' (default) leaves the SQL unchanged.
     """
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
     try:
-        p = Pipeline.model_validate(row.document)
+        # Sub-pipeline inlining happens BEFORE validation, so the
+        # validator + topological sort see a flattened DAG. The inliner
+        # is a no-op for pipelines without `pipeline:<id>` steps, which
+        # keeps the cost negligible for the common case.
+        from dig.engine.pipeline_step_inline import inline_sub_pipelines
+        flat_doc = await inline_sub_pipelines(session, row.document or {})
+        p = Pipeline.model_validate(flat_doc)
         validate(p)
         param_errs = validate_params_against_manifests(p)
         if param_errs:
@@ -891,8 +1218,11 @@ async def compile_pipeline(
         raise HTTPException(400, str(e)) from e
     if target != "browser":
         raise HTTPException(400, f"unsupported target '{target}'")
+    view_mode = terminalViewMode or None
+    if view_mode is not None and view_mode not in {"matched", "unmatched_left", "unmatched_right"}:
+        raise HTTPException(400, f"invalid terminalViewMode '{view_mode}'")
     try:
-        result = compile_for_browser(p, terminal=terminal)
+        result = compile_for_browser(p, terminal=terminal, terminal_view_mode=view_mode)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     sql = result.sql
@@ -1017,6 +1347,336 @@ async def preview_pipeline(
         raise HTTPException(500, f"preview failed: {e}") from e
 
 
+@router.post("/{pipeline_id}/preview-step-rows")
+async def preview_step_rows(
+    pipeline_id: str,
+    terminal: str,
+    sample_rows: int = 20_000,
+    preview_limit: int = 500,
+    session: AsyncSession = Depends(get_session),
+):
+    """Run a Polars-engine step on sampled upstream data and return its
+    output **as JSON rows** (same shape as ``/preview``).
+
+    This is the transparent-fallback path for the editor: when a user
+    focuses a Polars-only step (e.g. ``anomaly_zscore``,
+    ``changepoint_detection``, ``rolling``), DuckDB-WASM can't run it,
+    so the editor calls this endpoint instead and pipes the result
+    into the same live grid. The user sees the post-step data in the
+    grid; an "via backend" badge tells them where it ran.
+
+    Cheaper than ``/preview`` because we run only the focused step,
+    not the whole DAG.
+    """
+    from dig.engine.executor import (
+        _terminal_polars_node, compile_to_sql, _materialize_sql_to_polars,
+        materialize_polars_ancestors,
+    )
+    from dig.engine.sampling import (
+        SamplingConfig, adapt_to_schema, wrap_with_sampling,
+    )
+    from dig.engine.step import PolarsContext
+    from dig.storage.files import data_dir as _data_dir
+
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    try:
+        # Inline-expand sub-pipelines so a polars terminal that happens
+        # to live inside a published step still resolves.
+        from dig.engine.pipeline_step_inline import inline_sub_pipelines
+        flat_doc = await inline_sub_pipelines(session, row.document or {})
+        p = Pipeline.model_validate(flat_doc)
+        validate(p)
+    except DagError as e:
+        raise HTTPException(400, str(e)) from e
+
+    # Pipeline-level sampling config. When set, the user's chosen
+    # method (head / tail / random / systematic) wraps the final SQL.
+    # Falling back to head(sample_rows) keeps the legacy behavior for
+    # docs that haven't picked a method yet — same shape as the
+    # browser's `wrapWithSampling` so backend + browser previews now
+    # agree on sampling semantics.
+    sampling_cfg = SamplingConfig.from_metadata((flat_doc.get("metadata") or {}).get("sampling"))
+    if sampling_cfg is None and sample_rows:
+        sampling_cfg = SamplingConfig(method="head", size=int(sample_rows))
+
+    # Adapt the sampling config to the focused terminal's output schema.
+    # Pipeline-level sampling is configured for the final output; when
+    # previewing an upstream intermediate (e.g. one of the join's input
+    # datasets) the configured column may not exist there yet. The
+    # adapter degrades to head(size) in that case so the preview
+    # doesn't 500 with "Referenced column not found in FROM clause".
+    if sampling_cfg is not None and sampling_cfg.method in (
+        "stratified", "per_group", "weighted", "time_bucket"
+    ):
+        try:
+            from dig.engine.dag import infer_schemas
+            schemas = infer_schemas(p)
+            terminal_schema = schemas.get(terminal)
+            sampling_cfg = adapt_to_schema(sampling_cfg, terminal_schema)
+        except Exception:
+            # Schema inference failure shouldn't break the preview —
+            # fall through with the user's original cfg and let the
+            # SQL layer surface the actual error.
+            pass
+
+    poly_node = _terminal_polars_node(p, terminal)
+    is_sql_terminal = poly_node is None
+    # Both flavors are supported: polars terminal → execute_polars;
+    # SQL terminal → compile_to_sql with materialized overrides for
+    # any polars ancestors. The dispatcher falls here whenever WASM
+    # compile fails because of a polars step ANYWHERE in the chain,
+    # so we have to handle both terminal types transparently.
+    if is_sql_terminal:
+        if not any(n.id == terminal for n in p.nodes) and not any(d.id == terminal for d in p.datasets):
+            raise HTTPException(404, f"node/dataset '{terminal}' not found")
+
+    step = steps().get(poly_node.step) if poly_node is not None else None
+
+    # Per-pipeline preview cache for any incidental side-effect
+    # artifacts the upstream materializer + this step write.
+    preview_dir = _data_dir() / "outputs" / "__preview" / pipeline_id
+
+    def _run() -> dict[str, Any]:
+        import duckdb
+        import polars as pl  # noqa: F401
+        import time
+
+        t0 = time.perf_counter()
+        con = duckdb.connect(database=":memory:")
+        try:
+            # Pre-materialize every Polars ancestor of the terminal so
+            # downstream steps see the right input rows. This is the
+            # SAME pattern the executor uses for full runs.
+            materialized = materialize_polars_ancestors(
+                con, p, terminal,
+                out_dir=preview_dir, sample_rows=sample_rows,
+            )
+            if is_sql_terminal:
+                # SQL terminal with polars ancestors → compile-then-execute.
+                # The `materialized` dict turns each polars-ancestor's
+                # parquet into a CTE alias the SQL compiler picks up.
+                sql = compile_to_sql(p, terminal=terminal, overrides=materialized)
+                # Apply the pipeline's sampling method (head / tail /
+                # random / systematic) to the compiled SQL — same path
+                # the browser uses via `wrapWithSampling`.
+                sql = wrap_with_sampling(sql, sampling_cfg)
+                if _requires_spatial(sql):
+                    _ensure_spatial(con)
+                preview_sql = f"SELECT * FROM ({sql}) AS __preview LIMIT {int(preview_limit)}"
+                count_sql = f"SELECT count(*) FROM ({sql}) AS __preview"
+                cur = con.execute(preview_sql)
+                cols = [{"name": d[0], "type": str(d[1])} for d in cur.description]
+                raw_rows = cur.fetchall()
+                row_count = int(con.execute(count_sql).fetchone()[0])
+
+                def _coerce(v: Any) -> Any:
+                    if v is None or isinstance(v, (str, int, float, bool)):
+                        return v
+                    return str(v)
+                rows_out = [
+                    {c["name"]: _coerce(v) for c, v in zip(cols, r)} for r in raw_rows
+                ]
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                return {
+                    "columns": cols,
+                    "rows": rows_out,
+                    "rowCount": row_count,
+                    "sampleRows": sample_rows,
+                    "elapsedMs": elapsed_ms,
+                }
+
+            # Polars terminal — original path.
+            assert poly_node is not None and step is not None
+            input_frames: dict[str, Any] = {}
+            for port, ref in poly_node.inputs.items():
+                up_sql = compile_to_sql(p, terminal=ref.ref, overrides=materialized)
+                # Same sampling treatment as the SQL-terminal branch so
+                # polars-step inputs are sampled the same way as their
+                # SQL-only siblings.
+                up_sql = wrap_with_sampling(up_sql, sampling_cfg)
+                if _requires_spatial(up_sql):
+                    _ensure_spatial(con)
+                input_frames[port] = _materialize_sql_to_polars(con, up_sql)
+        finally:
+            con.close()
+        # Polars-terminal continuation (the SQL branch above already
+        # returned). We need to re-open the connection scope for
+        # execute_polars; but since execute_polars uses Polars (not
+        # DuckDB) directly, no con needed here.
+        assert poly_node is not None and step is not None
+        ctx = PolarsContext(
+            run_id="__preview",
+            out_dir=preview_dir,
+            node_id=poly_node.id,
+        )
+        result = step.execute_polars(input_frames, poly_node.params, ctx)
+        df = result.output
+
+        # Truncate to preview_limit so the wire payload stays small.
+        # Even if the step produces millions of rows, we only ship the
+        # first preview_limit to the grid.
+        head = df.head(preview_limit) if preview_limit and df.height > preview_limit else df
+        cols = [{"name": n, "type": str(head.schema[n])} for n in head.columns]
+
+        # Coerce non-JSON-native cell values to strings (datetimes,
+        # decimals, durations, structs, etc.). Same convention as the
+        # backend /preview path.
+        rows_out: list[dict[str, Any]] = []
+        for r in head.iter_rows(named=True):
+            out: dict[str, Any] = {}
+            for k, v in r.items():
+                if v is None or isinstance(v, (str, int, float, bool)):
+                    out[k] = v
+                else:
+                    out[k] = str(v)
+            rows_out.append(out)
+
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        return {
+            "columns": cols,
+            "rows": rows_out,
+            "rowCount": df.height,
+            "sampleRows": sample_rows,
+            "elapsedMs": elapsed_ms,
+        }
+
+    try:
+        return await asyncio.to_thread(_run)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log.exception("preview-step-rows %s/%s failed", pipeline_id, terminal)
+        raise HTTPException(400, f"{e}") from e
+
+
+@router.post("/{pipeline_id}/preview-step")
+async def preview_step(
+    pipeline_id: str,
+    terminal: str,
+    sample_rows: int = 20_000,
+    session: AsyncSession = Depends(get_session),
+):
+    """Render a single Polars-engine step on sampled upstream data and
+    return its first artifact (PNG / SVG for ``export_to_image``).
+
+    This is the path the editor uses for the live chart preview while the
+    user is tweaking chart params. It bypasses the run record (no row in
+    the runs table, no history snapshot) — the artifact is written to a
+    per-pipeline preview cache under ``data/outputs/__preview/<pid>/`` and
+    overwritten in place each call. Sampled to keep render time well under
+    a second; the full-fidelity image is only produced by ▶ Run.
+
+    Errors:
+      400 — terminal isn't a Polars step (no artifact to produce), or the
+            step raised during render. Error body is the actual exception
+            so humanizeSqlError can translate it.
+      404 — pipeline or terminal node missing.
+    """
+    from fastapi.responses import FileResponse as _FileResponse
+
+    from dig.engine.executor import (
+        _terminal_polars_node, compile_to_sql, _materialize_sql_to_polars,
+        materialize_polars_ancestors,
+    )
+    from dig.engine.step import PolarsContext
+    from dig.storage.files import data_dir as _data_dir
+
+    row = await session.get(PipelineRow, pipeline_id)
+    if row is None:
+        raise HTTPException(404, "pipeline not found")
+    try:
+        # Inline-expand sub-pipelines for parity with the executor + the
+        # rows-preview endpoint.
+        from dig.engine.pipeline_step_inline import inline_sub_pipelines
+        flat_doc = await inline_sub_pipelines(session, row.document or {})
+        p = Pipeline.model_validate(flat_doc)
+        validate(p)
+    except DagError as e:
+        raise HTTPException(400, str(e)) from e
+
+    poly_node = _terminal_polars_node(p, terminal)
+    if poly_node is None:
+        # Either the node id doesn't exist or it's a SQL step (which has no
+        # artifact to render — the live grid already covers SQL preview).
+        raise HTTPException(
+            400,
+            f"step '{terminal}' is not a Polars-engine step (no artifact to preview)",
+        )
+
+    step = steps().get(poly_node.step)
+
+    # Per-pipeline preview cache. We bucket by pipeline so concurrent edits
+    # to two different pipelines don't stomp each other's preview file.
+    preview_dir = _data_dir() / "outputs" / "__preview" / pipeline_id
+    preview_dir.mkdir(parents=True, exist_ok=True)
+
+    def _render() -> Path:
+        import polars as pl  # noqa: F401  (pulled in by Step.execute_polars)
+        import duckdb
+
+        con = duckdb.connect(database=":memory:")
+        try:
+            # Pre-materialize every Polars ancestor of the focused step.
+            # This makes chains like rolling → export_to_image render
+            # correctly: the chart sees the post-rolling rows, not the
+            # raw passthrough.
+            materialized = materialize_polars_ancestors(
+                con, p, terminal,
+                out_dir=preview_dir, sample_rows=sample_rows,
+            )
+            input_frames: dict[str, Any] = {}
+            for port, ref in poly_node.inputs.items():
+                up_sql = compile_to_sql(p, terminal=ref.ref, overrides=materialized)
+                if sample_rows:
+                    up_sql = f"{up_sql} LIMIT {int(sample_rows)}"
+                if _requires_spatial(up_sql):
+                    _ensure_spatial(con)
+                input_frames[port] = _materialize_sql_to_polars(con, up_sql)
+        finally:
+            con.close()
+
+        ctx = PolarsContext(
+            run_id="__preview",
+            out_dir=preview_dir,
+            node_id=poly_node.id,
+        )
+        result = step.execute_polars(input_frames, poly_node.params, ctx)
+        # Find the first file/image artifact. ``export_to_image`` always
+        # produces one with kind=="image"; other Polars steps may produce
+        # files (kind=="file") that we can serve the same way.
+        for art in result.artifacts:
+            kind = art.get("kind")
+            path = art.get("path")
+            if kind in ("image", "file") and path:
+                return Path(path)
+        raise ValueError(
+            f"step '{poly_node.step}' produced no file/image artifact to preview",
+        )
+
+    try:
+        artifact_path = await asyncio.to_thread(_render)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log.exception("preview-step %s/%s failed", pipeline_id, terminal)
+        raise HTTPException(400, f"{e}") from e
+
+    if not artifact_path.is_file():
+        raise HTTPException(500, "render reported success but artifact is missing")
+
+    # no-cache so live param edits show their effect immediately. Browsers
+    # caching here would lock the user into seeing a stale preview after they
+    # change `kind` or `x` — surprising and hard to debug.
+    media_type = "image/svg+xml" if artifact_path.suffix.lower() == ".svg" else "image/png"
+    return _FileResponse(
+        artifact_path,
+        media_type=media_type,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/{pipeline_id}/python")
 async def export_pipeline_python(
     pipeline_id: str, session: AsyncSession = Depends(get_session)
@@ -1067,18 +1727,35 @@ async def start_run(
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
+    # Defense-in-depth cycle check: rejects sub-pipeline cycles even
+    # if a doc was somehow saved through a back door (raw DB write,
+    # restored from history, future migration). The save-time check
+    # already runs but this is the last gate before the worker takes
+    # ownership of the run.
+    from dig.engine.pipeline_step import check_no_cycle as _check_no_cycle
+    from dig.engine.pipeline_step_inline import inline_sub_pipelines
     try:
-        p = Pipeline.model_validate(row.document)
+        await _check_no_cycle(session, pipeline_id, row.document or {})
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    try:
+        # Inline-expand sub-pipelines so the executor sees a flat DAG.
+        flat_doc = await inline_sub_pipelines(session, row.document or {})
+        p = Pipeline.model_validate(flat_doc)
         validate(p)
         param_errs = validate_params_against_manifests(p)
         if param_errs:
             raise HTTPException(400, "invalid params: " + "; ".join(param_errs))
     except DagError as e:
         raise HTTPException(400, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     # Submit first so we have the run_id to stamp on the snapshot.
     # The window between submit() and snapshot+commit is microseconds and
     # entirely on the API side — the worker doesn't depend on the snapshot
     # row existing yet (only on the runs row, which submit() creates).
+    # Submit the FLATTENED pipeline so the worker doesn't need to know
+    # about sub-pipeline composition.
     run_id = await jobs.submit(p, sample_rows=req.sampleRows)
     # Snapshot at run-start so we always have a "this is what ran" record,
     # even if the editor mutates the pipeline mid-run. The `run_id` column
@@ -1502,14 +2179,65 @@ async def ws_pipeline(ws: WebSocket, pipeline_id: str) -> None:
 steps_router = APIRouter(prefix="/steps", tags=["steps"])
 
 
+def _enrich_manifest(step: Any) -> dict[str, Any]:
+    """Return the step's manifest with a `source` field appended.
+
+    The registry tags pack-loaded Step objects with `source = 'pack:<id>'`
+    (see dig.engine.registry._load_pack_steps). Built-ins have no
+    `source` attribute, so they get `'builtin'` here. The frontend uses
+    this to render a provenance badge — small chip in the picker that
+    tells the user 'this step came from pack X', so installing a pack
+    has visible affordances in the editor.
+    """
+    m = dict(step.manifest)
+    m["source"] = getattr(step, "source", None) or "builtin"
+    return m
+
+
 @steps_router.get("")
-async def list_steps() -> list[dict[str, Any]]:
-    return [s.manifest for s in steps().all()]
+async def list_steps(session: AsyncSession = Depends(get_session)) -> list[dict[str, Any]]:
+    """Return the union of disk-loaded steps + DB-backed pipeline-steps.
+
+    Pipeline-steps are pipelines whose document has
+    `metadata.publishedAsStep` set. They appear in the picker like any
+    other step, with a `source: "pipeline:<id>"` tag so the UI renders
+    a 🪆 composite badge.
+    """
+    out = [_enrich_manifest(s) for s in steps().all()]
+    from dig.engine.pipeline_step import list_published_pipelines
+    out.extend(await list_published_pipelines(session))
+    return out
 
 
-@steps_router.get("/{step_id}")
-async def get_step(step_id: str) -> dict[str, Any]:
+@steps_router.get("/{step_id:path}")
+async def get_step(
+    step_id: str, session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Get one step manifest. Supports `pipeline:<id>` for sub-pipeline steps.
+
+    Path-converter is `:path` so the colon in `pipeline:<id>` doesn't
+    trigger an URL-decode mismatch.
+    """
+    from dig.engine.pipeline_step import (
+        is_pipeline_step,
+        source_pipeline_id,
+        synthesize_manifest,
+    )
+    if is_pipeline_step(step_id):
+        pid = source_pipeline_id(step_id)
+        row = await session.get(PipelineRow, pid)
+        if row is None:
+            raise HTTPException(404, f"source pipeline {pid!r} not found")
+        m = synthesize_manifest(pid, row.document or {}, row.etag or 1)
+        if m is None:
+            raise HTTPException(
+                404,
+                f"pipeline {pid!r} is not published as a step "
+                "(set metadata.publishedAsStep on its document).",
+            )
+        m["source"] = f"pipeline:{pid}"
+        return m
     try:
-        return steps().get(step_id).manifest
+        return _enrich_manifest(steps().get(step_id))
     except KeyError as e:
         raise HTTPException(404, str(e)) from e

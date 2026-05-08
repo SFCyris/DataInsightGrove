@@ -1,6 +1,6 @@
 {
   "name": "datainsightgrove-frontend",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "DataInsightGrove™ — self-hosted, plugin-first data preparation. Frontend (Next.js 16, React 19, AG Grid, React Flow, DuckDB-WASM).",
   "homepage": "https://github.com/SFCyris/DataInsightGrove",

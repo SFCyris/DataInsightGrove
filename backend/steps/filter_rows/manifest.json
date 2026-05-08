@@ -19,5 +19,6 @@
     }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "preserves" },
-  "tags": ["filter", "where"]
+  "tags": ["filter", "where"],
+  "aliases": ["where", "predicate", "condition", "subset by"]
 }

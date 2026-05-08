@@ -15,8 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from dig.engine.dag import topo_sort, validate
-from dig.engine.pipeline import Pipeline
+from dig.engine.dag import infer_schemas, topo_sort, validate
+from dig.engine.pipeline import Pipeline, effective_connector
 from dig.engine.registry import steps
 from dig.engine.step import quote_ident, quote_str
 
@@ -35,7 +35,15 @@ class CompileResult:
     terminal: str | None = None  # alias of the terminal CTE
 
 
-def compile_for_browser(p: Pipeline, *, terminal: str | None = None) -> CompileResult:
+_VALID_JOIN_VIEW_MODES = {"matched", "unmatched_left", "unmatched_right"}
+
+
+def compile_for_browser(
+    p: Pipeline,
+    *,
+    terminal: str | None = None,
+    terminal_view_mode: str | None = None,
+) -> CompileResult:
     """Compile pipeline to SQL + binding info for DuckDB-WASM.
 
     Currently every dataset must already exist as a Phase-1 cached parquet — i.e.
@@ -43,15 +51,66 @@ def compile_for_browser(p: Pipeline, *, terminal: str | None = None) -> CompileR
     file. (Pipelines built in the canvas always use this form.) Pipelines that
     reference raw CSVs by path can run on the backend but not in the browser
     until we add WASM-side file uploads.
+
+    When `terminal` is given, only nodes that feed the terminal (its
+    transitive ancestors plus itself) are compiled. Sibling branches —
+    e.g. a separate chart step in the same pipeline — are skipped. This
+    matters when a pipeline mixes browser-runnable steps with non-SQL
+    steps (charts, forecasts): the error reported here should reference
+    the step the user is *actually* trying to preview, not whichever
+    non-SQL step happens to come first in topological order.
     """
     validate(p)
     sorted_nodes = topo_sort(p)
+    if terminal is not None:
+        # Walk back from `terminal` collecting ancestors; restrict the
+        # compile loop to that set so unrelated non-SQL steps in other
+        # branches don't trigger a misleading error.
+        nodes_by_id = {n.id: n for n in p.nodes}
+        if terminal in nodes_by_id:
+            keep: set[str] = set()
+            queue = [terminal]
+            while queue:
+                nid = queue.pop()
+                if nid in keep:
+                    continue
+                keep.add(nid)
+                node = nodes_by_id.get(nid)
+                if node is None:
+                    continue
+                for ref in node.inputs.values():
+                    if ref.ref in nodes_by_id:
+                        queue.append(ref.ref)
+            sorted_nodes = [n for n in sorted_nodes if n.id in keep]
+        elif any(d.id == terminal for d in p.datasets):
+            # Terminal is a registered dataset alias (a root). No node
+            # is an ancestor of a dataset — drop them all so e.g. an
+            # unconfigured downstream join doesn't fail the dataset's
+            # own preview.
+            sorted_nodes = []
+
+    # Infer schemas across the pipeline so SQL builders that benefit
+    # from explicit per-input schemas (notably the join step's
+    # collision-resolution + outputColumns logic) get them. We pass
+    # the result through `input_schemas` to each step's `to_sql`.
+    # If schema inference throws (a partially-configured sibling
+    # branch, say), we degrade to no-schemas and steps fall back to
+    # their schema-less SQL — same behaviour as before this addition.
+    try:
+        all_schemas = infer_schemas(p)
+    except Exception:
+        all_schemas = {}
 
     files: list[FileBinding] = []
     ctes: list[str] = []
 
     for d in p.datasets:
-        if d.connector == "parquet":
+        # Trust the URI extension over the persisted connector — the bytes
+        # on disk are the source of truth. Fixes pipelines whose docs were
+        # saved with connector='csv' before the dataset was re-cached as
+        # parquet (or vice-versa).
+        conn = effective_connector(d)
+        if conn == "parquet":
             # Use the dataset id as a stable virtual filename.
             vname = f"{d.id}.parquet"
             # If the URI looks like a backend cached path, derive a download URL.
@@ -60,7 +119,7 @@ def compile_for_browser(p: Pipeline, *, terminal: str | None = None) -> CompileR
             ctes.append(
                 f"{quote_ident(d.id)} AS (SELECT * FROM read_parquet({quote_str(vname)}))"
             )
-        elif d.connector == "csv":
+        elif conn == "csv":
             vname = f"{d.id}.csv"
             url = _derive_download_url(d.uri, d.id)
             files.append(FileBinding(name=vname, url=url, format="csv"))
@@ -75,7 +134,7 @@ def compile_for_browser(p: Pipeline, *, terminal: str | None = None) -> CompileR
             )
         else:
             raise ValueError(
-                f"compile_for_browser: connector '{d.connector}' not browser-runnable yet"
+                f"compile_for_browser: connector '{conn}' not browser-runnable yet"
             )
 
     for node in sorted_nodes:
@@ -87,7 +146,32 @@ def compile_for_browser(p: Pipeline, *, terminal: str | None = None) -> CompileR
         inputs: dict[str, str] = {
             port: quote_ident(ref.ref) for port, ref in node.inputs.items()
         }
-        body = step.to_sql(node.params, inputs)
+        node_input_schemas: dict[str, dict[str, str]] = {
+            port: all_schemas.get(ref.ref, {}) for port, ref in node.inputs.items()
+        }
+        # When the user has flipped the focused-join's view to
+        # `unmatched_left` / `unmatched_right`, override the kind for
+        # *only* the terminal join node. The semantics are identical to
+        # an anti-join, so we re-use that path — projection collapses
+        # to one side's columns, which is what the diagnostic surface
+        # wants ("show me the left rows that didn't match").
+        params = node.params
+        if (
+            terminal is not None
+            and node.id == terminal
+            and node.step == "join"
+            and terminal_view_mode in {"unmatched_left", "unmatched_right"}
+        ):
+            params = {
+                **params,
+                "kind": "anti_left" if terminal_view_mode == "unmatched_left" else "anti_right",
+            }
+        # Keep tolerant of older steps that don't take input_schemas —
+        # try with the kwarg first; on TypeError fall back to without.
+        try:
+            body = step.to_sql(params, inputs, input_schemas=node_input_schemas)
+        except TypeError:
+            body = step.to_sql(params, inputs)
         ctes.append(f"{quote_ident(node.id)} AS ({body})")
 
     last_alias = terminal or (sorted_nodes[-1].id if sorted_nodes else None)

@@ -202,6 +202,36 @@ class Template(Base):
     )
 
 
+class StepPack(Base):
+    """Installed step-pack registry.
+
+    Tracks which packs are present on disk under `<repo>/plugins/packs/<id>/`,
+    their installed version, integrity checksum, and the cached pack.json
+    manifest. Disk state is the source of truth for *content*; this table
+    is the source of truth for *enabled-ness* and the install metadata.
+
+    The `enabled` flag lets the operator soft-disable a pack without
+    physically removing it — useful when troubleshooting "is this pack
+    causing my preview error?". A disabled pack's directory remains on
+    disk but its steps are not registered with the StepRegistry.
+    """
+
+    __tablename__ = "step_packs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    version: Mapped[str] = mapped_column(String(32))
+    checksum: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cached at install time so the Settings list renders without a disk
+    # read per row. Refreshed when the pack is updated.
+    manifest: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow,
+    )
+
+
 class GlobalWebhook(Base):
     """Webhooks that fire for *every* run (not just one pipeline's runs).
 

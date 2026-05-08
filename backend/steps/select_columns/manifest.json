@@ -18,5 +18,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["select", "project"]
+  "tags": ["select", "project"],
+  "aliases": ["keep columns", "project", "pick columns"]
 }

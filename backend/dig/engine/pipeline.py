@@ -29,11 +29,60 @@ class DatasetSpec(BaseModel):
     label: str | None = None
 
 
+def effective_connector(spec: "DatasetSpec") -> str:
+    """Return the connector to actually use when reading this dataset.
+
+    Pipeline docs persist `connector` as a string (csv / parquet / …), but
+    the bytes on disk are the source of truth. When a dataset got
+    re-cached as parquet after originally being CSV (or vice versa), the
+    persisted spec can lag and DuckDB then reads parquet bytes through
+    `read_csv_auto`, producing a confusing "Error when sniffing file"
+    error from a CTE the user didn't write.
+
+    This helper trusts the URI extension over the persisted connector:
+      - `.parquet` → "parquet"
+      - `.csv`     → "csv"
+      - anything else → fall back to `spec.connector` (JDBC, custom
+        connectors, etc. all have non-file URIs and are unaffected).
+
+    Used by both `compile.compile_for_browser` and `executor._dataset_cte`
+    so browser and backend executions stay in lockstep — Layer 4 of the
+    AI-features defense ("Backend covers all paths" / dispatcher routes
+    transparently) applies to dataset I/O too.
+    """
+    uri = (spec.uri or "").lower()
+    # Strip query strings and fragments for extension detection (e.g.
+    # `?download=1`). urlparse-grade isn't needed — these are local paths
+    # 99% of the time.
+    bare = uri.split("?", 1)[0].split("#", 1)[0]
+    if bare.endswith(".parquet"):
+        return "parquet"
+    if bare.endswith(".csv"):
+        return "csv"
+    if bare.endswith((".json", ".jsonl", ".ndjson")):
+        return "json"
+    return spec.connector
+
+
+class ExposedParam(BaseModel):
+    """One row of node.ui.exposedParams — declares a node-level param
+    as customisable from outside when the pipeline is published as a
+    reusable step."""
+    model_config = ConfigDict(extra="forbid")
+    alias: str
+    help: str | None = None
+
+
 class NodeUI(BaseModel):
     model_config = ConfigDict(extra="forbid")
     x: float | None = None
     y: float | None = None
     label: str | None = None
+    note: str | None = None
+    # Map of param-key → exposure metadata. When the pipeline is
+    # published as a step (metadata.publishedAsStep), each entry here
+    # surfaces as a customisable param on the synthesised manifest.
+    exposedParams: dict[str, ExposedParam] | None = None
 
 
 class Node(BaseModel):

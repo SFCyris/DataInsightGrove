@@ -7,7 +7,7 @@
 [![Version: 0.6.0 beta](https://img.shields.io/badge/version-0.5.0_beta-yellow)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 
-> 🧪 **Beta software (v0.5.0).** DIG works end-to-end and the architecture is stable, but the API surface, plugin contracts, and on-disk format may still shift before v1.0.0. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🧪 **Beta software.** DIG works end-to-end and the architecture is stable, but the API surface, plugin contracts, and on-disk format may still shift before the 1.0 release. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
@@ -40,8 +40,10 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
   - *Text*: csv (with delimiter sniffing for `.dat` / `.data` / `.tab` / `.psv`) · excel (multi-sheet + multi-data-island detection) · json · parquet · feather.
   - *Scientific binary* (under the optional `[science]` extra): NumPy (`.npy` / `.npz`) · HDF5 · MATLAB · NetCDF · FITS.
   - *Network + database*: https · rest_api (auth + JSONPath + pagination) · sqlite · postgres · mysql · jdbc.
-- **AI assistant** (optional, bring-your-own provider — local Ollama, OpenAI-compatible, or Anthropic): **Explain** the pipeline · **Suggest** the next step from a plain-English goal · **Fix** SQL expressions in filter / derive · **Generate** a connector from a URL (with static-lint safety check before install).
-- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. **Transparent backend fallback** when DuckDB-WASM can't run the SQL (e.g. spatial GEOMETRY) — preview routes to backend, status badge marks it.
+- **AI assistant** (optional, bring-your-own provider — local Ollama, OpenAI-compatible, or Anthropic): **Explain** the pipeline · **Suggest the next step** from a plain-English goal · **Suggest multi-step transform routes** for a focused dataset · **Suggest visualizations** with pre-populated params · **Explain a dataset** (domain inference + per-column meanings) · **Fix** SQL expressions in filter / derive · **Generate** a connector or step from a description (with static-lint safety check before install). **Optional keep-alive ping** keeps local Ollama from unloading idle models. See [`docs/AI_FEATURES.md`](docs/AI_FEATURES.md).
+- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. Per-pipeline **🧪 sampling** (head / tail / random / systematic) controls how the live preview draws rows — see [`docs/SAMPLING.md`](docs/SAMPLING.md). **Transparent backend fallback** when DuckDB-WASM can't run the SQL (e.g. spatial GEOMETRY) — preview routes to backend, status badge marks it.
+- **💾 Save / 📋 Save As** — explicit labelled checkpoints (kept up to 50) on top of silent autosaves (last 5 only). The history view shows the saves you intended, not every keystroke. ⌘S / ⌘⇧S keyboard shortcuts. See [`docs/SAVE_AND_VERSIONS.md`](docs/SAVE_AND_VERSIONS.md).
+- **🪆 Sub-pipelines** — any pipeline can be **published as a reusable step** that other pipelines install from the regular picker. Pinned-by-default versioning (consumers stay on a known version until they Upgrade), per-param exposure for customisation, automatic cycle detection at save and run-start. See [`docs/SUB_PIPELINES.md`](docs/SUB_PIPELINES.md).
 - **Rule-based hints** in a side panel — deterministic data-preparation suggestions surfaced from the column profile (not ML predictions, not selection-driven, not a ranked card stack). One-click composites for common patterns (e.g. *(LATITUDE, LONGITUDE) → pack & cast to geographic*).
 - **Per-row lineage** — opt-in tracing so you can click 🔍 on any output row and jump back to the input row(s) it came from.
 - **Schedules** — cron-driven recurring runs from the Schedules page (or `dig-schedule.sh` from the CLI).
@@ -59,6 +61,12 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 ```
 
 That's it. The guided installer detects what's already on your machine (Homebrew, Python, pnpm, optional JDBC tooling, project deps), prints what it's about to do, asks once before changing anything, then finishes with DIG running. Re-run any time to verify or repair the environment — already-installed tools are reported as ✓ and skipped.
+
+**Supported platforms.** macOS (Apple Silicon + Intel via Homebrew). Linux:
+Debian 12+, Ubuntu 22.04+ (the bootstrap auto-enables the deadsnakes PPA on
+22.04 since the default `python3` is 3.10), Fedora 39+, RHEL / Rocky / Alma
+9+, RHEL/CentOS 7 (yum), Arch / Manjaro (pacman), openSUSE (zypper).
+Windows users should run the installer inside WSL2 with Ubuntu 24.04+.
 
 Open [http://localhost:3000](http://localhost:3000) and click **🌱 Try with sample data**.
 
@@ -127,14 +135,19 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 
 - 🚀 [Getting started](docs/getting_started.md) — install → first pipeline in 10 minutes
 - 🎓 [First-steps tutorials](docs/tutorials.md) — three short walkthroughs (image / CSV / Parquet output)
+- ⏳ [Time-series killer demos](docs/tutorials/11-time-series-killer-demos.md) — 8 worked examples (retail forecast · IoT anomaly · finance · healthcare × 3 · housing × 2)
 - 📚 [Step library](docs/STEPS.md) — every step DIG ships with, auto-generated from manifests
 - 🏷 [Data types](docs/DATA_TYPES.md) — the 29 base + meta-types (including currency-as-DECIMAL, vector embeddings, JSON, and polar/Cartesian/geographic coordinates) with constraints, ranges, storage, and use cases
+- 💾 [Save and version history](docs/SAVE_AND_VERSIONS.md) — Save vs Save As vs autosave; labelled checkpoints
+- 🪆 [Sub-pipelines](docs/SUB_PIPELINES.md) — publish a pipeline as a reusable step + pinning + cycle detection
+- ✨ [AI features](docs/AI_FEATURES.md) — five LLM-driven editor surfaces + provider configuration
+- 🧪 [Sampling](docs/SAMPLING.md) — per-pipeline preview sampling (head / tail / random / systematic)
 - 🧪 [E2E validation](docs/E2E_VALIDATION.md) — every step exercised against real data
 - ♻️ [Lifecycle reference](docs/lifecycle.md) — start/stop/status/config + Mac app + Linux desktop
 - 🏗 [Architecture](docs/ARCHITECTURE.md) — what's where and why
 - 🛠 [Authoring guide (deep, with diagrams)](docs/AUTHORING_GUIDE.md) — build steps + connectors from scratch
 - 🧩 [Plugin authoring (short reference)](docs/PLUGIN_AUTHORING.md) — drop a folder, get a step
-- 📝 [Pipeline format](docs/PIPELINE_FORMAT.md) — the portable JSON DAG
+- 📝 [Pipeline format](docs/PIPELINE_FORMAT.md) — the portable JSON DAG (incl. `metadata.publishedAsStep` + `node.ui.exposedParams`)
 - 🔌 [JDBC setup](docs/JDBC_SETUP.md) — Java + JAR install for the JDBC connector and `export_to_jdbc` step
 - 🎨 [UI guidelines](docs/UI_GUIDELINES.md) — emojis as iconography + motion principles
 - 🔤 [Glossary](docs/GLOSSARY.md) — what DIG means by Dataset, Pipeline, Step, Profile, Run, Hint, …

@@ -24,5 +24,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["array", "length", "count", "derive"]
+  "tags": ["array", "length", "count", "derive"],
+  "requires": [{"kind": ["array", "vector", "json"]}],
+  "aliases": ["size", "count items", "array size"]
 }

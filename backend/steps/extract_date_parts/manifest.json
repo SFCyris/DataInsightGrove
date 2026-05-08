@@ -18,5 +18,7 @@
     "prefix": { "type": "string", "label": "Output column prefix", "default": "" }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["date", "time", "extract"]
+  "tags": ["date", "time", "extract"],
+  "requires": [{"kind": "temporal"}],
+  "aliases": ["year", "month", "day", "week", "dayofweek", "hour", "minute", "weekday"]
 }

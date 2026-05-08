@@ -19,9 +19,12 @@ import json
 from typing import Any
 
 from dig.ai.client import AiConfig, AiError, chat
+from dig.ai.parsing import parse_json_lenient
+from dig.ai.prompts import PRINCIPLES_BLOCK, TOKEN_BUDGETS
+from dig.ai.repair import strip_unknown_columns, validate_and_repair_step
 
 
-_SYSTEM = """\
+_SYSTEM = f"""\
 You suggest the next step(s) to add to a DataInsightGrove (DIG) data
 pipeline. The user has built a pipeline up to a focused node and stated
 what they want to do next. You propose 1 to 3 concrete next steps from
@@ -39,18 +42,20 @@ Rules:
      If you'd need to ask the user for more info, say so in the `why`
      field instead of guessing.
 
+{PRINCIPLES_BLOCK}
+
 Output JSON only — no Markdown, no code fences, no prose:
 
-{
+{{
   "suggestions": [
-    {
+    {{
       "step_id": "<id from the catalog>",
-      "params": { "<param>": <value>, ... },
+      "params": {{ "<param>": <value>, ... }},
       "why": "<one short sentence explaining why this step matches the goal>",
       "confidence": "high" | "medium" | "low"
-    }
+    }}
   ]
-}
+}}
 
 Empty `suggestions` array is valid — return it when the goal is unclear
 or no catalog step fits.
@@ -115,44 +120,66 @@ async def suggest_next_step(
         "Return the JSON suggestions object now."
     )
 
-    resp = await chat(
-        cfg,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": user_msg},
-        ],
-        response_format="json_object",
-        temperature=0.2,
-        max_tokens=1024,
-    )
+    # Two-phase chat — same fallback as the other AI features so older
+    # local models that emit empty content under json_object can still
+    # produce something parseable on the second try.
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": user_msg},
+    ]
+    last_err: AiError | None = None
+    resp = None
+    for use_json_format in (True, False):
+        try:
+            resp = await chat(
+                cfg,
+                messages=messages,
+                response_format="json_object" if use_json_format else None,
+                temperature=0.2,
+                max_tokens=TOKEN_BUDGETS["suggest_next_step"],
+            )
+            break
+        except AiError as e:
+            last_err = e
+            if "empty message" not in str(e).lower():
+                raise
+    if resp is None:
+        return {
+            "suggestions": [],
+            "model": cfg.model,
+            "reason": str(last_err) if last_err else "AI returned no content",
+        }
 
-    text = resp.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
-
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise AiError(f"AI returned non-JSON: {text[:300]}") from e
+    parsed = parse_json_lenient(resp.text)
+    if parsed is None:
+        raise AiError(f"AI returned non-JSON: {resp.text[:300]}")
 
     suggestions = parsed.get("suggestions")
     if not isinstance(suggestions, list):
-        raise AiError(f"AI response missing 'suggestions' list: {text[:300]}")
+        raise AiError(f"AI response missing 'suggestions' list: {resp.text[:300]}")
 
-    # Validate each suggestion's step_id exists in the catalog.
-    valid_ids = {m["id"] for m in step_catalog if "id" in m}
+    # Validate + repair each suggestion. step_id must exist in the
+    # catalog AND the step's required params must be fillable from the
+    # focused-node schema; suggestions that fail either gate are dropped.
+    manifests_by_id = {m["id"]: m for m in step_catalog if "id" in m}
     cleaned: list[dict[str, Any]] = []
     for s in suggestions:
         if not isinstance(s, dict):
             continue
         sid = s.get("step_id")
-        if sid not in valid_ids:
+        if sid not in manifests_by_id:
+            continue
+        manifest = manifests_by_id[sid]
+        params = s.get("params") if isinstance(s.get("params"), dict) else {}
+        clean_params = strip_unknown_columns(params, focused_schema)
+        repaired = validate_and_repair_step(
+            sid, clean_params, manifest, focused_schema,
+        )
+        if repaired is None:
             continue
         cleaned.append({
             "step_id": str(sid),
-            "params": s.get("params") if isinstance(s.get("params"), dict) else {},
+            "params": repaired,
             "why": str(s.get("why", "")),
             "confidence": str(s.get("confidence", "medium")),
         })

@@ -30,5 +30,6 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
-  "tags": ["webhook", "trigger", "notify", "side-effect", "integration"]
+  "tags": ["webhook", "trigger", "notify", "side-effect", "integration"],
+  "aliases": ["notify", "http callback", "post webhook"]
 }

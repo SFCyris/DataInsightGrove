@@ -23,5 +23,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["spatial", "geographic", "distance", "haversine", "derive"]
+  "tags": ["spatial", "geographic", "distance", "haversine", "derive"],
+  "requires": [{"kind": ["spatial", "numeric"], "min": 2}],
+  "aliases": ["great circle", "haversine", "distance"]
 }

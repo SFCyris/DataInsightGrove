@@ -40,22 +40,33 @@ class VectorSimilarityStep(Step):
         # the dimension at SQL-compile time. The list_* path is slightly
         # slower for very large vectors but works universally.
         #
+        # Both inputs are wrapped in CAST(… AS DOUBLE[]) so the step
+        # works regardless of how the upstream column is typed:
+        #   • DOUBLE[]      → identity cast (free)
+        #   • LIST<numeric> → element coercion to DOUBLE[]
+        #   • VARCHAR with JSON-array text (e.g. "[0.1, 0.2]") →
+        #     DuckDB parses the literal into a DOUBLE[] list
+        # The CSV ingestion path leaves embedding columns as VARCHAR,
+        # so this cast is what makes the bundled embeddings-demo
+        # template work without an explicit upstream type-cast step.
+        #
         # Manhattan (L1) doesn't have a native single-call form so we
         # inline it as SUM(ABS(a[i] - b[i])) via list_sum + list_transform.
+        l_cast = f"CAST({left} AS DOUBLE[])"
+        r_cast = f"CAST({right} AS DOUBLE[])"
         if metric == "cosine":
-            expr = f"list_cosine_similarity({left}, {right})"
+            expr = f"list_cosine_similarity({l_cast}, {r_cast})"
         elif metric == "dot":
-            expr = f"list_inner_product({left}, {right})"
+            expr = f"list_inner_product({l_cast}, {r_cast})"
         elif metric == "euclidean":
-            expr = f"list_distance({left}, {right})"
+            expr = f"list_distance({l_cast}, {r_cast})"
         else:  # manhattan
             # list_zip([a, b]) → [[a1, b1], [a2, b2], ...]; list_sum of the
             # ABS differences. Pre-condition: both lists must be the same
-            # length, else DuckDB raises. Cast to DOUBLE[] for arithmetic
-            # safety on DECIMAL-typed inputs.
+            # length, else DuckDB raises.
             expr = (
                 f"list_sum(list_transform("
-                f"  list_zip(CAST({left} AS DOUBLE[]), CAST({right} AS DOUBLE[])),"
+                f"  list_zip({l_cast}, {r_cast}),"
                 f"  pair -> ABS(pair[1] - pair[2])"
                 f"))"
             )

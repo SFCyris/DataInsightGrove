@@ -17,5 +17,6 @@
     }
   },
   "preview": { "rowImpact": "may_grow", "schemaImpact": "preserves" },
-  "tags": ["union", "concat"]
+  "tags": ["union", "concat"],
+  "aliases": ["append", "concat", "stack", "concatenate"]
 }

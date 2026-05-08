@@ -4,18 +4,57 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type StepManifest } from "@/lib/api/client";
+import { evaluateRequirements, unmetTooltip } from "@/lib/step-requirements";
+import { rankSteps } from "@/lib/step-search";
+import { AiRibbon } from "./ai-ribbon";
 
+// 9-outcome taxonomy. Render order is fixed below so the picker has a
+// predictable visual hierarchy regardless of which categories happen
+// to have matches in a given query. `analyze` and `validate` are new
+// peers (not renames) — see docs/UI_GUIDELINES.md.
 const CATEGORY_EMOJI: Record<string, string> = {
-  ingest: "📥", shape: "✂️", clean: "🧹", derive: "➕",
-  combine: "🔗", aggregate: "📊", model: "🧠", output: "📤", custom: "🧩",
+  ingest:    "📥",
+  shape:     "🧱",
+  clean:     "🧹",
+  derive:    "🧮",
+  aggregate: "📊",
+  combine:   "🔗",
+  analyze:   "📐",
+  model:     "🔮",
+  validate:  "🧪",
+  visualize: "📈",
+  output:    "📤",
+  custom:    "🧩",
 };
+
+const CATEGORY_ORDER: string[] = [
+  "clean", "shape", "derive", "aggregate", "combine",
+  "analyze", "model", "validate", "visualize",
+  "ingest", "output", "custom",
+];
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onPick: (step: StepManifest) => void;
+  /**
+   * Drop the chosen step into the pipeline. The optional `paramsOverride`
+   * lets callers (the AI ribbon) inject pre-filled params instead of
+   * defaults — typical use: `onPick(manifest, { column: "email" })`.
+   */
+  onPick: (step: StepManifest, paramsOverride?: Record<string, unknown>) => void;
   /** Anchor element rect (in viewport coords) — popover positions just above it. */
   anchor: { x: number; y: number; w: number; h: number } | null;
+  /**
+   * Schema of the upstream node (column-name → logical-type-id). Used to
+   * grey out steps whose `requires` clauses aren't satisfied by what's
+   * available. Pass `{}` (or omit) when there's no upstream — every step
+   * stays enabled in that case.
+   */
+  upstreamSchema?: Record<string, string>;
+  /** Pipeline + focused node — required for the AI ribbon. Omit either
+   *  and the ribbon stays hidden. */
+  pipelineId?: string;
+  focusedNodeId?: string | null;
 }
 
 // localStorage key for the recently-picked step list (capped at 6).
@@ -38,7 +77,9 @@ function writeRecent(stepId: string) {
   window.localStorage.setItem(RECENT_KEY, JSON.stringify(cur.slice(0, RECENT_MAX)));
 }
 
-export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
+export function QuickAddMenu({
+  open, onClose, onPick, anchor, upstreamSchema, pipelineId, focusedNodeId,
+}: Props) {
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,16 +87,30 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
 
   const stepsQ = useQuery({ queryKey: ["steps"], queryFn: api.listSteps, staleTime: 60_000 });
 
+  // Per-step requirement evaluation against the upstream schema. The map
+  // is keyed by step id so the render path is a cheap lookup. Memoized
+  // on the schema reference + the step list so it only recomputes when
+  // either changes (schema is rebuilt on every preview, but the object
+  // identity is stable per render of the parent).
+  const reqsByStep = useMemo(() => {
+    const out: Record<string, ReturnType<typeof evaluateRequirements>> = {};
+    for (const s of stepsQ.data ?? []) {
+      out[s.id] = evaluateRequirements(s.requires, upstreamSchema);
+    }
+    return out;
+  }, [stepsQ.data, upstreamSchema]);
+
   // Reload recent list each time the menu opens (cheap; no storage event listener).
   useEffect(() => {
     if (open) setRecent(readRecent());
   }, [open]);
 
   // Wrap onPick so we record usage. Defined here so anywhere that calls it
-  // benefits — including the Enter-to-pick path below.
-  const handlePick = (s: StepManifest) => {
+  // benefits — including the Enter-to-pick path below and the AI ribbon's
+  // suggestion-card click.
+  const handlePick = (s: StepManifest, paramsOverride?: Record<string, unknown>) => {
     writeRecent(s.id);
-    onPick(s);
+    onPick(s, paramsOverride);
   };
 
   useEffect(() => {
@@ -81,24 +136,39 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
     };
   }, [open, onClose]);
 
+  // Intent ranker: fed the full catalog + recency + req results, returns
+  // the matching steps sorted by score. With an empty query we keep the
+  // full list (sorted only by recency boost — the visual layout is
+  // category-grouped below).
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = stepsQ.data ?? [];
-    if (!q) return list;
-    return list.filter(
-      (s) =>
-        s.id.toLowerCase().includes(q) ||
-        s.label.toLowerCase().includes(q) ||
-        (s.description ?? "").toLowerCase().includes(q) ||
-        (s.tags ?? []).some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [query, stepsQ.data]);
+    const ranked = rankSteps({
+      steps: stepsQ.data ?? [],
+      query,
+      recent,
+      reqsByStep,
+    });
+    return ranked.map((r) => r.step);
+  }, [query, stepsQ.data, recent, reqsByStep]);
 
+  // Group + render in the fixed CATEGORY_ORDER. When query is empty the
+  // grouped layout is the natural visual hierarchy. When the user has
+  // typed, we show a flat ranked list instead — categories add noise
+  // when ranking is the meaningful signal.
   const grouped = useMemo(() => {
+    if (query.trim()) return null;
     const out: Record<string, StepManifest[]> = {};
     for (const s of filtered) (out[s.category] ||= []).push(s);
-    return out;
-  }, [filtered]);
+    // Sort categories by the canonical order; unknown categories drop
+    // to the end in the order they appeared.
+    const ordered: [string, StepManifest[]][] = [];
+    for (const cat of CATEGORY_ORDER) {
+      if (out[cat]) ordered.push([cat, out[cat]]);
+    }
+    for (const [cat, items] of Object.entries(out)) {
+      if (!CATEGORY_ORDER.includes(cat)) ordered.push([cat, items]);
+    }
+    return ordered;
+  }, [filtered, query]);
 
   if (!open || !anchor) return null;
 
@@ -126,8 +196,12 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && filtered.length > 0) {
-                handlePick(filtered[0]);
+              if (e.key === "Enter") {
+                // Enter picks the first *enabled* match — don't add a step
+                // we'd immediately reject. Falls through silently if every
+                // match is greyed (the user can scroll + click anyway).
+                const target = filtered.find((s) => reqsByStep[s.id]?.ok ?? true);
+                if (target) handlePick(target);
               }
             }}
             placeholder="Search steps…  (try 'filter', 'group')"
@@ -135,6 +209,19 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
           />
         </div>
         <div className="overflow-y-auto flex-1 p-1">
+          {/* AI ribbon: only shown when there's somewhere for the AI to
+              draw context from (a real pipeline + a focused node). It
+              hides itself when AI is disabled in Settings. Renders just
+              under the search input — the most prominent slot. */}
+          {pipelineId && focusedNodeId && !query.trim() && (
+            <AiRibbon
+              pipelineId={pipelineId}
+              focusedNodeId={focusedNodeId}
+              focusedSchema={upstreamSchema ?? {}}
+              steps={stepsQ.data ?? []}
+              onApply={(s, params) => handlePick(s, params)}
+            />
+          )}
           {filtered.length === 0 && (
             <div className="text-xs text-muted-foreground p-3 text-center">
               No matches.
@@ -156,25 +243,25 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
                 <ul>
                   {recentSteps.map((s) => (
                     <li key={`recent-${s.id}`}>
-                      <button
-                        type="button"
-                        onClick={() => handlePick(s)}
-                        className="w-full text-left px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors flex flex-col"
-                      >
-                        <span>{s.label}</span>
-                        {s.description && (
-                          <span className="text-[10px] text-muted-foreground truncate">
-                            {s.description}
-                          </span>
-                        )}
-                      </button>
+                      <StepRow step={s} req={reqsByStep[s.id]} onPick={handlePick} />
                     </li>
                   ))}
                 </ul>
               </div>
             );
           })()}
-          {Object.entries(grouped).map(([cat, items]) => (
+          {/* Query mode: flat ranked list. The category visual hierarchy
+              gets in the way when the user has expressed an intent. */}
+          {grouped === null && (
+            <ul>
+              {filtered.map((s) => (
+                <li key={s.id}>
+                  <StepRow step={s} req={reqsByStep[s.id]} onPick={handlePick} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {grouped !== null && grouped.map(([cat, items]) => (
             <div key={cat} className="mb-2">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 px-2 py-1">
                 {CATEGORY_EMOJI[cat] ?? "🧩"} {cat}
@@ -182,18 +269,7 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
               <ul>
                 {items.map((s) => (
                   <li key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => handlePick(s)}
-                      className="w-full text-left px-2 py-1.5 rounded text-sm hover:bg-muted/60 transition-colors flex flex-col"
-                    >
-                      <span>{s.label}</span>
-                      {s.description && (
-                        <span className="text-[10px] text-muted-foreground truncate">
-                          {s.description}
-                        </span>
-                      )}
-                    </button>
+                    <StepRow step={s} req={reqsByStep[s.id]} onPick={handlePick} />
                   </li>
                 ))}
               </ul>
@@ -202,5 +278,90 @@ export function QuickAddMenu({ open, onClose, onPick, anchor }: Props) {
         </div>
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// One row in the picker. Renders the step's label + description, and
+// when the upstream schema doesn't satisfy the step's `requires`,
+// dims the row + adds a tooltip explaining what's missing. We
+// deliberately keep the row click-through enabled even when greyed —
+// dropping a step on an incompatible upstream is allowed (the user
+// might be planning to add a cast step before it), and the param
+// form still surfaces validation errors at execute time. Greying
+// communicates "this won't work as-is", not "you can't try."
+// ─────────────────────────────────────────────────────────────────
+function StepRow({
+  step,
+  req,
+  onPick,
+}: {
+  step: StepManifest;
+  req: ReturnType<typeof evaluateRequirements> | undefined;
+  onPick: (s: StepManifest, paramsOverride?: Record<string, unknown>) => void;
+}) {
+  const ok = req?.ok ?? true;
+  // Provenance: tint the row's background instead of taking
+  // horizontal space with a chip. The source name shows up in the
+  // hover tooltip — minimal at-a-glance noise, full info on demand.
+  const packId = step.source && step.source.startsWith("pack:")
+    ? step.source.slice(5)
+    : null;
+  // Pipeline-composite steps share a different tint (emerald) so
+  // they're visually distinct from pack steps and built-ins.
+  const pipelineSourceId = step.source && step.source.startsWith("pipeline:")
+    ? step.source.slice(9)
+    : null;
+  const baseTooltip = !ok ? unmetTooltip(req!.unmet) : (step.description ?? "");
+  const tooltip = pipelineSourceId
+    ? `${step.label} · 🪆 composite from another pipeline${baseTooltip ? ` — ${baseTooltip}` : ""}`
+    : packId
+      ? `${step.label} · 📦 ${packId}${baseTooltip ? ` — ${baseTooltip}` : ""}`
+      : baseTooltip;
+  // Four states for the row background:
+  //   1. greyed (requirements unmet) → opacity dim + faint hover
+  //   2. pipeline-composite          → emerald tint
+  //   3. pack-installed              → faint violet tint
+  //   4. built-in                    → no tint, neutral hover
+  let rowClass = "";
+  if (!ok) {
+    rowClass = "opacity-45 hover:opacity-70 hover:bg-muted/30";
+  } else if (pipelineSourceId) {
+    rowClass = "bg-emerald-50/60 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40";
+  } else if (packId) {
+    rowClass = "bg-violet-50/60 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40";
+  } else {
+    rowClass = "hover:bg-muted/60";
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(step)}
+      title={tooltip}
+      className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors flex flex-col ${rowClass}`}
+    >
+      <span className="flex items-center gap-1.5">
+        {!ok && (
+          <span
+            aria-hidden
+            className="text-[10px] text-amber-600 dark:text-amber-400 select-none"
+          >
+            ⚠
+          </span>
+        )}
+        <span className="flex-1 truncate">{step.label}</span>
+      </span>
+      {!ok ? (
+        <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 truncate">
+          {unmetTooltip(req!.unmet)}
+        </span>
+      ) : (
+        step.description && (
+          <span className="text-[10px] text-muted-foreground truncate">
+            {step.description}
+          </span>
+        )
+      )}
+    </button>
   );
 }

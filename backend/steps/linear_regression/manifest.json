@@ -74,5 +74,7 @@
     "regression",
     "linear",
     "ols"
-  ]
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["regression", "fit", "ols", "predictor", "coefficients"]
 }

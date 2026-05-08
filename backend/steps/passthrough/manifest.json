@@ -1,0 +1,13 @@
+{
+  "id": "passthrough",
+  "version": "1.0.0",
+  "label": "🪆 Passthrough",
+  "description": "Identity step — emits its input unchanged. Used internally by the sub-pipeline inliner to keep the wrapper node id alive in the flat DAG so callers (compile terminal selection, downstream wiring, lineage) don't need to know about inlining.",
+  "category": "custom",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {}
+}

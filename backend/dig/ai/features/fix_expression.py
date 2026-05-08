@@ -16,10 +16,11 @@ LLM for a corrected version. We force JSON output for parseability.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from dig.ai.client import AiConfig, AiError, chat
+from dig.ai.parsing import parse_json_lenient
+from dig.ai.prompts import TOKEN_BUDGETS
 
 
 _SYSTEM = """\
@@ -84,33 +85,40 @@ async def fix_expression(
 
     user_msg = "\n\n".join(user_msg_parts) + "\n\nReturn the JSON object now."
 
-    resp = await chat(
-        cfg,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": user_msg},
-        ],
-        response_format="json_object",
-        temperature=0.0,
-        max_tokens=512,
-    )
+    # Two-phase chat — same fallback as the other AI features.
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": user_msg},
+    ]
+    last_err: AiError | None = None
+    resp = None
+    for use_json_format in (True, False):
+        try:
+            resp = await chat(
+                cfg,
+                messages=messages,
+                response_format="json_object" if use_json_format else None,
+                temperature=0.0,
+                max_tokens=TOKEN_BUDGETS["fix_expression"],
+            )
+            break
+        except AiError as e:
+            last_err = e
+            if "empty message" not in str(e).lower():
+                raise
+    if resp is None:
+        return {
+            "fixed": "",
+            "explanation": str(last_err) if last_err else "AI returned no content",
+            "confidence": "low",
+        }
 
-    text = resp.text.strip()
-    # Some local models still wrap JSON in code fences despite instructions.
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.lower().startswith("json"):
-            text = text[4:].strip()
+    parsed = parse_json_lenient(resp.text)
+    if parsed is None:
+        raise AiError(f"AI returned non-JSON: {resp.text[:300]}")
 
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise AiError(
-            f"AI returned non-JSON: {text[:300]} ({e})",
-        ) from e
-
-    if not isinstance(parsed, dict) or "fixed" not in parsed:
-        raise AiError(f"AI response missing required keys: {text[:300]}")
+    if "fixed" not in parsed:
+        raise AiError(f"AI response missing required keys: {resp.text[:300]}")
 
     return {
         "fixed": str(parsed.get("fixed", "")),

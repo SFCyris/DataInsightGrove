@@ -76,5 +76,7 @@
     "seasonal",
     "decompose",
     "trend"
-  ]
+  ],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}],
+  "aliases": ["trend", "seasonality", "decomposition", "stl"]
 }

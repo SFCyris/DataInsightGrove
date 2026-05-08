@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +20,9 @@ import {
 import { subscribe } from "@/lib/api/ws";
 import { previewPipeline, type PreviewResult } from "@/lib/engine/dispatcher";
 import { humanizeSqlError } from "@/lib/humanize-sql-error";
+import { SuggestFix } from "@/components/canvas/suggest-fix";
+import { StepImageOrFallback } from "@/components/canvas/step-image-preview";
+import { ChartDensityWarning } from "@/components/canvas/chart-density-warning";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { recordAction } from "@/lib/settings";
 import { Tour, type TourStep } from "@/components/tour/tour";
@@ -40,6 +44,21 @@ import { LineageDrawer } from "@/components/canvas/lineage-drawer";
 import { ParamForm } from "@/components/canvas/param-form";
 import { SaveIndicator } from "@/components/canvas/save-indicator";
 import { SuggestionsPanel } from "@/components/canvas/suggestions-panel";
+import { AiVizHints } from "@/components/canvas/ai-viz-hints";
+import { ExplainDataset } from "@/components/canvas/explain-dataset";
+import { AiSuggestSteps } from "@/components/canvas/ai-suggest-steps";
+import { SamplingDialog } from "@/components/canvas/sampling-dialog";
+import { LabelPromptDialog } from "@/components/canvas/label-prompt-dialog";
+import { PublishAsStepDialog, type PublishedAsStepConfig } from "@/components/canvas/publish-as-step-dialog";
+import { SubPipelinePinBadge } from "@/components/canvas/sub-pipeline-pin-badge";
+import { PositiveLoader } from "@/components/positive-loader";
+import {
+  PipelineDoctorDialog,
+  filterDismissed,
+  recordDismissals,
+} from "@/components/canvas/pipeline-doctor-dialog";
+import { diagnose, applyFixes, type Diagnosis } from "@/lib/pipeline-doctor";
+import type { SamplingConfig } from "@/lib/sampling";
 import { DiffStrip, diffColumns, type DiffSummary } from "@/components/canvas/diff-strip";
 import { RunHistory } from "@/components/canvas/run-history";
 import { HelpLink } from "@/components/help-link";
@@ -172,6 +191,308 @@ const appendLinearStep = (
   params: Record<string, unknown>,
 ) => insertStepAfter(doc, manifest, params, null);
 
+/**
+ * Sibling of `insertStepAfter` that branches off `afterNodeId` instead
+ * of inserting into the chain. The new node consumes `afterNodeId`'s
+ * output, but **existing successors of `afterNodeId` are NOT re-wired**
+ * — they keep their original input. Result: the original chain
+ * continues unchanged, the new node hangs off as a parallel branch.
+ *
+ * Used when the user applies an AI route while focused on a step that
+ * already has downstream successors. Inserting linearly there would
+ * silently rewire those successors through the new step (likely
+ * unintended); branching keeps the original flow intact.
+ *
+ * Layout: the branch starts vertically below the original node so it's
+ * visually distinct in the canvas / strip.
+ */
+function branchStepAfter(
+  doc: PipelineDocument,
+  manifest: StepManifest,
+  params: Record<string, unknown>,
+  afterNodeId: string,
+): { doc: PipelineDocument; nodeId: string } {
+  const portsIn = manifest.io.inputs.ports ?? ["in"];
+  const portsOut = manifest.io.outputs.ports ?? ["out"];
+  const newId = newNodeId();
+
+  const upstreamNode = doc.nodes.find((n) => n.id === afterNodeId);
+  const upstreamRef = upstreamNode
+    ? { ref: upstreamNode.id, port: upstreamNode.outputs[0] ?? "out" }
+    : { ref: afterNodeId };
+
+  const newNode: PipelineNode = {
+    id: newId,
+    step: manifest.id,
+    stepVersion: manifest.version,
+    inputs: { [portsIn[0]]: upstreamRef },
+    outputs: portsOut,
+    params,
+    ui: {
+      // Position visually as a branch — same X as upstream, offset Y.
+      x: upstreamNode?.ui?.x ?? 220 + doc.nodes.length * 220,
+      y: (upstreamNode?.ui?.y ?? 100) + 140,
+      label: manifest.label,
+    },
+  };
+
+  // KEY DIFFERENCE FROM insertStepAfter: do NOT re-wire successors.
+  // Append the new node at the end of the array (so the strip shows
+  // the branch after its parent's chain).
+  return {
+    doc: { ...doc, nodes: [...doc.nodes, newNode] },
+    nodeId: newId,
+  };
+}
+
+/** Returns true when `nodeId` has at least one downstream successor. */
+function hasSuccessors(doc: PipelineDocument, nodeId: string): boolean {
+  for (const n of doc.nodes) {
+    if (n.id === nodeId) continue;
+    for (const ref of Object.values(n.inputs)) {
+      if (ref.ref === nodeId) return true;
+    }
+  }
+  return false;
+}
+
+/** Set of all transitive descendants of `nodeId` (downstream successors,
+ *  recursively). Used to filter eligible upstream sources for a join's
+ *  input — wiring a join to its own descendant would create a cycle. */
+function descendantsOf(doc: PipelineDocument, nodeId: string): Set<string> {
+  const out = new Set<string>();
+  const queue = [nodeId];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const n of doc.nodes) {
+      if (n.id === cur) continue;
+      for (const ref of Object.values(n.inputs)) {
+        if (ref.ref === cur && !out.has(n.id)) {
+          out.add(n.id);
+          queue.push(n.id);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Eligible upstream sources for a join's left/right port: every dataset
+ *  + every node that isn't the join itself or a descendant of it. */
+export interface EligibleSource {
+  id: string;
+  kind: "dataset" | "node";
+  label: string;
+}
+function eligibleSourcesFor(
+  doc: PipelineDocument,
+  joinNodeId: string,
+  datasetLabelByRefId: Record<string, string> = {},
+): EligibleSource[] {
+  const dead = descendantsOf(doc, joinNodeId);
+  dead.add(joinNodeId);
+  const out: EligibleSource[] = [];
+  for (const d of doc.datasets) {
+    out.push({
+      id: d.id,
+      kind: "dataset",
+      label: datasetLabelByRefId[d.id] ?? d.name ?? d.id,
+    });
+  }
+  for (const n of doc.nodes) {
+    if (dead.has(n.id)) continue;
+    out.push({
+      id: n.id,
+      kind: "node",
+      label: (n.ui as { label?: string } | undefined)?.label ?? n.step,
+    });
+  }
+  return out;
+}
+
+/** Pick a unique branch suffix for a join we're cloning — `· branch 2`,
+ *  `· branch 3`, … so two rapid rewires don't collide on label. */
+function nextBranchLabel(doc: PipelineDocument, baseLabel: string): string {
+  const existing = doc.nodes
+    .map((n) => (n.ui as { label?: string } | undefined)?.label ?? "")
+    .filter((l) => l.startsWith(baseLabel));
+  // Look for ` · branch N` in existing labels; pick highest N + 1.
+  let max = 1;
+  for (const lbl of existing) {
+    const m = lbl.match(/· branch (\d+)$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `${baseLabel} · branch ${max + 1}`;
+}
+
+/**
+ * Rewire one port on a node. Terminal nodes (no successors) mutate
+ * inline; mid-chain nodes branch a clone with the new wiring so the
+ * existing downstream chain is preserved unchanged.
+ *
+ * Caller is expected to setFocusedId() to `nodeId` of the result so
+ * the panel follows the branch.
+ */
+function rewireOrBranchInput(
+  doc: PipelineDocument,
+  joinNodeId: string,
+  port: string,
+  newRef: string,
+): { doc: PipelineDocument; nodeId: string; branched: boolean } {
+  const join = doc.nodes.find((n) => n.id === joinNodeId);
+  if (!join) return { doc, nodeId: joinNodeId, branched: false };
+  if (join.inputs[port]?.ref === newRef) {
+    return { doc, nodeId: joinNodeId, branched: false };
+  }
+  const referenced = doc.nodes.find((n) => n.id === newRef);
+  const newPortRef = referenced
+    ? { ref: referenced.id, port: referenced.outputs[0] ?? "out" }
+    : { ref: newRef };
+
+  if (!hasSuccessors(doc, joinNodeId)) {
+    const nextNodes = doc.nodes.map((n) =>
+      n.id === joinNodeId
+        ? { ...n, inputs: { ...n.inputs, [port]: newPortRef } }
+        : n,
+    );
+    return { doc: { ...doc, nodes: nextNodes }, nodeId: joinNodeId, branched: false };
+  }
+
+  const baseLabel = (join.ui as { label?: string } | undefined)?.label ?? join.step;
+  const newId = newNodeId();
+  const clone: PipelineNode = {
+    ...join,
+    id: newId,
+    inputs: { ...join.inputs, [port]: newPortRef },
+    ui: {
+      ...join.ui,
+      x: ((join.ui as { x?: number } | undefined)?.x ?? 0) + 80,
+      y: ((join.ui as { y?: number } | undefined)?.y ?? 0) + 140,
+      label: nextBranchLabel(doc, baseLabel.replace(/\s*· branch \d+$/, "")),
+    },
+  };
+  return {
+    doc: { ...doc, nodes: [...doc.nodes, clone] },
+    nodeId: newId,
+    branched: true,
+  };
+}
+
+/**
+ * Flip a join's left/right inputs (and the params that name them).
+ *
+ * What gets swapped:
+ *   - inputs.left ↔ inputs.right
+ *   - keys[].left ↔ keys[].right
+ *   - kind: left ↔ right, anti_left ↔ anti_right (inner / full unchanged)
+ *   - suffixes[0] ↔ suffixes[1]
+ *   - outputColumns provenance: L:<x> ↔ R:<x>
+ *
+ * Terminal joins mutate inline; mid-chain joins branch a clone.
+ */
+function swapJoinSides(
+  doc: PipelineDocument,
+  joinNodeId: string,
+): { doc: PipelineDocument; nodeId: string; branched: boolean } {
+  const join = doc.nodes.find((n) => n.id === joinNodeId);
+  if (!join) return { doc, nodeId: joinNodeId, branched: false };
+  const left = join.inputs.left;
+  const right = join.inputs.right;
+  if (!left || !right) return { doc, nodeId: joinNodeId, branched: false };
+
+  const swappedInputs = { ...join.inputs, left: right, right: left };
+
+  const params = (join.params ?? {}) as Record<string, unknown>;
+  const swappedParams: Record<string, unknown> = { ...params };
+  if (Array.isArray(params.keys)) {
+    swappedParams.keys = (
+      params.keys as Array<{ left: string; right: string; op?: string }>
+    ).map((k) => ({ left: k.right, right: k.left, op: k.op }));
+  }
+  const kind = (params.kind ?? params.how) as string | undefined;
+  if (kind === "left") swappedParams.kind = "right";
+  else if (kind === "right") swappedParams.kind = "left";
+  else if (kind === "anti_left") swappedParams.kind = "anti_right";
+  else if (kind === "anti_right") swappedParams.kind = "anti_left";
+  swappedParams.how = undefined;
+  if (Array.isArray(params.suffixes) && (params.suffixes as string[]).length >= 2) {
+    const sx = params.suffixes as string[];
+    swappedParams.suffixes = [sx[1], sx[0]];
+  }
+  if (params.outputColumns && typeof params.outputColumns === "object") {
+    const oc = params.outputColumns as { excluded?: string[]; renames?: Record<string, string> };
+    const flip = (s: string) =>
+      s.startsWith("L:") ? "R:" + s.slice(2) : s.startsWith("R:") ? "L:" + s.slice(2) : s;
+    swappedParams.outputColumns = {
+      excluded: (oc.excluded ?? []).map(flip),
+      renames: Object.fromEntries(
+        Object.entries(oc.renames ?? {}).map(([k, v]) => [flip(k), v]),
+      ),
+    };
+  }
+
+  if (!hasSuccessors(doc, joinNodeId)) {
+    const nextNodes = doc.nodes.map((n) =>
+      n.id === joinNodeId ? { ...n, inputs: swappedInputs, params: swappedParams } : n,
+    );
+    return { doc: { ...doc, nodes: nextNodes }, nodeId: joinNodeId, branched: false };
+  }
+
+  const baseLabel = (join.ui as { label?: string } | undefined)?.label ?? join.step;
+  const newId = newNodeId();
+  const clone: PipelineNode = {
+    ...join,
+    id: newId,
+    inputs: swappedInputs,
+    params: swappedParams,
+    ui: {
+      ...join.ui,
+      x: ((join.ui as { x?: number } | undefined)?.x ?? 0) + 80,
+      y: ((join.ui as { y?: number } | undefined)?.y ?? 0) + 140,
+      label: nextBranchLabel(doc, baseLabel.replace(/\s*· branch \d+$/, "")),
+    },
+  };
+  return {
+    doc: { ...doc, nodes: [...doc.nodes, clone] },
+    nodeId: newId,
+    branched: true,
+  };
+}
+
+/**
+ * Whether a step's primary output is best previewed as an image
+ * artifact rather than tabular rows. Used by the live-preview path
+ * to mount `StepImageOrFallback` directly instead of attempting a
+ * SQL/Polars row preview that would either fail or render the
+ * underlying frame instead of the chart.
+ *
+ * Manifest-driven so new viz / chart steps light up automatically:
+ *   - any `category=visualize` step whose browser engine isn't `sql`
+ *     produces an image (export_to_image, funnel_chart, pareto_chart,
+ *     waterfall_chart, …)
+ *   - plus the model-category steps that emit a chart preview as
+ *     their primary user-facing output (forecast, seasonal_decompose)
+ *
+ * Returning false from here doesn't break the step — it just routes
+ * its preview through the row path. Returning true on a step that
+ * actually produces rows would silently hide them, so the heuristic
+ * is conservative.
+ */
+function isChartFirstStep(manifest: StepManifest | undefined): boolean {
+  if (!manifest) return false;
+  // Any visualize-category step that can't run in browser SQL is
+  // necessarily an image-rendering step (the only other browser
+  // engine values are "polars" which doesn't run client-side, or
+  // "none"). The new viz pack (funnel_chart, pareto_chart,
+  // waterfall_chart) lands here automatically.
+  if (manifest.category === "visualize" && manifest.engine?.browser !== "sql") {
+    return true;
+  }
+  // Model-category exceptions — these produce a chart preview as
+  // their headline output even though the manifest category is "model".
+  return manifest.id === "forecast" || manifest.id === "seasonal_decompose";
+}
+
 function removeNodeFromDoc(doc: PipelineDocument, nodeId: string): PipelineDocument {
   return {
     ...doc,
@@ -192,6 +513,32 @@ function setNodeParams(doc: PipelineDocument, nodeId: string, params: Record<str
   return {
     ...doc,
     nodes: doc.nodes.map((n) => (n.id === nodeId ? { ...n, params } : n)),
+  };
+}
+
+/** Toggle exposure of a single node param. Used by the param-form's
+ *  🪆 expose pill. When `next` is null, removes the entry; otherwise
+ *  upserts it. Cleans up an empty exposedParams object so the doc
+ *  doesn't accumulate dead keys. */
+function setNodeExposedParam(
+  doc: PipelineDocument,
+  nodeId: string,
+  paramKey: string,
+  next: { alias: string; help?: string } | null,
+): PipelineDocument {
+  return {
+    ...doc,
+    nodes: doc.nodes.map((n) => {
+      if (n.id !== nodeId) return n;
+      const ui = (n.ui ?? {}) as { exposedParams?: Record<string, { alias: string; help?: string }> };
+      const exposed = { ...(ui.exposedParams ?? {}) };
+      if (next === null) delete exposed[paramKey];
+      else exposed[paramKey] = next;
+      const nextUi: typeof ui = { ...ui };
+      if (Object.keys(exposed).length === 0) delete nextUi.exposedParams;
+      else nextUi.exposedParams = exposed;
+      return { ...n, ui: nextUi as typeof n.ui };
+    }),
   };
 }
 
@@ -254,6 +601,40 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     "dig.editor.canvasView", "strip",
   );
 
+  // Bottom-region height when in graph view. Strip has a deterministic
+  // height (~38px) so we hard-code it; the graph is freely resizable
+  // because the user wants to see more or less of their pipeline DAG
+  // depending on its complexity. Persisted globally (not per-pipeline).
+  const [graphHeight, setGraphHeight] = usePersistedState<number>(
+    "dig.editor.graphHeight", 300,
+  );
+
+  // 🧪 Sampling popup. Per-pipeline so two flows can use different
+  // strategies (head for stable canaries; random for representative
+  // EDA). The persisted config lives on doc.metadata.sampling.
+  const [samplingOpen, setSamplingOpen] = useState(false);
+
+  // Per-session set of chart node ids whose density warning the user
+  // has explicitly dismissed. Banner stays hidden until reload OR
+  // the chart's input row count drops back under threshold (then
+  // reappears next time it's exceeded). Not persisted — same idea
+  // as the row-cap badge: warning fatigue should expire with the tab.
+  const [dismissedDensityWarnings, setDismissedDensityWarnings] = useState<
+    Set<string>
+  >(() => new Set());
+
+  // 🪆 Publish-as-step dialog state. The doc.metadata.publishedAsStep
+  // entry promotes this pipeline into the global step picker.
+  const [publishOpen, setPublishOpen] = useState(false);
+
+  // 🩺 Pipeline doctor — runs structural checks on load and surfaces a
+  // friendly "tune-up" dialog when fixable issues are found. State:
+  //   `pendingDiagnoses` non-empty → dialog open
+  //   `doctorRanFor`  ref guards against re-firing on every doc edit
+  //                    (only run once per (pipelineId, etag)).
+  const [pendingDiagnoses, setPendingDiagnoses] = useState<Diagnosis[]>([]);
+  const doctorRanFor = useRef<string | null>(null);
+
   // Editor tour open state. Manually triggered via the 🧭 toolbar button —
   // auto-firing was removed because the tour overlay swallowed clicks on
   // the Add-dataset dropdown.
@@ -270,10 +651,16 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const seededFor = useRef<string | null>(null);
   useEffect(() => {
     if (pipeline.data && seededFor.current !== pipelineId) {
+      // Deep-clone the seed so our React state doesn't share object
+      // references with React Query's cache. Defensive: prevents any
+      // future code that mutates `pipeline.data.document` (or
+      // structural-sharing on a subsequent refetch) from silently
+      // updating our React state out from under us. Cheap
+      // (~1ms for typical doc sizes).
       const seed =
         Object.keys(pipeline.data.document).length === 0
           ? emptyDoc(pipelineId, "Untitled")
-          : (pipeline.data.document as unknown as PipelineDocument);
+          : (JSON.parse(JSON.stringify(pipeline.data.document)) as PipelineDocument);
       setDoc(seed);
       setEtag(pipeline.data.etag);
       setDirty(false);
@@ -398,18 +785,44 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       } else if (cmd && ((e.key.toLowerCase() === "z" && e.shiftKey) || e.key.toLowerCase() === "y") && !isInput) {
         e.preventDefault();
         redo();
+      } else if (cmd && e.key.toLowerCase() === "s" && !e.shiftKey) {
+        // ⌘S — open the labeled-checkpoint dialog. Always preventDefault
+        // so the browser doesn't try to download the page even when an
+        // input is focused (autosave already preserved the text).
+        e.preventDefault();
+        setSaveDialogOpen(true);
+      } else if (cmd && e.key.toLowerCase() === "s" && e.shiftKey) {
+        // ⌘⇧S — Save As (clone). Same convention as most editors.
+        e.preventDefault();
+        setSaveAsDialogOpen(true);
       }
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
   }, [undo, redo]);
 
-  // ---- Save (debounced) ----
+  // ---- Save (debounced auto-save + explicit "Save" button) ----
+  //
+  // Two distinct save flavors:
+  //   - autosave  : keystroke-driven, transient. Server keeps only the
+  //                 last 5; useful for crash recovery + multi-tab sync.
+  //   - manual_save: user pressed the Save button (with optional label).
+  //                  Server keeps up to 50; survives history pruning.
+  //
+  // Both bump etag (so the WS sync still works); they only differ in how
+  // the snapshot is *retained* on the server.
   const lastNodeCountRef = useRef<number>(0);
   const saveMutation = useMutation({
-    mutationFn: async (next: PipelineDocument) => {
+    mutationFn: async (args: {
+      next: PipelineDocument;
+      triggeredBy: "manual_save" | "autosave";
+      changeReason?: string | null;
+    }) => {
       if (etag == null) throw new Error("etag unset");
-      return api.updatePipeline(pipelineId, next, etag);
+      return api.updatePipeline(pipelineId, args.next, etag, {
+        triggeredBy: args.triggeredBy,
+        changeReason: args.changeReason,
+      });
     },
     onSuccess: (resp, variables) => {
       setEtag(resp.etag);
@@ -417,22 +830,81 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       // Adaptive UI: bump action counter — heavier weight for step add,
       // lighter for param edits. Auto-promotes Beginner → Builder at threshold.
-      const nodeCount = variables.nodes?.length ?? 0;
+      const nodeCount = variables.next.nodes?.length ?? 0;
       const weight = nodeCount > lastNodeCountRef.current ? 2 : 1;
       lastNodeCountRef.current = nodeCount;
       const promoted = recordAction(weight);
       if (promoted) {
         toast.success("🪴 You're a Builder now — full step library unlocked. ⌘⇧E to switch back.");
       }
+      if (variables.triggeredBy === "manual_save") {
+        toast.success(
+          variables.changeReason
+            ? `💾 Saved · "${variables.changeReason}"`
+            : "💾 Saved",
+        );
+      }
     },
-    onError: (e: Error) => toast.error(`Save failed: ${e.message}`),
+    onError: (e: Error) => {
+      // Cycle errors are 409s with "Cycle detected" or "Self-reference".
+      // Show as a long-duration toast with explicit guidance — these
+      // need user intervention before any further save will succeed.
+      const msg = e.message;
+      const isCycle = /cycle detected|self-reference/i.test(msg);
+      if (isCycle) {
+        toast.error(
+          `🔁 ${msg}\n\nTip: remove the offending sub-pipeline step or unpublish the source.`,
+          { duration: 12000 },
+        );
+      } else {
+        toast.error(`Save failed: ${msg}`);
+      }
+    },
   });
   useEffect(() => {
     if (!doc || !dirty) return;
-    const t = setTimeout(() => saveMutation.mutate(doc), 500);
+    const t = setTimeout(
+      () => saveMutation.mutate({ next: doc, triggeredBy: "autosave" }),
+      500,
+    );
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, dirty]);
+
+  // ---- Save / Save-As dialogs (explicit checkpoint + clone) ----
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveAsDialogOpen, setSaveAsDialogOpen] = useState(false);
+  const router = useRouter();
+  const cloneMutation = useMutation({
+    mutationFn: async (name: string) => {
+      if (!doc) throw new Error("no document");
+      // Make sure the latest in-memory edits are persisted before cloning;
+      // otherwise the new copy starts from the server's older state.
+      if (dirty && etag != null) {
+        await api.updatePipeline(pipelineId, doc, etag, { triggeredBy: "autosave" });
+      }
+      return api.clonePipeline(pipelineId, name);
+    },
+    onSuccess: (resp) => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      toast.success(`📋 Cloned to "${resp.name}"`);
+      router.push(`/pipelines/${resp.id}`);
+    },
+    onError: (e: Error) => toast.error(`Save As failed: ${e.message}`),
+  });
+  const onSaveExplicit = (label: string | null) => {
+    if (!doc) return;
+    saveMutation.mutate({
+      next: doc,
+      triggeredBy: "manual_save",
+      changeReason: label || null,
+    });
+    setSaveDialogOpen(false);
+  };
+  const onSaveAs = (newName: string) => {
+    cloneMutation.mutate(newName);
+    setSaveAsDialogOpen(false);
+  };
 
   // ---- Validation / schema inference (server-side) ----
   useEffect(() => {
@@ -483,6 +955,12 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Per-focus diagnostic view for joins. Default 'matched' is the
+  // saved join behaviour; 'unmatched_left' / 'unmatched_right' rewrite
+  // to anti-* for the focused node only (not persisted in the doc).
+  const [joinViewMode, setJoinViewMode] = useState<
+    "matched" | "unmatched_left" | "unmatched_right"
+  >("matched");
   const previewAbort = useRef<AbortController | null>(null);
   // Holds a pending error surface — when a compile fails we don't blank the
   // grid immediately. Instead we schedule the error to appear after a short
@@ -497,17 +975,53 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     }
   }, []);
 
+  // ---- Pipeline doctor — run once per (pipelineId, etag) ----------
+  // Why an etag-keyed guard: every keystroke bumps `doc` reference and
+  // would otherwise re-fire the diagnose call constantly. We only want
+  // to run it on initial load (the etag from the server) — once the
+  // user starts editing locally, the autosave model handles
+  // consistency. The `doctorRanFor` ref combines pipelineId + etag so
+  // each fresh load is fresh-checked.
+  useEffect(() => {
+    if (!doc || !datasetsQ.data || !stepsQ.data || etag == null) return;
+    const guardKey = `${pipelineId}:${etag}`;
+    if (doctorRanFor.current === guardKey) return;
+    doctorRanFor.current = guardKey;
+    const all = diagnose(doc, datasetsQ.data, stepsQ.data);
+    const undismissed = filterDismissed(pipelineId, all);
+    if (undismissed.length > 0) {
+      setPendingDiagnoses(undismissed);
+    }
+    // doc dep is intentionally missing — see the etag-guard above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetsQ.data, stepsQ.data, etag, pipelineId]);
+
   const isFocusedDataset = useMemo(() => {
     if (!doc || !focusedId) return false;
     return doc.datasets.some((d) => d.id === focusedId);
   }, [doc, focusedId]);
 
-  // Fetch raw rows when focused on a dataset (uses the DIG dataset id mapped from internal alias)
+  // Fetch raw rows when focused on a dataset. Two-tier lookup:
+  //   1. Strict — `ds_<ulid_lowercase>` (the canonical convention used
+  //      by everything created after the convention was settled).
+  //   2. URI fallback — extract the ULID from the doc's `uri` field
+  //      (`.../<ULID>.parquet`) and match the Dataset row directly by id.
+  //      Handles pipelines whose dataset id is a doc-internal alias
+  //      (`ds_main`, `ds_orders`, …) rather than `ds_<ulid_lowercase>`.
+  //      Without this fallback, those pipelines would render "No data
+  //      yet — add a dataset" even though their parquet is on disk.
   const focusedDatasetReal = useMemo(() => {
     if (!doc || !focusedId || !datasetsQ.data) return null;
     const ds = doc.datasets.find((d) => d.id === focusedId);
     if (!ds) return null;
-    return datasetsQ.data.find((d) => datasetRefId(d) === focusedId) ?? null;
+    const byConvention = datasetsQ.data.find((d) => datasetRefId(d) === focusedId);
+    if (byConvention) return byConvention;
+    const uriMatch = ds.uri?.match(/([0-9A-Z]{26})\.parquet/i);
+    if (uriMatch) {
+      const ulid = uriMatch[1].toUpperCase();
+      return datasetsQ.data.find((d) => d.id.toUpperCase() === ulid) ?? null;
+    }
+    return null;
   }, [doc, focusedId, datasetsQ.data]);
 
   const datasetRowsQ = useQuery({
@@ -568,13 +1082,54 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     // to surface a persistent error.
     const isFirstForFocus = previewedFocusRef.current !== focusedId;
     const debounceMs = isFirstForFocus ? 0 : 350;
+    // Chart-first steps render via StepImagePreview directly — no need
+    // to run the WASM compile path (which would just fail with a
+    // "browser engine 'none'" error and waste a round trip). Skip the
+    // dispatcher entirely so the user never sees an error UI flash; the
+    // grid's emptyHint branch will mount StepImageOrFallback directly
+    // and its internal "Rendering preview…" state is what the user sees
+    // throughout the backend hop.
+    const focusedNodeUpfront = focusedId
+      ? doc.nodes.find((n) => n.id === focusedId)
+      : null;
+    if (
+      focusedNodeUpfront
+      && isChartFirstStep(manifestsById[focusedNodeUpfront.step])
+    ) {
+      // Clear any stale state from a prior step so the grid doesn't
+      // briefly flash the previous preview underneath.
+      if (errorTimer.current) {
+        clearTimeout(errorTimer.current);
+        errorTimer.current = null;
+      }
+      setPreviewError(null);
+      setPreview(null);
+      setPreviewLoading(false);
+      previewedFocusRef.current = focusedId;
+      return () => {
+        ac.abort();
+      };
+    }
     const t = setTimeout(async () => {
       try {
+        // Pass the focused step's id so the dispatcher knows whether
+        // to fall back to backend rows (data-producing steps) or let
+        // the chart-image fallback handle it (export_to_image,
+        // forecast, seasonal_decompose).
+        const focusedNode = focusedId
+          ? doc.nodes.find((n) => n.id === focusedId)
+          : null;
         const res = await previewPipeline(pipelineId, {
           terminal: focusedId,
           sampleRows: 100_000,
           previewLimit: 500,
           signal: ac.signal,
+          sampling: doc.metadata?.sampling as SamplingConfig | undefined,
+          terminalStepId: focusedNode?.step,
+          // Only meaningful when the focused step is a join — the
+          // dispatcher / backend ignore the param otherwise.
+          terminalViewMode:
+            focusedNode?.step === "join" ? joinViewMode : undefined,
         });
         if (!ac.signal.aborted) {
           setPreview(res);
@@ -609,7 +1164,15 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [doc, focusedId, isFocusedDataset, pipelineId, etag]);
+  }, [doc, focusedId, isFocusedDataset, pipelineId, etag, joinViewMode]);
+
+  // Reset the diagnostic view back to matched whenever the focus
+  // leaves a join (or moves to a different join). The toggle is a
+  // per-focus affordance; remembering it across nodes would surprise
+  // the user when the next join silently shows anti-* rows.
+  useEffect(() => {
+    setJoinViewMode("matched");
+  }, [focusedId]);
 
   // ---- Derived: current grid columns + rows ----
   const gridData = useMemo(() => {
@@ -762,12 +1325,33 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     setQuickAdd({ x: r.left, y: r.top, w: r.width, h: r.height });
   }, []);
   const onPickStep = useCallback(
-    (manifest: StepManifest) => {
+    (manifest: StepManifest, paramsOverride?: Record<string, unknown>) => {
       if (!doc) return;
+      // Cycle preflight: a pipeline can't include itself as a step. The
+      // save-time check on the backend would catch this too, but the
+      // earlier we surface it the better — silent save failures are
+      // confusing. Transitive cycles still go through the backend
+      // (server walks the full closure on PUT).
+      if (manifest.id === `pipeline:${pipelineId}`) {
+        toast.error(
+          "🔁 A pipeline can't include itself as a step. Remove the publishedAsStep marker on this pipeline first, or pick a different one.",
+          { duration: 7000 },
+        );
+        setQuickAdd(null);
+        return;
+      }
       try {
         // Insert after the focused step (or dataset) so changes go where
-        // the user is looking, not at the end of the chain.
-        const { doc: next, nodeId } = insertStepAfter(doc, manifest, defaultParams(manifest), focusedId);
+        // the user is looking, not at the end of the chain. AI ribbon
+        // suggestions arrive with pre-filled params; everything else
+        // falls back to the manifest's defaults.
+        const params = paramsOverride
+          ? { ...defaultParams(manifest), ...paramsOverride }
+          : defaultParams(manifest);
+        // For pipeline-composite steps the manifest declares pinnedEtag
+        // = current source etag; defaultParams already picks that up
+        // because it's a regular param spec.
+        const { doc: next, nodeId } = insertStepAfter(doc, manifest, params, focusedId);
         updateDoc(next);
         setFocusedId(nodeId);
         setTab("params");
@@ -777,7 +1361,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       }
       setQuickAdd(null);
     },
-    [doc, updateDoc],
+    [doc, updateDoc, pipelineId],
   );
 
   // ---- Column actions: turn a column action into a pipeline step ----
@@ -859,6 +1443,10 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             return "reorder_columns";
           case "insert_column":
             return "add_column";
+          case "visualize":
+            return "export_to_image";
+          case "visualize_as":
+            return a.stepId;
         }
       })();
       const manifest = manifestsById[stepId];
@@ -902,6 +1490,75 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               position: a.position,
               reference: a.reference,
             };
+          case "visualize": {
+            // Pick a sensible chart kind from the column's physical type:
+            // numeric → histogram (distribution), anything else → bar of
+            // top-N value counts. The user can switch chart kind in the
+            // params form and the live preview re-renders in place.
+            // Note: live-grid's shortType() normalises double/float/decimal
+            // → "num" before this prop arrives, so check for "num" first.
+            const t = (a.columnType ?? "").toLowerCase();
+            const isNumeric =
+              t === "num" ||
+              t === "int" ||
+              t.includes("int") ||
+              t.includes("float") ||
+              t.includes("double") ||
+              t.includes("decimal");
+            return {
+              kind: isNumeric ? "histogram" : "bar_counts",
+              x: a.column,
+              title: `${a.column} — distribution`,
+              format: "png",
+            };
+          }
+          case "visualize_as": {
+            // Pre-fill the clicked column into the step's most-fitting
+            // column_ref param. Heuristic:
+            //   1. If the column is numeric, prefer a param whose spec
+            //      lists numeric columnTypes (typically `value` / `y`).
+            //   2. Otherwise prefer a param without a numeric constraint
+            //      (typically `label` / `stage` / `group` / `x`).
+            //   3. Always set `title` if the manifest has one.
+            // The user lands on the params form and fills in any
+            // remaining required slots (most chart steps need 2 columns).
+            const t = (a.columnType ?? "").toLowerCase();
+            const isNumeric =
+              t === "num" ||
+              t === "int" ||
+              t.includes("int") ||
+              t.includes("float") ||
+              t.includes("double") ||
+              t.includes("decimal");
+            const params: Record<string, unknown> = {};
+            const paramSpecs = manifest.params || {};
+            // Find the best column_ref slot to pre-fill.
+            const colRefEntries = Object.entries(paramSpecs).filter(
+              ([, spec]) => (spec as { type?: string }).type === "column_ref",
+            );
+            const numericSlot = colRefEntries.find(
+              ([, spec]) => {
+                const ct = (spec as { columnTypes?: string[] }).columnTypes;
+                return ct && ct.some((x) => /int|double|float|decimal/i.test(x));
+              },
+            );
+            const categoricalSlot = colRefEntries.find(
+              ([, spec]) => {
+                const ct = (spec as { columnTypes?: string[] }).columnTypes;
+                return !ct || !ct.some((x) => /int|double|float|decimal/i.test(x));
+              },
+            );
+            const slot = isNumeric
+              ? (numericSlot ?? categoricalSlot ?? colRefEntries[0])
+              : (categoricalSlot ?? numericSlot ?? colRefEntries[0]);
+            if (slot) {
+              params[slot[0]] = a.column;
+            }
+            if ("title" in paramSpecs) {
+              params["title"] = `${a.column} — ${manifest.label}`;
+            }
+            return params;
+          }
         }
       })();
       try {
@@ -1120,14 +1777,18 @@ function Editor({ pipelineId }: { pipelineId: string }) {
 
   if (!doc) {
     return (
-      <main id="main" className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        ⏳ Loading pipeline…
+      <main id="main" className="flex flex-1 items-center justify-center">
+        <PositiveLoader variant="rendering" primary="Loading pipeline…" />
       </main>
     );
   }
 
   return (
-    <main className="flex flex-1 flex-col h-screen min-h-0">
+    // overflow-hidden + h-screen pins the editor to the viewport so the
+    // bottom strip / graph stays glued to the bottom of the browser
+    // window. Without overflow-hidden, a tall data grid would push the
+    // strip below the visible area (it'd be there, just not on screen).
+    <main className="flex flex-col h-screen overflow-hidden">
       {/* Top bar */}
       {/* `relative z-30` so the toolbar's stacking context sits above the
           workspace below. Without it, `backdrop-blur` traps the Add-dataset
@@ -1152,6 +1813,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         />
         <SaveIndicator dirty={dirty} pending={saveMutation.isPending} />
         <span className="text-[11px] text-muted-foreground/60 tabular-nums">v{etag}</span>
+
+        {/* Explicit Save (labeled checkpoint) — survives history pruning,
+            unlike auto-saves. Cmd/Ctrl-S also wired up below. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setSaveDialogOpen(true)}
+          title="Save a labeled checkpoint (⌘S) — survives autosave history pruning"
+        >
+          💾 Save
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setSaveAsDialogOpen(true)}
+          title="Save As — clone this pipeline to a new one"
+        >
+          📋 Save As
+        </Button>
 
         <Button size="sm" variant="ghost" onClick={undo} disabled={undoLen === 0} title="Undo (⌘Z)">
           ↩️
@@ -1219,6 +1899,36 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           />
           🔍 lineage
         </label>
+
+        {/* 🧪 Sampling — opens the per-flow sampling-method picker. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setSamplingOpen(true)}
+          title="Choose how the editor preview draws sample rows for this pipeline"
+        >
+          🧪 {(() => {
+            const s = doc.metadata?.sampling as SamplingConfig | undefined;
+            if (!s) return "head";
+            return s.method;
+          })()}
+        </Button>
+
+        {/* 🪆 Publish-as-step — turns this pipeline into a reusable
+            building block that appears in every other pipeline's
+            picker. The icon glows when already published. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setPublishOpen(true)}
+          title={
+            doc.metadata?.publishedAsStep
+              ? "Edit the published-step settings — consumers will see your changes after they upgrade their pinned version."
+              : "Publish this pipeline as a reusable step — it'll appear in every other pipeline's picker."
+          }
+        >
+          🪆 {doc.metadata?.publishedAsStep ? "Published" : "Publish"}
+        </Button>
 
         <Button
           data-tour="editor-run"
@@ -1347,6 +2057,57 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           {diff && (
             <DiffStrip diff={diff} />
           )}
+          {(() => {
+            // Diagnostic 3-way toggle for joins. Mounts above the grid
+            // ONLY when the focused step is a join — for any other
+            // step the toggle is irrelevant and would just add noise.
+            const fNode = focusedId
+              ? doc?.nodes.find((n) => n.id === focusedId)
+              : null;
+            if (fNode?.step !== "join") return null;
+            const opts: Array<{
+              id: "matched" | "unmatched_left" | "unmatched_right";
+              label: string;
+              hint: string;
+            }> = [
+              { id: "matched", label: "✓ matched", hint: "The joined output — what the rest of the pipeline sees." },
+              { id: "unmatched_left", label: "← unmatched-L", hint: "Left rows with NO match on the right. Diagnostic only — not persisted in the doc." },
+              { id: "unmatched_right", label: "unmatched-R →", hint: "Right rows with NO match on the left. Diagnostic only — not persisted in the doc." },
+            ];
+            return (
+              <div className="shrink-0 border-b border-border/60 bg-card/40 px-3 py-1.5 flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  🔎 Join view
+                </span>
+                <div className="flex items-center gap-1">
+                  {opts.map((o) => {
+                    const active = joinViewMode === o.id;
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setJoinViewMode(o.id)}
+                        title={o.hint}
+                        className={[
+                          "text-[11px] px-2 py-0.5 rounded-md border transition-colors font-mono",
+                          active
+                            ? "border-emerald-400/70 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200"
+                            : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {joinViewMode !== "matched" && (
+                  <span className="text-[10px] text-amber-700 dark:text-amber-300 italic">
+                    diagnostic only — pipeline still emits the matched output
+                  </span>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex-1 min-h-0">
             <LiveGrid
               columns={gridData.columns}
@@ -1386,7 +2147,159 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                       The grid lights up immediately so you can shape it.
                     </p>
                   </div>
-                ) : previewError ? (
+                ) : (() => {
+                  // Chart-first steps mount StepImageOrFallback IMMEDIATELY
+                  // when focused — no detour through previewError, no
+                  // 600ms grace, no risk of flashing the "doesn't have a
+                  // live preview" message. The user sees a positive
+                  // "Rendering preview…" state from the moment they click
+                  // until the chart appears.
+                  const fNode = focusedId
+                    ? doc?.nodes.find((n) => n.id === focusedId)
+                    : null;
+                  if (fNode && isChartFirstStep(manifestsById[fNode.step])) {
+                    // Resolve the upstream rowCount for the density
+                    // banner. Chart steps preserve rows, so the chart
+                    // node's last preview rowCount equals its input
+                    // count when known. Fall back to the root dataset's
+                    // rowCount (worst-case) when no preview has run.
+                    let upstreamRows: number | null = null;
+                    if (preview && previewedFocusRef.current === fNode.id) {
+                      upstreamRows = preview.rowCount ?? null;
+                    }
+                    if (upstreamRows == null) {
+                      // Walk back to the root dataset to find a count.
+                      let cur: string | undefined = Object.values(fNode.inputs)[0]?.ref;
+                      const seen = new Set<string>();
+                      while (cur && !seen.has(cur)) {
+                        seen.add(cur);
+                        const ds = doc.datasets.find((d) => d.id === cur);
+                        if (ds) {
+                          const real = (datasetsQ.data ?? []).find(
+                            (d) => datasetRefId(d) === cur,
+                          );
+                          upstreamRows = real?.rowCount ?? null;
+                          break;
+                        }
+                        const upNode = doc.nodes.find((n) => n.id === cur);
+                        if (!upNode) break;
+                        cur = Object.values(upNode.inputs)[0]?.ref;
+                      }
+                    }
+                    const dismissed = dismissedDensityWarnings.has(fNode.id);
+                    const fManifest = manifestsById[fNode.step];
+                    return (
+                      <div className="flex flex-col items-center w-full">
+                        {!dismissed && upstreamRows != null && fManifest && (
+                          <ChartDensityWarning
+                            manifest={fManifest}
+                            params={fNode.params}
+                            upstreamRowCount={upstreamRows}
+                            onSample={() => {
+                              // Resolve the same threshold the warning
+                              // is showing to size the random sample.
+                              const r = fManifest.recommendedMaxRows;
+                              let n = 5000;
+                              if (typeof r === "number") n = r;
+                              else if (r && typeof r === "object") {
+                                const k = String(fNode.params?.kind ?? "");
+                                n = (k && r[k]) ?? r._default ?? n;
+                              }
+                              const meta = {
+                                ...(doc.metadata ?? {}),
+                                sampling: { method: "random" as const, size: n },
+                              };
+                              updateDoc({ ...doc, metadata: meta });
+                              toast.success(
+                                `Sampling reduced to ${n.toLocaleString()} random rows. ⌘Z to revert.`,
+                              );
+                              setDismissedDensityWarnings((s) =>
+                                new Set(s).add(fNode.id),
+                              );
+                            }}
+                            onDismiss={() =>
+                              setDismissedDensityWarnings((s) =>
+                                new Set(s).add(fNode.id),
+                              )
+                            }
+                          />
+                        )}
+                        <StepImageOrFallback
+                          pipelineId={pipelineId}
+                          nodeId={fNode.id}
+                          etag={etag}
+                          // The fallback receives the actual /preview-step
+                          // error (when there is one) so we can pick the
+                          // right surface:
+                          //  - chart-config error (e.g. "scatter3d needs
+                          //    x, y and z") → humanized hint with the
+                          //    columns the user can pick from. The
+                          //    humanizer recognises these patterns
+                          //    (export_to_image kinds + funnel/pareto/
+                          //    waterfall) and produces an actionable
+                          //    one-liner instead of a generic CTA.
+                          //  - genuine "needs backend hop" — keep the
+                          //    "▶ Run on backend" affordance.
+                          fallback={(err) => {
+                            const upRef = Object.values(fNode.inputs)[0]?.ref;
+                            const cols = upRef ? Object.keys(schemas[upRef] ?? {}) : [];
+                            const h = err ? humanizeSqlError(err.message, cols) : null;
+                            if (h && h.recognised && !h.originatesUpstream) {
+                              // Per-chart-kind config error — show the
+                              // humanized title + hint. No "Run on
+                              // backend" button: clicking that won't fix
+                              // a missing X/Y/Z param, and surfacing a
+                              // wrong CTA misleads the user.
+                              return (
+                                <div className="max-w-md text-center select-none">
+                                  <div className="text-5xl mb-2">⚠️</div>
+                                  <p className="text-sm font-medium text-foreground mb-1">
+                                    {h.title}
+                                  </p>
+                                  {h.hint && (
+                                    <p className="text-[12px] text-muted-foreground leading-relaxed">
+                                      {h.hint}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            }
+                            // Default: backend-hop needed (the upstream
+                            // chain wasn't sampleable in-memory, or any
+                            // unrecognised error shape). One click runs
+                            // it on the backend.
+                            return (
+                              <div className="max-w-sm text-center select-none">
+                                <div className="text-5xl mb-3">🎬</div>
+                                <p className="text-sm font-medium text-foreground mb-1">
+                                  Backend run needed for this chart
+                                </p>
+                                <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
+                                  The live preview can&apos;t render this chain in
+                                  the browser (an upstream step needs the
+                                  backend&apos;s Polars engine). One click below
+                                  produces the full-fidelity chart.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  onClick={() => runMutation.mutate()}
+                                  disabled={runMutation.isPending}
+                                  className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
+                                >
+                                  {runMutation.isPending ? "⏳ Running…" : "▶ Run on backend"}
+                                </Button>
+                                <p className="text-[10px] text-muted-foreground/70 mt-2 leading-snug">
+                                  Output lands in the run history & shows here on success.
+                                </p>
+                              </div>
+                            );
+                          }}
+                        />
+                      </div>
+                    );
+                  }
+                  return null;
+                })() ?? (previewError ? (
                   (() => {
                     // Build the available-columns hint from the upstream
                     // step's schema (the input to the focused node). When
@@ -1399,7 +2312,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                       : focusedId;
                     const cols = upstreamRef ? Object.keys(schemas[upstreamRef] ?? {}) : [];
                     const humanized = humanizeSqlError(previewError, cols);
-                    return (
+                    // Only offer AI fix when we have a step manifest to ground
+                    // the suggestion. Dataset-focused errors and architectural
+                    // problems (Polars-only step picked as terminal) wouldn't
+                    // get a useful "change a param" answer; skip the button.
+                    const focusedManifest = focusedNode
+                      ? manifestsById[focusedNode.step]
+                      : undefined;
+                    // "Structural" here means the error didn't originate
+                    // from the focused step's params — it's upstream
+                    // (broken dataset registration, missing input wiring,
+                    // Polars-only step compiled for browser, …). The
+                    // humanizer flags these via `originatesUpstream`; we
+                    // also keep the legacy substring match as a belt-and-
+                    // braces fallback for shapes the humanizer hasn't
+                    // pattern-matched yet.
+                    const isStructural =
+                      humanized.originatesUpstream === true ||
+                      previewError.includes("has browser engine 'none'");
+                    const errorBox = (
                       <div className="max-w-md">
                         <div className="text-5xl mb-2">⚠️</div>
                         <p className="text-destructive font-medium">{humanized.title}</p>
@@ -1417,14 +2348,92 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                             <pre className="font-mono whitespace-pre-wrap break-all mt-1">{previewError}</pre>
                           </details>
                         )}
+                        {focusedNode && focusedManifest && !isStructural && (
+                          <SuggestFix
+                            manifest={focusedManifest}
+                            currentParams={focusedNode.params}
+                            availableColumns={cols}
+                            errorMessage={previewError}
+                            humanizedTitle={humanized.title}
+                            onApply={(nextParams) =>
+                              updateDoc(setNodeParams(doc, focusedNode.id, nextParams))
+                            }
+                          />
+                        )}
                       </div>
                     );
+                    // Polars-only step focused as terminal? Try the live
+                    // image preview path first — for export_to_image,
+                    // forecast, etc. it renders the actual artifact in
+                    // place of the empty grid. Falls through to errorBox
+                    // when the step doesn't produce a renderable artifact
+                    // or its execute_polars throws.
+                    if (isStructural && focusedNode) {
+                      return (
+                        <StepImageOrFallback
+                          pipelineId={pipelineId}
+                          nodeId={focusedNode.id}
+                          etag={etag}
+                          fallback={errorBox}
+                        />
+                      );
+                    }
+                    return errorBox;
                   })()
-                ) : undefined
+                ) : undefined)
               }
             />
           </div>
-          <div data-tour="editor-strip" className={canvasView === "graph" ? "h-[300px]" : ""}>
+          {/* Drag handle — only when bottom region is the graph (the
+              strip's height is deterministic, so resizing it makes no
+              sense). Pointer events for mouse + touch. The handle takes
+              4px and is invisible until hover; the cursor change keeps
+              it discoverable. */}
+          {canvasView === "graph" && (
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize graph view"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                const el = e.currentTarget as HTMLElement;
+                el.setPointerCapture(e.pointerId);
+                const startY = e.clientY;
+                const startH = graphHeight;
+                const onMove = (ev: PointerEvent) => {
+                  // Drag UP shrinks the bottom (less graph), DOWN grows.
+                  // Wait — we want drag UP to GROW the graph (more bottom
+                  // visible), since the handle is ABOVE the graph. So
+                  // delta = startY - currentY.
+                  const delta = startY - ev.clientY;
+                  const next = Math.max(120, Math.min(700, startH + delta));
+                  setGraphHeight(next);
+                };
+                const onUp = (ev: PointerEvent) => {
+                  el.releasePointerCapture(ev.pointerId);
+                  el.removeEventListener("pointermove", onMove);
+                  el.removeEventListener("pointerup", onUp);
+                };
+                el.addEventListener("pointermove", onMove);
+                el.addEventListener("pointerup", onUp);
+              }}
+              className="h-1 cursor-row-resize bg-transparent hover:bg-emerald-500/40 transition-colors shrink-0 group"
+            >
+              {/* Visual hint dot row — only on hover */}
+              <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-full">
+                <span className="text-[8px] text-emerald-500/80 leading-none select-none" aria-hidden>
+                  ⋯
+                </span>
+              </div>
+            </div>
+          )}
+          {/* Bottom region: always reserved (min-height for the strip,
+              user-resizable for the graph). */}
+          <div
+            data-tour="editor-strip"
+            className={canvasView === "graph" ? "shrink-0" : "shrink-0 min-h-[40px]"}
+            style={canvasView === "graph" ? { height: `${graphHeight}px` } : undefined}
+          >
             {canvasView === "strip" ? (
               <PipelineStrip
                 doc={doc}
@@ -1537,15 +2546,80 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                       Step
                       <HelpLink topic="Editing step parameters" anchor="4-the-editor--data-on-top-steps-on-bottom" />
                     </p>
-                    <Button size="xs" variant="ghost" onClick={() => {
-                      const next = removeNodeFromDoc(doc, selectedNode.id);
-                      updateDoc(next);
-                      const lastNode = next.nodes[next.nodes.length - 1];
-                      setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
-                    }}>🗑 Delete</Button>
+                    <div className="flex items-center gap-1">
+                      {/* OK = "I'm done editing this step, take me back to
+                          the source data". For chart / forecast / Polars-only
+                          steps the params panel is the only useful focus —
+                          once configured, the user wants the grid back so
+                          they can keep transforming. We pop focus to the
+                          step's first upstream input (typically the dataset
+                          or the previous step). The new step itself remains
+                          in the pipeline; only the FOCUS moves. */}
+                      <Button
+                        size="xs"
+                        variant="default"
+                        onClick={() => {
+                          const firstInput = Object.values(selectedNode.inputs ?? {})[0];
+                          const upstream = firstInput?.ref;
+                          if (upstream) {
+                            setFocusedId(upstream);
+                          } else {
+                            // Orphan node (no inputs). Fall back to the
+                            // first dataset, else clear focus.
+                            setFocusedId(doc.datasets[0]?.id ?? null);
+                          }
+                        }}
+                        title="Done editing this step — return to the upstream data"
+                      >
+                        ✓ OK
+                      </Button>
+                      <Button size="xs" variant="ghost" onClick={() => {
+                        const next = removeNodeFromDoc(doc, selectedNode.id);
+                        updateDoc(next);
+                        const lastNode = next.nodes[next.nodes.length - 1];
+                        setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
+                      }}>🗑 Delete</Button>
+                    </div>
                   </div>
                   <h3 className="text-sm font-semibold mb-1">{selectedManifest.label}</h3>
-                  <p className="text-[11px] text-muted-foreground mb-3">{selectedManifest.description}</p>
+                  <p className="text-[11px] text-muted-foreground mb-2">{selectedManifest.description}</p>
+                  {selectedNode.step.startsWith("pipeline:") && (
+                    <SubPipelinePinBadge
+                      step={selectedNode.step}
+                      pinnedEtag={Number(selectedNode.params?.pinnedEtag) || 1}
+                      onUpgrade={(toEtag) => {
+                        // Bump the pinnedEtag on this node's params so
+                        // the next compile pulls the latest snapshot.
+                        const next = setNodeParams(doc, selectedNode.id, {
+                          ...selectedNode.params,
+                          pinnedEtag: toEtag,
+                        });
+                        updateDoc(next);
+                        toast.success(`🪆 Upgraded to v${toEtag}`);
+                      }}
+                    />
+                  )}
+                  {/* Auto-preview indicator — surfaces the editor's UX intent
+                      (no Apply / Preview button; every change re-runs the
+                      preview after a short debounce) so users don't go
+                      hunting for one. The pulsing dot tracks `previewLoading`
+                      from the parent — green dot when idle, amber pulse while
+                      a fresh preview is in flight. */}
+                  <div
+                    className="flex items-center gap-1.5 mb-3 text-[10px] uppercase tracking-widest text-muted-foreground/80"
+                    title="Every change re-runs the preview automatically. There's no separate Apply or Preview button."
+                  >
+                    <span
+                      className={[
+                        "inline-block size-1.5 rounded-full",
+                        previewLoading
+                          ? "bg-amber-400 animate-pulse"
+                          : "bg-emerald-400",
+                      ].join(" ")}
+                      aria-hidden
+                    />
+                    <span>{previewLoading ? "Updating preview…" : "Auto-preview · live"}</span>
+                  </div>
                   <ParamForm
                     // Keying on node id forces a full remount on node switch
                     // so child editors with self-initialized state (e.g. the
@@ -1555,7 +2629,62 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                     manifest={selectedManifest}
                     values={selectedNode.params}
                     upstreamColumns={upstreamColumns}
+                    // Context for the bespoke join panel. Only `join`
+                    // currently consumes these; other steps ignore them.
+                    pipelineId={pipelineId}
+                    etag={etag ?? 0}
+                    inputRefs={Object.fromEntries(
+                      Object.entries(selectedNode.inputs ?? {})
+                        .map(([port, ref]) => [port, ref?.ref ?? null]),
+                    )}
+                    eligibleSources={eligibleSourcesFor(
+                      doc,
+                      selectedNode.id,
+                      Object.fromEntries(
+                        (datasetsQ.data ?? []).map((d) => [datasetRefId(d), d.name]),
+                      ),
+                    )}
+                    onSetInputRef={(port, newRef) => {
+                      const labelMap = Object.fromEntries(
+                        (datasetsQ.data ?? []).map((d) => [datasetRefId(d), d.name]),
+                      );
+                      const r = rewireOrBranchInput(doc, selectedNode.id, port, newRef);
+                      updateDoc(r.doc);
+                      if (r.branched) {
+                        setFocusedId(r.nodeId);
+                        const sourceLabel =
+                          eligibleSourcesFor(doc, selectedNode.id, labelMap).find((s) => s.id === newRef)?.label
+                          ?? newRef;
+                        toast.success(
+                          `Branched mid-pipeline join · downstream chain preserved`,
+                          { description: `New ${port} = ${sourceLabel}` },
+                        );
+                      }
+                    }}
+                    onSwapJoinSides={() => {
+                      const r = swapJoinSides(doc, selectedNode.id);
+                      updateDoc(r.doc);
+                      if (r.branched) {
+                        setFocusedId(r.nodeId);
+                        toast.success(
+                          `Branched mid-pipeline join · downstream chain preserved`,
+                          { description: "Sides + keys + suffixes flipped" },
+                        );
+                      }
+                    }}
                     onChange={(next) => updateDoc(setNodeParams(doc, selectedNode.id, next))}
+                    // Show the 🪆 expose pill on each param. The toggle
+                    // is always visible (not gated on publishedAsStep)
+                    // so the user can prepare exposure declarations
+                    // ahead of publishing. The published-step manifest
+                    // generator only acts on these when the pipeline
+                    // metadata.publishedAsStep is set.
+                    exposedParams={
+                      ((selectedNode.ui as { exposedParams?: Record<string, { alias: string; help?: string }> } | undefined)?.exposedParams) ?? undefined
+                    }
+                    onExposeParam={(paramKey, next) =>
+                      updateDoc(setNodeExposedParam(doc, selectedNode.id, paramKey, next))
+                    }
                   />
                   {/* Free-form note attached to the step. Persists in
                       node.ui.note so it travels with the pipeline document
@@ -1596,12 +2725,135 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               )
             )}
             {tab === "hints" && (
-              <SuggestionsPanel
-                suggestions={suggestions}
-                onApply={handleApplySuggestion}
-                onHover={setHoveredHintColumn}
-                loading={isFocusedDataset && datasetProfileQ.isLoading}
-              />
+              <>
+                {/* AI cards apply to any focused node — every step's
+                    output is itself a "current dataset". When focused
+                    on a step, the AI works on the step's actual sampled
+                    output (via metadata.sampling); applying a route
+                    mid-chain branches off so the existing flow stays
+                    intact. The card is opt-in (click-to-fetch) so the
+                    LLM never fires on every panel open. */}
+                {focusedId && (schemas[focusedId] || isFocusedDataset) && doc && (
+                  (() => {
+                    const focusedNode = doc.nodes.find((n) => n.id === focusedId);
+                    const focusedManifest = focusedNode
+                      ? manifestsById[focusedNode.step]
+                      : undefined;
+                    const focusedLabel = focusedNode
+                      ? (focusedNode.ui?.label || focusedManifest?.label || focusedNode.step)
+                      : (focusedDatasetReal?.name || "");
+                    const willBranch = !!focusedNode && hasSuccessors(doc, focusedId);
+                    // The AI route applier — picks insert vs branch
+                    // automatically based on whether the focused node
+                    // has downstream successors. Branching keeps the
+                    // existing chain intact instead of silently
+                    // re-wiring it through the new step.
+                    const applyChain = (
+                      routeSteps: ReadonlyArray<{
+                        step_id: string;
+                        params: Record<string, unknown>;
+                        right_ref?: string | null;
+                      }>,
+                    ) => {
+                      let cursor = focusedId;
+                      let nextDoc = doc;
+                      const byId: Record<string, StepManifest> = {};
+                      for (const m of stepsQ.data ?? []) byId[m.id] = m;
+                      const branchedAtStart = willBranch;
+                      try {
+                        for (let i = 0; i < routeSteps.length; i++) {
+                          const s = routeSteps[i];
+                          const m = byId[s.step_id];
+                          if (!m) continue;
+                          const params = { ...defaultParams(m), ...s.params };
+                          // Only the FIRST step branches; subsequent
+                          // steps continue linearly off it. Otherwise
+                          // every step would fan out, producing a star
+                          // instead of a chain.
+                          const useBranch = branchedAtStart && i === 0;
+                          const { doc: d2, nodeId } = useBranch
+                            ? branchStepAfter(nextDoc, m, params, cursor!)
+                            : insertStepAfter(nextDoc, m, params, cursor);
+                          nextDoc = d2;
+                          // Joins only get one input port wired by the
+                          // generic insert (the `left` port pointing at
+                          // the cursor / branched node). Wire the right
+                          // port from the AI's `right_ref` hint when
+                          // present + the ref exists in the doc.
+                          if (
+                            s.step_id === "join"
+                            && typeof s.right_ref === "string"
+                            && s.right_ref
+                          ) {
+                            const refId = s.right_ref;
+                            const refExists =
+                              nextDoc.datasets.some((d) => d.id === refId)
+                              || nextDoc.nodes.some((n) => n.id === refId);
+                            if (refExists) {
+                              nextDoc = {
+                                ...nextDoc,
+                                nodes: nextDoc.nodes.map((n) =>
+                                  n.id === nodeId
+                                    ? {
+                                        ...n,
+                                        inputs: {
+                                          ...n.inputs,
+                                          right: { ref: refId },
+                                        },
+                                      }
+                                    : n,
+                                ),
+                              };
+                            }
+                          }
+                          cursor = nodeId;
+                        }
+                        updateDoc(nextDoc);
+                        setFocusedId(cursor);
+                        setTab("params");
+                        toast.success(
+                          branchedAtStart
+                            ? `Branched ${routeSteps.length} step${routeSteps.length === 1 ? "" : "s"} off “${focusedLabel}”`
+                            : `Added ${routeSteps.length} step${routeSteps.length === 1 ? "" : "s"}`,
+                        );
+                      } catch (e) {
+                        toast.error((e as Error).message);
+                      }
+                    };
+                    return (
+                      <>
+                        <ExplainDataset
+                          nodeId={focusedId}
+                          pipelineId={pipelineId}
+                          nodeLabel={focusedNode ? focusedLabel : undefined}
+                        />
+                        <AiSuggestSteps
+                          nodeId={focusedId}
+                          pipelineId={pipelineId}
+                          nodeLabel={focusedNode ? focusedLabel : undefined}
+                          steps={stepsQ.data ?? []}
+                          onApplyRoute={applyChain}
+                        />
+                        <AiVizHints
+                          nodeId={focusedId}
+                          pipelineId={pipelineId}
+                          nodeLabel={focusedNode ? focusedLabel : undefined}
+                          steps={stepsQ.data ?? []}
+                          onApply={(manifest, params) =>
+                            applyChain([{ step_id: manifest.id, params }])
+                          }
+                        />
+                      </>
+                    );
+                  })()
+                )}
+                <SuggestionsPanel
+                  suggestions={suggestions}
+                  onApply={handleApplySuggestion}
+                  onHover={setHoveredHintColumn}
+                  loading={isFocusedDataset && datasetProfileQ.isLoading}
+                />
+              </>
             )}
             {tab === "lineage" && (
               <LineageView schemas={schemas} doc={doc} />
@@ -1622,12 +2874,151 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       {run?.artifacts && Object.keys(run.artifacts).length > 0 && (
         <ArtifactsPanel runId={run.id} artifacts={run.artifacts} />
       )}
+      <SamplingDialog
+        open={samplingOpen}
+        value={
+          ((doc.metadata?.sampling as SamplingConfig | undefined) ?? {
+            method: "head",
+            size: 100_000,
+          })
+        }
+        // Columns from the first dataset's schema. Sampling applies
+        // pipeline-wide; we surface the upstream-most schema so column
+        // pickers show fields that exist before any step renames them.
+        // Multi-dataset pipelines: this picks the first dataset's
+        // columns — the user can switch datasets if they need a
+        // different surface, or pick a step-output schema explicitly.
+        availableColumns={(() => {
+          const firstDs = doc.datasets[0];
+          const schema = firstDs ? schemas[firstDs.id] : null;
+          if (!schema) return [];
+          return Object.entries(schema).map(([name, type]) => ({ name, type: String(type) }));
+        })()}
+        onChange={(next) => {
+          const meta = { ...(doc.metadata ?? {}), sampling: next };
+          updateDoc({ ...doc, metadata: meta });
+          // Live-preview will re-key on the new etag → fresh sample.
+        }}
+        onClose={() => setSamplingOpen(false)}
+      />
+
+      <LabelPromptDialog
+        open={saveDialogOpen}
+        title="💾 Save checkpoint"
+        lede="Optional label — helps you find this version later in run history."
+        placeholder="e.g. before adding the rolling-window step"
+        confirmLabel="💾 Save"
+        onConfirm={(label) => onSaveExplicit(label)}
+        onClose={() => setSaveDialogOpen(false)}
+      />
+      <LabelPromptDialog
+        open={saveAsDialogOpen}
+        title="📋 Save As — new pipeline"
+        lede="Cloned with the current state. The new pipeline gets its own history, runs, and id."
+        placeholder={`Copy of ${doc.name}`}
+        defaultValue={`Copy of ${doc.name}`}
+        confirmLabel="📋 Clone"
+        required
+        onConfirm={(name) => name && onSaveAs(name)}
+        onClose={() => setSaveAsDialogOpen(false)}
+      />
+
+      <PublishAsStepDialog
+        open={publishOpen}
+        doc={doc}
+        onClose={() => setPublishOpen(false)}
+        onPublish={(cfg: PublishedAsStepConfig) => {
+          // Updating metadata.publishedAsStep flips dirty → autosave
+          // picks it up on the next debounce. We also force-flush via
+          // a manual_save so the publication has its own labeled
+          // checkpoint in history (helps when the consumer pins to a
+          // specific version).
+          updateDoc({
+            ...doc,
+            metadata: { ...(doc.metadata ?? {}), publishedAsStep: cfg },
+          });
+          setPublishOpen(false);
+          toast.success(`🪆 Published as "${cfg.label}"`);
+          queryClient.invalidateQueries({ queryKey: ["steps"] });
+        }}
+        onUnpublish={() => {
+          const next = { ...doc, metadata: { ...(doc.metadata ?? {}) } } as typeof doc;
+          delete (next.metadata as Record<string, unknown>).publishedAsStep;
+          updateDoc(next);
+          setPublishOpen(false);
+          toast.success("🪆 Unpublished — consumers will see this disappear from their pickers.");
+          queryClient.invalidateQueries({ queryKey: ["steps"] });
+        }}
+      />
+
+      <PipelineDoctorDialog
+        open={pendingDiagnoses.length > 0}
+        pipelineId={pipelineId}
+        diagnoses={pendingDiagnoses}
+        onSkip={() => {
+          // Dismiss every issue currently pending (fixable + unfixable
+          // alike — the user has seen them, no point re-asking).
+          recordDismissals(
+            pipelineId,
+            pendingDiagnoses.map((d) => d.id),
+          );
+          setPendingDiagnoses([]);
+        }}
+        onApply={(selected) => {
+          if (!doc) return;
+          const fixed = applyFixes(doc, selected);
+          // Re-resolve `focusedId` if the active focus pointed at
+          // something that just got renamed. Without this, applying a
+          // dataset-rename fix would leave the focus pointing at the
+          // old id → grid shows "No data" and the user thinks the fix
+          // broke things. We match by URI for renamed datasets and by
+          // ui-position for renamed nodes (the latter doesn't happen
+          // today but keeps the logic future-proof).
+          let nextFocus = focusedId;
+          if (focusedId) {
+            const stillExists =
+              fixed.datasets.some((d) => d.id === focusedId) ||
+              fixed.nodes.some((n) => n.id === focusedId);
+            if (!stillExists) {
+              const oldDs = doc.datasets.find((d) => d.id === focusedId);
+              if (oldDs) {
+                const newDs = fixed.datasets.find((d) => d.uri === oldDs.uri);
+                if (newDs) nextFocus = newDs.id;
+              }
+              // Fallback: pick the first dataset so the editor doesn't
+              // land on an empty focus state.
+              if (nextFocus === focusedId) {
+                nextFocus = fixed.datasets[0]?.id ?? null;
+              }
+            }
+          }
+          updateDoc(fixed);
+          if (nextFocus !== focusedId) setFocusedId(nextFocus);
+          // Dismiss everything we just resolved + any unfixable items
+          // we showed alongside (the user saw them; don't re-ask).
+          recordDismissals(
+            pipelineId,
+            pendingDiagnoses.map((d) => d.id),
+          );
+          setPendingDiagnoses([]);
+          toast.success(
+            `🩺 Applied ${selected.length} tune-up${selected.length === 1 ? "" : "s"} — Save to keep`,
+            { duration: 5000 },
+          );
+        }}
+      />
 
       <QuickAddMenu
         open={quickAdd !== null}
         onClose={() => setQuickAdd(null)}
         onPick={onPickStep}
         anchor={quickAdd}
+        // Upstream schema = the focused node's outputs. When nothing is
+        // focused (empty pipeline / first add), pass `{}` and the picker
+        // skips greying — there's no schema to disqualify against.
+        upstreamSchema={focusedId ? schemas[focusedId] : undefined}
+        pipelineId={pipelineId}
+        focusedNodeId={focusedId}
       />
 
       {stepCtx && (

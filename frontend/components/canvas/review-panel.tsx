@@ -13,6 +13,7 @@ import {
   type AiReviewCategory,
 } from "@/lib/api/client";
 import { useExpertise } from "@/lib/settings";
+import { PositiveLoaderInline } from "@/components/positive-loader";
 import { Button } from "@/components/ui/button";
 
 const SEV_TINT: Record<AiReviewSeverity, string> = {
@@ -221,7 +222,13 @@ export function ReviewPanel({ pipelineId, onFocusNode }: Props) {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {reviewMutation.isPending && (
-                  <p className="text-sm text-muted-foreground">⏳ Reviewing pipeline…</p>
+                  <div className="py-2">
+                    <PositiveLoaderInline
+                      variant="thinking"
+                      size="sm"
+                      text="Reviewing pipeline…"
+                    />
+                  </div>
                 )}
                 {data && data.rawText && (
                   <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs">

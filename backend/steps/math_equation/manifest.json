@@ -36,5 +36,7 @@
     }
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
-  "tags": ["math", "equation", "formula", "compute", "calculate", "arithmetic"]
+  "tags": ["math", "equation", "formula", "compute", "calculate", "arithmetic"],
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["formula", "calculate", "compute", "expression"]
 }

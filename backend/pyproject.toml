@@ -1,6 +1,13 @@
 [project]
 name = "dig"
-version = "0.5.0"
+# ── Single source of truth for the project version. ──────────────────────
+# Other sites read it via:
+#   • backend/dig/__init__.py  → importlib.metadata.version("dig") at import
+#   • /health endpoint         → returns __version__ from above
+#   • frontend display         → reads /health.version (no hardcoded copy)
+# The frontend's package.json carries its own "version" only because npm
+# tooling expects the field; nothing user-facing reads it.
+version = "0.6.0"
 description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
 readme = "../README.md"
 requires-python = ">=3.11"

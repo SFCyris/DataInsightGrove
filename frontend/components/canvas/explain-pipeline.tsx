@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { aiApi, ApiError } from "@/lib/api/client";
+import { PositiveLoader } from "@/components/positive-loader";
 
 /**
  * Toolbar button that asks the configured AI to explain the current
@@ -120,9 +121,11 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
 
               <div className="overflow-y-auto flex-1 p-5">
                 {loading && (
-                  <div className="text-sm text-muted-foreground space-y-2">
-                    <p>⏳ Building the prompt and waiting on the model…</p>
-                    <p className="text-[11px]">First call to a cold local model can take 30–60s.</p>
+                  <div className="grid place-items-center py-12">
+                    <PositiveLoader
+                      variant="thinking"
+                      primary="Asking the model…"
+                    />
                   </div>
                 )}
                 {error && (

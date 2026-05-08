@@ -14,6 +14,7 @@ from typing import Any
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
+from dig.engine.chart_defaults import DEFAULT_DPI, SQUARE_FIGSIZE
 
 
 def _is_numeric(dtype: pl.DataType) -> bool:
@@ -22,6 +23,20 @@ def _is_numeric(dtype: pl.DataType) -> bool:
 
 
 class CorrelationMatrixStep(Step):
+    def infer_schema(
+        self,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Output is a long-form correlation table — fixed schema regardless
+        of input columns. The default pass-through would lie about column
+        availability and downstream steps (e.g. an LLM-suggested
+        `linear_regression(y=temperature_c)` after `correlation_matrix`)
+        would silently pass param validation, then fail at runtime when
+        the data turns out to be `(col_a, col_b, r)` rows.
+        """
+        return {"col_a": "string", "col_b": "string", "r": "double"}
+
     def execute_polars(
         self,
         inputs: dict[str, pl.DataFrame],
@@ -63,7 +78,12 @@ class CorrelationMatrixStep(Step):
 
         title = params.get("title") or "Correlation matrix"
         n = len(cols)
-        fig, ax = plt.subplots(figsize=(max(6, n * 0.6), max(5, n * 0.55)), dpi=144)
+        # Heatmap scales up with column count so labels don't overlap; clamp
+        # to the SQUARE default for small matrices and grow proportionally
+        # for larger ones (each extra column ≈ 100px on each axis).
+        size_w = max(SQUARE_FIGSIZE[0], n * 0.7)
+        size_h = max(SQUARE_FIGSIZE[1], n * 0.65)
+        fig, ax = plt.subplots(figsize=(size_w, size_h), dpi=DEFAULT_DPI)
         sns.heatmap(
             corr.values, ax=ax, cmap="RdBu_r", vmin=-1, vmax=1, center=0,
             annot=n <= 12, fmt=".2f", xticklabels=cols, yticklabels=cols,
@@ -73,7 +93,7 @@ class CorrelationMatrixStep(Step):
         fig.tight_layout()
 
         out_path = ctx.out_dir / f"{self.id}.png"
-        fig.savefig(out_path, format="png", dpi=144, bbox_inches="tight")
+        fig.savefig(out_path, format="png", dpi=DEFAULT_DPI, bbox_inches="tight")
         plt.close(fig)
 
         return {

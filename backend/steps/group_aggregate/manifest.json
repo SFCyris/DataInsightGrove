@@ -33,5 +33,6 @@
     }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
-  "tags": ["aggregate", "group", "rollup"]
+  "tags": ["aggregate", "group", "rollup"],
+  "aliases": ["groupby", "summarize", "summary", "total", "sum", "average", "mean", "count", "aggregate"]
 }

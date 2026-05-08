@@ -29,8 +29,8 @@
       "description": "One-paragraph description. Surfaced as tooltip and step-library detail."
     },
     "category": {
-      "enum": ["ingest", "shape", "clean", "derive", "combine", "aggregate", "model", "output", "custom"],
-      "description": "Coarse grouping for the step library. `model` covers statistical / ML / forecasting steps."
+      "enum": ["ingest", "shape", "clean", "derive", "combine", "aggregate", "analyze", "model", "validate", "visualize", "output", "custom"],
+      "description": "Coarse grouping for the step library. `analyze` covers descriptive + inferential statistics. `model` covers predictive ML / forecasting. `validate` covers data-quality assertions. `visualize` covers chart-rendering steps (export_to_image and pack-shipped chart kinds). `output` is for sinks (DB / file / JDBC / webhook)."
     },
     "engine": {
       "type": "object",
@@ -113,9 +113,66 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Free-form tags for search."
+    },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Search synonyms surfaced only by the picker's intent-ranked search (not displayed). Add the words a user might type instead of the step's label — e.g. 'where', 'predicate' for filter_rows; 'merge', 'lookup' for join."
+    },
+    "requires": {
+      "type": "array",
+      "description": "Upstream-schema preconditions used by the picker to grey out steps that can't run against the current upstream node. Each clause is AND-combined; a clause is satisfied when at least `min` upstream columns match any of the listed type buckets. UX hint only — backend execution is unaffected.",
+      "items": { "$ref": "#/$defs/requirementClause" }
+    },
+    "recommendedMaxRows": {
+      "description": "Soft upper bound on input rows for a usable visualization. The frontend renders a 'data is dense — consider aggregating first' banner above the live chart preview when the upstream node's row count exceeds this value. UX hint only — does NOT change rendering behaviour. For chart steps with multiple kinds (e.g. export_to_image) supply a per-kind map keyed by the `kind` param value, with an optional `_default` for kinds that don't have an explicit entry.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Single threshold for chart steps that always render the same kind (funnel / pareto / waterfall)."
+        },
+        {
+          "type": "object",
+          "patternProperties": {
+            "^(_default|[a-z][a-zA-Z0-9_]*)$": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false,
+          "description": "Per-kind threshold map. Frontend looks up `params.kind`; falls back to `_default` if the kind isn't keyed."
+        }
+      ]
     }
   },
   "$defs": {
+    "requirementClause": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "oneOf": [
+            { "$ref": "#/$defs/requirementBucket" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/requirementBucket" },
+              "minItems": 1,
+              "description": "Any-of: a column matches the clause if its type is in any listed bucket."
+            }
+          ],
+          "description": "Type bucket or list of buckets that satisfies this clause."
+        },
+        "min": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Minimum number of upstream columns matching the bucket(s) (default 1)."
+        }
+      }
+    },
+    "requirementBucket": {
+      "enum": ["numeric", "temporal", "string", "vector", "array", "json", "spatial", "boolean", "any"],
+      "description": "Coarse type bucket. See frontend/lib/step-requirements.ts for the physical/meta-type membership map."
+    },
     "paramSpec": {
       "type": "object",
       "required": ["type", "label"],

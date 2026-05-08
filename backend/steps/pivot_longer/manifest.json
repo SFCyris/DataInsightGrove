@@ -26,5 +26,7 @@
     "values_to": { "type": "string", "label": "Values column", "default": "value" }
   },
   "preview": { "rowImpact": "may_grow", "schemaImpact": "rebuilds" },
-  "tags": ["pivot", "unpivot", "long", "tidy"]
+  "tags": ["pivot", "unpivot", "long", "tidy"],
+  "requires": [{"kind": "any", "min": 2}],
+  "aliases": ["melt", "unpivot", "wide to long"]
 }

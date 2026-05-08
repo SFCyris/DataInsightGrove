@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { aiApi, ApiError, type AiSuggestion } from "@/lib/api/client";
+import { ThinkingLabel } from "@/components/positive-loader";
 
 interface Props {
   pipelineId: string;
@@ -203,7 +204,7 @@ export function SuggestNextButton({ pipelineId, focusedNodeId, focusedSchema, on
                   onClick={ask}
                   disabled={loading || !goal.trim()}
                 >
-                  {loading ? "⏳ Asking…" : suggestions.length > 0 ? "Try again" : "✨ Suggest"}
+                  {loading ? <ThinkingLabel text="Asking…" /> : suggestions.length > 0 ? "Try again" : "✨ Suggest"}
                 </Button>
               </footer>
             </motion.div>

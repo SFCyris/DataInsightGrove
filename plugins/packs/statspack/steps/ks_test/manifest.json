@@ -1,0 +1,42 @@
+{
+  "id": "ks_test",
+  "version": "1.0.0",
+  "label": "📐 Two-sample KS test",
+  "description": "Two-sample Kolmogorov-Smirnov test — do two groups have the same distribution at all? Distribution-free; works even when neither group is normal. Use this instead of t_test when you can't assume normality, or as a follow-up when t_test is significant and you want to understand whether the distributions differ in shape (not just mean).",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref",
+      "label": "Value column (numeric)",
+      "columnFrom": "in",
+      "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "group": {
+      "type": "column_ref",
+      "label": "Group column (binary)",
+      "columnFrom": "in",
+      "required": true,
+      "help": "Categorical column with exactly two distinct non-null values."
+    },
+    "alternative": {
+      "type": "enum",
+      "label": "Alternative hypothesis",
+      "enumValues": ["two-sided", "less", "greater"],
+      "default": "two-sided",
+      "help": "two-sided = distributions differ; less / greater = one-sided test on the cumulative distribution function."
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["statistics", "hypothesis-test", "distribution"],
+  "aliases": ["ks test", "kolmogorov", "kolmogorov-smirnov", "distribution test", "non-parametric"],
+  "requires": [
+    { "kind": "numeric" },
+    { "kind": ["string", "boolean", "any"] }
+  ]
+}

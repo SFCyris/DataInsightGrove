@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datainsightgrove.local/schemas/pack-manifest.v1.json",
+  "title": "DIG Step-Pack Manifest",
+  "description": "Manifest for a step pack — a distributable bundle of step (and optionally connector) plugins. Lives at the root of the pack archive as `pack.json`. The runtime validates this file before any code is loaded.",
+  "type": "object",
+  "required": ["id", "version", "label", "description"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "minLength": 2,
+      "maxLength": 40,
+      "description": "Stable, unique pack identifier. snake_case. Must match the pack's top-level directory name inside the .dpack archive."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the pack. The .dpack filename should embed this version (e.g. `statspack-1.0.0.dpack`)."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Human-readable display name shown in the Step-Packs UI. House style: emoji prefix."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "One-paragraph description of what the pack adds. Surfaced in the install dialog."
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Pack author or maintainer org."
+    },
+    "license": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "SPDX license identifier (e.g. AGPL-3.0, MIT, Apache-2.0)."
+    },
+    "homepage": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Optional URL to the pack's homepage / source / docs."
+    },
+    "minDigVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Minimum DIG host version this pack expects. Loader rejects packs whose minDigVersion is greater than the running backend's version."
+    },
+    "steps": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "uniqueItems": true,
+      "description": "Declared list of step IDs the pack ships. Must match the directories under `steps/` in the archive."
+    },
+    "connectors": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "uniqueItems": true,
+      "description": "Declared list of connector IDs the pack ships. Must match the directories under `connectors/` in the archive."
+    },
+    "pythonRequirements": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Pip-style requirements (e.g. `scipy>=1.11`). Informational only — DIG never auto-installs them. The install dialog surfaces them so the operator can install manually."
+    },
+    "checksum": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "sha256 of the archive contents, stamped at build time by build_pack.py. Used by the install registry for integrity verification."
+    },
+    "signature": {
+      "type": "string",
+      "description": "Optional ed25519 signature of `checksum` by the pack publisher. Reserved for v2; current builds may omit."
+    }
+  }
+}

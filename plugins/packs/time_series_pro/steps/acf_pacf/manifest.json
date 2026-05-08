@@ -1,0 +1,27 @@
+{
+  "id": "acf_pacf",
+  "version": "1.0.0",
+  "label": "⏳ ACF + PACF",
+  "description": "Compute autocorrelation (ACF) and partial autocorrelation (PACF) at lags 1..N. Output is a long-form DataFrame ready to feed export_to_image (line) for the classic ACF/PACF stem plots used in ARIMA(p,d,q) order selection.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Time-series value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "max_lag": {
+      "type": "integer", "label": "Max lag",
+      "default": 40, "min": 1, "max": 1000
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["time-series", "diagnostics"],
+  "aliases": ["acf", "pacf", "autocorrelation", "arima order"],
+  "requires": [{"kind": "numeric"}]
+}
