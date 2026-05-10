@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 460" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <style>
+    .title { font-weight: 700; font-size: 16px; fill: #0f172a; }
+    .h     { font-weight: 600; fill: #0f172a; font-size: 13px; }
+    .code  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; fill: #0f172a; }
+    .lbl   { font-size: 11px; fill: #475569; }
+    .pill  { rx: 8; ry: 8; }
+    .arrow { stroke: #0f172a; stroke-width: 2; fill: none; marker-end: url(#a6); }
+    .yellow { fill: #fef3c7; stroke: #d97706; }
+    .blue   { fill: #dbeafe; stroke: #2563eb; }
+    .green  { fill: #dcfce7; stroke: #16a34a; }
+    .pink   { fill: #fce7f3; stroke: #db2777; }
+  </style>
+  <defs>
+    <marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a" />
+    </marker>
+  </defs>
+
+  <text x="20" y="28" class="title">to_sql() — what your method receives, what it returns</text>
+
+  <!-- Inputs -->
+  <rect class="pill yellow" x="20" y="60" width="420" height="180" />
+  <text x="34" y="84" class="h">📥 INPUT to your to_sql()</text>
+
+  <text x="34" y="108" class="code">params = {</text>
+  <text x="34" y="124" class="code">  "column": "name",          ← from manifest.params.column</text>
+  <text x="34" y="140" class="code">  "find":   "old@",</text>
+  <text x="34" y="156" class="code">  "replace": "new@",</text>
+  <text x="34" y="172" class="code">  "regex":  false</text>
+  <text x="34" y="188" class="code">}</text>
+
+  <text x="34" y="208" class="code">inputs = {</text>
+  <text x="34" y="224" class="code">  "in": '"upstream_node_id"'   ← already double-quoted!</text>
+  <text x="34" y="240" class="code">}</text>
+
+  <line class="arrow" x1="440" y1="150" x2="490" y2="150" />
+
+  <!-- Output -->
+  <rect class="pill green" x="490" y="60" width="410" height="180" />
+  <text x="504" y="84" class="h">📤 OUTPUT — a single SELECT statement (string)</text>
+
+  <text x="504" y="112" class="code">return f'''</text>
+  <text x="504" y="128" class="code">  SELECT * REPLACE (</text>
+  <text x="504" y="144" class="code">    REPLACE({inputs["in"]}.{quote_ident(params["column"])},</text>
+  <text x="504" y="160" class="code">            {quote_str(params["find"])},</text>
+  <text x="504" y="176" class="code">            {quote_str(params["replace"])})</text>
+  <text x="504" y="192" class="code">    AS {quote_ident(params["column"])}</text>
+  <text x="504" y="208" class="code">  ) FROM {inputs["in"]}</text>
+  <text x="504" y="224" class="code">'''</text>
+
+  <!-- Pipeline assembly -->
+  <rect class="pill blue" x="20" y="260" width="880" height="180" />
+  <text x="34" y="284" class="h">🦆 The executor wraps every step's SQL into one DuckDB query:</text>
+
+  <text x="34" y="312" class="code">WITH</text>
+  <text x="34" y="328" class="code">  "ds_customers" AS (SELECT * FROM read_csv_auto('/path/customers.csv', delim=',', header=true)),</text>
+  <text x="34" y="346" class="code">  "n_filter"     AS (SELECT * FROM "ds_customers" WHERE (status = 'active')),</text>
+  <text x="34" y="364" class="code">  "n_replace"    AS (SELECT * REPLACE (REPLACE("n_filter"."email", 'old@', 'new@') AS "email") FROM "n_filter")</text>
+  <text x="34" y="382" class="code">SELECT * FROM "n_replace"</text>
+
+  <text x="34" y="412" class="lbl">↑ Each step's CTE references the previous one. DuckDB's optimizer plans the whole DAG.</text>
+  <text x="34" y="428" class="lbl">↑ Use quote_ident() and quote_str() to avoid SQL injection. The framework gives you both helpers.</text>
+</svg>

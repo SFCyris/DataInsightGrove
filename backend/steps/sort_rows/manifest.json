@@ -1,0 +1,29 @@
+{
+  "id": "sort_rows",
+  "version": "1.0.0",
+  "label": "↕️ Sort rows",
+  "description": "Order rows by one or more columns. Each entry can be ASC or DESC.",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "by": {
+      "type": "array",
+      "label": "Sort keys",
+      "items": {
+        "type": "object",
+        "label": "Key",
+        "properties": {
+          "column":    { "type": "column_ref", "label": "Column", "columnFrom": "in", "required": true },
+          "direction": { "type": "enum", "label": "Direction", "enumValues": ["asc","desc"], "default": "asc" }
+        }
+      }
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["sort", "order"],
+  "aliases": ["order by", "rank", "ascending", "descending"]
+}

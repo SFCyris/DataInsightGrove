@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 380" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <style>
+    .title { font-weight: 700; font-size: 16px; fill: #0f172a; }
+    .h     { font-weight: 600; fill: #ffffff; font-size: 13px; }
+    .lbl   { font-size: 11px; fill: #475569; }
+    .code  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; fill: #ffffff; }
+    .codeb { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; fill: #0f172a; }
+    .arrow { stroke: #0f172a; stroke-width: 2; fill: none; marker-end: url(#arr); }
+    .pill  { rx: 8; ry: 8; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a" />
+    </marker>
+  </defs>
+
+  <text x="20" y="28" class="title">How a step plugs into the pipeline</text>
+
+  <!-- Connector reads -->
+  <rect class="pill" x="20" y="60" width="170" height="80" fill="#16a34a" />
+  <text x="34" y="84" class="h">📥 Connector</text>
+  <text x="34" y="104" class="code">read(uri, options)</text>
+  <text x="34" y="120" class="code">→ pl.LazyFrame</text>
+  <text x="34" y="136" class="code" font-style="italic">(csv / parquet / etc.)</text>
+
+  <line class="arrow" x1="190" y1="100" x2="240" y2="100" />
+
+  <!-- Dataset CTE -->
+  <rect class="pill" x="240" y="60" width="160" height="80" fill="#0ea5e9" />
+  <text x="254" y="84" class="h">📋 Dataset CTE</text>
+  <text x="254" y="104" class="codeb" fill="#ffffff">"ds_customers" AS</text>
+  <text x="254" y="120" class="codeb" fill="#ffffff">  (SELECT * FROM</text>
+  <text x="254" y="136" class="codeb" fill="#ffffff">     read_csv_auto(...))</text>
+
+  <line class="arrow" x1="400" y1="100" x2="450" y2="100" />
+
+  <!-- Step 1 -->
+  <rect class="pill" x="450" y="60" width="200" height="80" fill="#2563eb" />
+  <text x="464" y="84" class="h">🪛 Step CTE (filter_rows)</text>
+  <text x="464" y="104" class="code">"n_filter" AS</text>
+  <text x="464" y="120" class="code">  (SELECT * FROM ds_customers</text>
+  <text x="464" y="136" class="code">   WHERE status='active')</text>
+
+  <line class="arrow" x1="650" y1="100" x2="700" y2="100" />
+
+  <!-- Step 2 (your custom!) -->
+  <rect class="pill" x="700" y="60" width="200" height="80" fill="#db2777" />
+  <text x="714" y="84" class="h">✨ YOUR step (upper_string)</text>
+  <text x="714" y="104" class="code">"n_upper" AS</text>
+  <text x="714" y="120" class="code">  (SELECT * REPLACE</text>
+  <text x="714" y="136" class="code">   (UPPER("name") AS "name")...)</text>
+
+  <!-- Vertical: terminal SELECT -->
+  <line class="arrow" x1="800" y1="140" x2="800" y2="190" />
+
+  <!-- Terminal SELECT -->
+  <rect class="pill" x="700" y="190" width="200" height="60" fill="#475569" />
+  <text x="714" y="214" class="h">📑 Terminal SELECT</text>
+  <text x="714" y="234" class="code">SELECT * FROM "n_upper"</text>
+
+  <line class="arrow" x1="700" y1="220" x2="650" y2="220" />
+
+  <!-- DuckDB executes everything -->
+  <rect class="pill" x="240" y="190" width="410" height="60" fill="#7c3aed" />
+  <text x="254" y="214" class="h">🦆 DuckDB executes the WITH … SELECT in one shot</text>
+  <text x="254" y="234" class="code">CTEs are lazy; only what the terminal SELECT needs gets computed.</text>
+
+  <line class="arrow" x1="240" y1="220" x2="190" y2="220" />
+
+  <!-- Output -->
+  <rect class="pill" x="20" y="190" width="170" height="60" fill="#16a34a" />
+  <text x="34" y="214" class="h">💾 Output (Parquet)</text>
+  <text x="34" y="234" class="code">data/outputs/&lt;run&gt;/...</text>
+
+  <!-- Below: special path for non-SQL steps -->
+  <rect class="pill" x="20" y="290" width="880" height="80" fill="#f1f5f9" stroke="#64748b" />
+  <text x="34" y="314" font-weight="600" fill="#0f172a">⚙️ For Polars/Python steps (engine.primary != "sql")</text>
+  <text x="34" y="334" class="codeb">The executor materializes the upstream SQL into a Polars DataFrame, then calls step.execute_polars(inputs, params).</text>
+  <text x="34" y="352" class="codeb">Result is written to a parquet file; downstream SQL steps read from that file via read_parquet().</text>
+</svg>

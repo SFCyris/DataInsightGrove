@@ -1,0 +1,45 @@
+{
+  "id": "jdbc",
+  "version": "1.0.0",
+  "label": "🔌 JDBC",
+  "description": "Read from / write to any database that ships a JDBC driver — Postgres, MySQL, Oracle, MS SQL Server, DB2, Snowflake, Teradata, Vertica, etc. Requires a Java runtime on the host and a path to the driver JAR. The URI is a literal jdbc: connection string (e.g. jdbc:postgresql://host:5432/db).",
+  "kind": "both",
+  "uriSchemes": ["jdbc"],
+  "options": {
+    "driverClass": {
+      "type": "string",
+      "label": "JDBC driver class",
+      "help": "Fully-qualified Java class name. Examples: org.postgresql.Driver · com.mysql.cj.jdbc.Driver · oracle.jdbc.OracleDriver · com.microsoft.sqlserver.jdbc.SQLServerDriver",
+      "required": true
+    },
+    "jarPath": {
+      "type": "string",
+      "label": "Driver JAR path",
+      "help": "Absolute path to the .jar file (or a directory of jars). Download from the database vendor.",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "label": "Username",
+      "help": "Optional — many drivers also accept user= in the URI."
+    },
+    "password": {
+      "type": "string",
+      "label": "Password",
+      "widget": "password",
+      "help": "Stored in the pipeline document. Prefer environment-variable interpolation — e.g. ${MY_DB_PASS} — when shipping pipelines around."
+    },
+    "table": {
+      "type": "string",
+      "label": "Table name",
+      "help": "Reads SELECT * FROM <table>. Schema-qualify if needed (e.g. analytics.orders). Leave blank to use a custom query."
+    },
+    "query": {
+      "type": "expression",
+      "label": "Custom SQL query",
+      "help": "Used when 'Table name' is blank. Executed verbatim against the database.",
+      "widget": "expression_builder"
+    }
+  },
+  "tags": ["database", "sql", "rdbms", "jdbc", "java", "enterprise"]
+}

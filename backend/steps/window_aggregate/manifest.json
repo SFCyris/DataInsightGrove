@@ -1,0 +1,35 @@
+{
+  "id": "window_aggregate",
+  "version": "1.0.0",
+  "label": "🪟 Window aggregate",
+  "description": "Add a column computed over a rolling/cumulative window — running sum, rank, lead/lag, etc.",
+  "category": "aggregate",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "fn":         { "type": "enum", "label": "Window function",
+                    "enumValues": ["sum", "mean", "min", "max", "count", "rank", "row_number", "lag", "lead"],
+                    "default": "sum", "required": true },
+    "column":     { "type": "column_ref", "label": "Source column", "columnFrom": "in" },
+    "partitionBy":{ "type": "column_refs", "label": "Partition by (groups)", "columnFrom": "in" },
+    "orderBy": {
+      "type": "array",
+      "label": "Order by",
+      "items": {
+        "type": "object",
+        "label": "Sort key",
+        "properties": {
+          "column":    { "type": "column_ref", "label": "Column", "columnFrom": "in", "required": true },
+          "direction": { "type": "enum", "label": "Direction", "enumValues": ["asc", "desc"], "default": "asc" }
+        }
+      }
+    },
+    "as":         { "type": "string", "label": "New column name", "required": true }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["window", "rolling", "rank"],
+  "aliases": ["partition", "lead lag", "running total", "row number"]
+}

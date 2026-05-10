@@ -1,0 +1,30 @@
+{
+  "id": "array_length",
+  "version": "1.0.0",
+  "label": "📏 Array length",
+  "description": "Add a column with the length of an array column. Returns 0 for empty arrays and NULL for NULL arrays.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": {
+      "type": "column_ref",
+      "label": "Array column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "length",
+      "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["array", "length", "count", "derive"],
+  "requires": [{"kind": ["array", "vector", "json"]}],
+  "aliases": ["size", "count items", "array size"]
+}

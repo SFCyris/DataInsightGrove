@@ -1,0 +1,16 @@
+packages:
+  - "frontend"
+
+# pnpm 10+ requires workspace-wide settings to live HERE, not inside an
+# individual package.json — otherwise they're silently ignored. Without
+# this, `pnpm install` aborts at the end with ERR_PNPM_IGNORED_BUILDS for
+# msw + sharp + @swc/core (sharp needs its prebuild step to ship libvips,
+# msw needs its install hook to register the service worker, and @swc/core
+# downloads platform-specific binaries). Listing the packages here makes
+# their build scripts pre-approved so the install completes hands-off
+# instead of stopping with "Run pnpm approve-builds".
+onlyBuiltDependencies:
+  - msw
+  - sharp
+  - esbuild
+  - "@swc/core"

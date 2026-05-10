@@ -1,0 +1,69 @@
+{
+  "id": "check_data",
+  "version": "1.0.0",
+  "label": "🧪 Data quality check",
+  "description": "Assert a column-level rule on the data — fails or warns if violated. Mirrors dbt's tests and Great Expectations' assertions in spirit; gives DIG users a way to declare expectations inline as a pipeline step.",
+  "category": "clean",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": {
+      "type": "column_ref",
+      "label": "Column to check",
+      "columnFrom": "in",
+      "required": true,
+      "help": "The column the rule is evaluated against. For checks that don't need a single column (e.g. row count thresholds), point at any column — the rule simply ignores it."
+    },
+    "check": {
+      "type": "enum",
+      "label": "Check kind",
+      "enumValues": ["not_null", "unique", "between", "in_set", "regex", "expression"],
+      "default": "not_null",
+      "required": true,
+      "help": "not_null  → no NULLs · unique → no duplicates · between → numeric range · in_set → value must be one of N · regex → must match a pattern · expression → custom SQL predicate (rule passes when expression is TRUE)"
+    },
+    "min": {
+      "type": "number",
+      "label": "Min (between only)",
+      "help": "Inclusive lower bound for `between` checks. Leave blank to skip the lower bound."
+    },
+    "max": {
+      "type": "number",
+      "label": "Max (between only)",
+      "help": "Inclusive upper bound for `between` checks. Leave blank to skip the upper bound."
+    },
+    "set": {
+      "type": "string",
+      "label": "Allowed values (in_set only)",
+      "help": "Comma-separated list of values, e.g. `paid, pending, cancelled`. Each value is compared as text — surround with quotes if it contains a comma."
+    },
+    "pattern": {
+      "type": "string",
+      "label": "Regex (regex only)",
+      "help": "DuckDB regex pattern (POSIX-style). The rule passes if every non-NULL value matches."
+    },
+    "expression": {
+      "type": "string",
+      "label": "SQL expression (expression only)",
+      "help": "Free-form SQL predicate. The rule passes when the expression returns TRUE for every row. Reference the column with its quoted name. Same security validator as filter_rows / derive_column."
+    },
+    "severity": {
+      "type": "enum",
+      "label": "On violation",
+      "enumValues": ["warn", "error"],
+      "default": "warn",
+      "help": "warn → emit a `data.quality.violation` event (notifications panel); pipeline keeps running.\n\nerror → emit + the run is marked failed if any violations are found."
+    },
+    "name": {
+      "type": "string",
+      "label": "Friendly name",
+      "help": "Optional. Shows up in the notification + run history. e.g. `revenue_must_be_positive`."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["check", "test", "assertion", "quality", "validate"],
+  "aliases": ["assert", "test", "expect", "validate", "data quality", "great expectations", "dbt test"]
+}

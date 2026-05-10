@@ -1,0 +1,17 @@
+{
+  "id": "fits",
+  "version": "1.0.0",
+  "label": "🔭 FITS",
+  "description": "Read FITS files (.fits, .fit, .fts) — astronomical observations and catalogues. A FITS file is a list of HDUs (Header-Data Units): some are images, some are tables. By default the connector picks the first BinTable / ASCIITable HDU; if there are none, the first 2-D image HDU. Use 'hdu' to override by index. Requires the [science] extra (astropy).",
+  "kind": "source",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["fits", "fit", "fts"],
+  "options": {
+    "hdu": {
+      "type": "integer",
+      "label": "HDU index",
+      "help": "Zero-based index of the HDU to read. Default: the first table HDU, or the first image HDU if no tables are present."
+    }
+  },
+  "tags": ["scientific", "binary", "astronomy"]
+}

@@ -1,0 +1,22 @@
+{
+  "id": "split_column",
+  "version": "1.0.0",
+  "label": "✂️ Split column",
+  "description": "Split a string column on a delimiter into N new columns (named col_1, col_2, …).",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column":    { "type": "column_ref", "label": "Column", "columnFrom": "in", "required": true },
+    "delimiter": { "type": "string", "label": "Delimiter", "default": "," },
+    "parts":     { "type": "integer", "label": "Number of parts", "default": 2, "min": 1, "max": 20 },
+    "drop":      { "type": "boolean", "label": "Drop the original column", "default": false }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["string", "split"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["parse", "separate", "tokenize", "delimiter"]
+}

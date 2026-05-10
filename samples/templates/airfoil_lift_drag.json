@@ -1,0 +1,213 @@
+{
+  "slug": "airfoil_lift_drag",
+  "title": "\u2708\ufe0f Airfoil L/D peak by airfoil",
+  "summary": "Filter airfoil polars to a target Reynolds, assert physics expectations on Cl / Cd / \u03b1, derive a clean L/D ratio, and roll up to per-airfoil L/D peaks. Demonstrates filter_rows + expectations + derive_column + group_aggregate + sort_rows + CSV export end-to-end.",
+  "tags": [
+    "aerospace",
+    "airfoil",
+    "polar",
+    "expectations",
+    "intermediate"
+  ],
+  "needsSampleDataset": true,
+  "sampleDataset": "aerodynamics-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "\u2708\ufe0f Airfoil L/D peak by airfoil (template)",
+    "datasets": [
+      {
+        "id": "ds_demo",
+        "connector": "parquet",
+        "uri": "{{DEMO_DATASET_URI}}",
+        "label": "demo \u00b7 aerodynamics"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "n_re",
+        "step": "filter_rows",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "ds_demo"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "predicate": "\"reynolds\" = 500000"
+        },
+        "ui": {
+          "x": 280,
+          "y": 100,
+          "label": "\ud83d\udd0d Re = 500k"
+        }
+      },
+      {
+        "id": "n_check",
+        "step": "expectations",
+        "stepVersion": "1.1.0",
+        "inputs": {
+          "in": {
+            "ref": "n_re"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "rules": [
+            {
+              "kind": "between",
+              "column": "cl",
+              "min": -3.0,
+              "max": 3.0,
+              "severity": "warning",
+              "label": "Cl in physical range"
+            },
+            {
+              "kind": "between",
+              "column": "cd",
+              "min": 0.0,
+              "max": 0.5,
+              "severity": "warning",
+              "label": "Cd above noise floor"
+            },
+            {
+              "kind": "between",
+              "column": "alpha_deg",
+              "min": -15.0,
+              "max": 25.0,
+              "severity": "error",
+              "label": "\u03b1 within sweep"
+            },
+            {
+              "kind": "not_null",
+              "column": "cl_cd_ratio",
+              "severity": "warning",
+              "label": "L/D ratio populated"
+            },
+            {
+              "kind": "null_fraction",
+              "column": "transition_pt_chord",
+              "max": 0.05,
+              "severity": "warning",
+              "label": "Transition-point sensor < 5% drop"
+            }
+          ],
+          "fail_on_violation": true,
+          "notify_on": "error_only"
+        },
+        "ui": {
+          "x": 540,
+          "y": 100,
+          "label": "\u2705 Physics gate"
+        }
+      },
+      {
+        "id": "n_ld",
+        "step": "derive_column",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_check"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "name": "cl_cd_ratio_clean",
+          "expression": "\"cl\" / NULLIF(\"cd\", 0)"
+        },
+        "ui": {
+          "x": 800,
+          "y": 100,
+          "label": "\u2795 L/D (clean)"
+        }
+      },
+      {
+        "id": "n_grp",
+        "step": "group_aggregate",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_ld"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "groupBy": [
+            "airfoil"
+          ],
+          "aggregates": [
+            {
+              "fn": "max",
+              "column": "cl_cd_ratio_clean",
+              "as": "ld_peak"
+            },
+            {
+              "fn": "max",
+              "column": "cl",
+              "as": "cl_max"
+            },
+            {
+              "fn": "min",
+              "column": "cd",
+              "as": "cd_min"
+            },
+            {
+              "fn": "count",
+              "column": "stalled",
+              "as": "stalled_rows"
+            }
+          ]
+        },
+        "ui": {
+          "x": 1060,
+          "y": 100,
+          "label": "\ud83d\udcca Per airfoil"
+        }
+      },
+      {
+        "id": "n_sort",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_grp"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "by": [
+            {
+              "column": "ld_peak",
+              "direction": "desc"
+            }
+          ]
+        },
+        "ui": {
+          "x": 1320,
+          "y": 100,
+          "label": "\u2195\ufe0f Best L/D first"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "id": "o",
+        "name": "airfoil_ld_peak",
+        "from": {
+          "ref": "n_sort"
+        }
+      }
+    ]
+  }
+}

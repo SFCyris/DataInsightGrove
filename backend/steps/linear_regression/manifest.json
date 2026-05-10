@@ -1,0 +1,80 @@
+{
+  "id": "linear_regression",
+  "version": "1.0.0",
+  "label": "\ud83d\udcd0 Linear regression",
+  "description": "Ordinary least squares \u2014 fit y = \u03b2\u00b7X + \u03b5. Adds a 'predicted' and 'residual' column. Renders the fit (single feature) or actual-vs-predicted (multiple features).",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "y": {
+      "type": "column_ref",
+      "label": "Target column (y)",
+      "columnFrom": "in",
+      "required": true
+    },
+    "x_columns": {
+      "type": "column_refs",
+      "label": "Feature columns (X)",
+      "columnFrom": "in",
+      "required": true
+    },
+    "fit_intercept": {
+      "type": "boolean",
+      "label": "Fit intercept",
+      "default": true
+    },
+    "predicted_column": {
+      "type": "string",
+      "label": "Predicted column name",
+      "default": "predicted"
+    },
+    "residual_column": {
+      "type": "string",
+      "label": "Residual column name",
+      "default": "residual"
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render fit / actual-vs-predicted",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "Linear regression"
+    }
+  },
+  "preview": {
+    "rowImpact": "preserves",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "regression",
+    "linear",
+    "ols"
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["regression", "fit", "ols", "predictor", "coefficients"]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "mysql",
+  "version": "1.0.0",
+  "label": "🐬 MySQL",
+  "description": "Read a table or custom query from a MySQL / MariaDB database. URI: mysql://user:pass@host:3306/db",
+  "kind": "source",
+  "uriSchemes": ["mysql", "mariadb"],
+  "options": {
+    "table": {
+      "type": "string",
+      "label": "Table name",
+      "help": "Reads SELECT * FROM `table`. Leave blank to use the custom query."
+    },
+    "query": {
+      "type": "expression",
+      "label": "Custom SQL query",
+      "help": "Used when 'Table name' is empty. Executed verbatim against MySQL."
+    }
+  },
+  "tags": ["database", "sql", "rdbms"]
+}

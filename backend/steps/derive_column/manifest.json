@@ -1,0 +1,29 @@
+{
+  "id": "derive_column",
+  "version": "1.0.0",
+  "label": "➕ Derive column",
+  "description": "Add a new column computed from a SQL expression over existing columns.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "name": {
+      "type": "string",
+      "label": "New column name",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "expression": {
+      "type": "expression",
+      "label": "Expression",
+      "help": "SQL expression, e.g. amount * 1.07 or upper(name)",
+      "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["derive", "compute"],
+  "aliases": ["new column", "calculated column", "formula", "compute column"]
+}

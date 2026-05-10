@@ -1,0 +1,28 @@
+{
+  "id": "kpss_test",
+  "version": "1.0.0",
+  "label": "⏳ KPSS test",
+  "description": "Companion to ADF — tests the OPPOSITE null hypothesis. H0: series is stationary. Rejecting (small p-value) means non-stationary. Best practice: run BOTH ADF and KPSS; if both agree, you have a confident verdict.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Time-series value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "regression": {
+      "type": "enum", "label": "Trend regression",
+      "enumValues": ["c", "ct"], "default": "c",
+      "help": "c = level-stationary; ct = trend-stationary."
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["time-series", "stationarity"],
+  "aliases": ["kpss", "kwiatkowski"],
+  "requires": [{"kind": "numeric"}]
+}

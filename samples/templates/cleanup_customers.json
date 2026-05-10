@@ -1,0 +1,32 @@
+{
+  "slug": "cleanup_customers",
+  "title": "🧹 Cleanup customers",
+  "summary": "Drop empty emails, lowercase the country code, and keep only active records — the kind of thing you do before any analysis.",
+  "tags": ["cleanup", "beginner"],
+  "needsSampleDataset": true,
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🧹 Cleanup customers (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · customers" }
+    ],
+    "nodes": [
+      {
+        "id": "n_active", "step": "filter_rows", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } }, "outputs": ["out"],
+        "params": { "predicate": "\"status\" = 'active'" },
+        "ui": { "x": 280, "y": 100, "label": "🔍 Keep active" }
+      },
+      {
+        "id": "n_email", "step": "filter_rows", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_active" } }, "outputs": ["out"],
+        "params": { "predicate": "\"email\" IS NOT NULL" },
+        "ui": { "x": 540, "y": 100, "label": "🔍 Has email" }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "active_with_email", "from": { "ref": "n_email" } }
+    ]
+  }
+}

@@ -1,0 +1,311 @@
+{
+  "slug": "macro_inflation_dashboard",
+  "title": "\ud83c\udf0d Macro inflation dashboard",
+  "summary": "Filter to advanced economies, derive a decade column, gate on data-quality expectations, smooth GDP growth with a 12-month rolling mean, decompose inflation seasonally, and roll up region \u00d7 decade medians. The classic macro time-series cleanup shape.",
+  "tags": [
+    "economics",
+    "macro",
+    "time-series",
+    "advanced"
+  ],
+  "needsSampleDataset": true,
+  "sampleDataset": "economy-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "\ud83c\udf0d Macro inflation dashboard (template)",
+    "datasets": [
+      {
+        "id": "ds_demo",
+        "connector": "parquet",
+        "uri": "{{DEMO_DATASET_URI}}",
+        "label": "demo \u00b7 economy"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "n_cast_month",
+        "step": "cast_type",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "ds_demo"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "column": "month",
+          "targetType": "date",
+          "strict": false
+        },
+        "ui": {
+          "x": 280,
+          "y": 100,
+          "label": "\ud83d\udd04 month \u2192 date"
+        }
+      },
+      {
+        "id": "n_filter_advanced",
+        "step": "filter_rows",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_cast_month"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "predicate": "\"is_advanced_economy\" = true"
+        },
+        "ui": {
+          "x": 540,
+          "y": 100,
+          "label": "\ud83d\udd0d Advanced economies"
+        }
+      },
+      {
+        "id": "n_derive_decade",
+        "step": "derive_column",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_filter_advanced"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "name": "decade",
+          "expression": "(EXTRACT(YEAR FROM \"month\") / 10)::INT * 10"
+        },
+        "ui": {
+          "x": 800,
+          "y": 100,
+          "label": "\u2795 decade"
+        }
+      },
+      {
+        "id": "n_expect",
+        "step": "expectations",
+        "stepVersion": "1.1.0",
+        "inputs": {
+          "in": {
+            "ref": "n_derive_decade"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "rules": [
+            {
+              "kind": "between",
+              "column": "gdp_usd_bn",
+              "args": {
+                "min": 0,
+                "max": 100000
+              },
+              "severity": "error",
+              "label": "gdp_usd_bn > 0"
+            },
+            {
+              "kind": "between",
+              "column": "unemployment_rate",
+              "args": {
+                "min": 0,
+                "max": 50
+              },
+              "severity": "warning",
+              "label": "unemployment 0-50"
+            },
+            {
+              "kind": "between",
+              "column": "inflation_cpi_yoy",
+              "args": {
+                "min": -5,
+                "max": 500
+              },
+              "severity": "warning",
+              "label": "inflation sane"
+            },
+            {
+              "kind": "not_null",
+              "column": "country",
+              "severity": "error",
+              "label": "country present"
+            }
+          ],
+          "fail_on_violation": true,
+          "notify_on": "error_only"
+        },
+        "ui": {
+          "x": 1060,
+          "y": 100,
+          "label": "\u2705 DQ gate"
+        }
+      },
+      {
+        "id": "n_sort_country_month",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_expect"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "by": [
+            {
+              "column": "country",
+              "direction": "asc"
+            },
+            {
+              "column": "month",
+              "direction": "asc"
+            }
+          ]
+        },
+        "ui": {
+          "x": 1320,
+          "y": 100,
+          "label": "\u2195\ufe0f country, month"
+        }
+      },
+      {
+        "id": "n_rolling",
+        "step": "rolling",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_sort_country_month"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "time_column": "month",
+          "windows": [
+            {
+              "column": "gdp_growth_yoy",
+              "fn": "mean",
+              "window": 12,
+              "as": "gdp_growth_12m_avg"
+            },
+            {
+              "column": "inflation_cpi_yoy",
+              "fn": "mean",
+              "window": 12,
+              "as": "inflation_12m_avg"
+            }
+          ],
+          "min_periods": 6
+        },
+        "ui": {
+          "x": 1580,
+          "y": 100,
+          "label": "\ud83c\udf0a 12-month rolling"
+        }
+      },
+      {
+        "id": "n_region_decade",
+        "step": "group_aggregate",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_rolling"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "groupBy": [
+            "region",
+            "decade"
+          ],
+          "aggregates": [
+            {
+              "fn": "mean",
+              "column": "inflation_cpi_yoy",
+              "as": "inflation_mean"
+            },
+            {
+              "fn": "mean",
+              "column": "unemployment_rate",
+              "as": "unemployment_mean"
+            },
+            {
+              "fn": "mean",
+              "column": "gdp_growth_yoy",
+              "as": "gdp_growth_mean"
+            },
+            {
+              "fn": "count",
+              "as": "n_obs"
+            }
+          ]
+        },
+        "ui": {
+          "x": 1840,
+          "y": 100,
+          "label": "\ud83d\udcca region \u00d7 decade"
+        }
+      },
+      {
+        "id": "n_sort_final",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": {
+          "in": {
+            "ref": "n_region_decade"
+          }
+        },
+        "outputs": [
+          "out"
+        ],
+        "params": {
+          "by": [
+            {
+              "column": "decade",
+              "direction": "asc"
+            },
+            {
+              "column": "inflation_mean",
+              "direction": "desc"
+            }
+          ]
+        },
+        "ui": {
+          "x": 2100,
+          "y": 100,
+          "label": "\u2195\ufe0f decade, inflation"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "id": "o_smoothed",
+        "name": "macro_smoothed",
+        "from": {
+          "ref": "n_rolling"
+        }
+      },
+      {
+        "id": "o_summary",
+        "name": "region_decade_summary",
+        "from": {
+          "ref": "n_sort_final"
+        }
+      }
+    ]
+  }
+}

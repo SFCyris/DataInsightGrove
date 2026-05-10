@@ -1,0 +1,17 @@
+{
+  "id": "numpy",
+  "version": "1.0.0",
+  "label": "🔢 NumPy array",
+  "description": "Read NumPy .npy (single array) and .npz (zip of named arrays). 1-D arrays become a single column; 2-D arrays become N columns named col_1, col_2, … (or the array's structured-dtype field names if present). For .npz, the 'name' option picks which array to load — defaults to the first 2-D one.",
+  "kind": "source",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["npy", "npz"],
+  "options": {
+    "name": {
+      "type": "string",
+      "label": "Array name (.npz only)",
+      "help": "Which array inside the .npz to load. Default: the first 2-D array, or the first array if none are 2-D."
+    }
+  },
+  "tags": ["scientific", "array", "binary"]
+}

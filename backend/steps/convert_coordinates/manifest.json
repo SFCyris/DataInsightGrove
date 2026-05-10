@@ -1,0 +1,45 @@
+{
+  "id": "convert_coordinates",
+  "version": "1.0.0",
+  "label": "🧭 Convert coordinates",
+  "description": "Lossless conversion between polar, Cartesian, and geographic coordinate systems. Pure trig for polar↔Cartesian; WGS84 ellipsoid math for geographic↔Cartesian (ECEF).",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "fromType": {
+      "type": "enum",
+      "label": "Source coordinate system",
+      "enumValues": ["cartesian2d", "cartesian3d", "polar2d", "polar3d", "geographic"],
+      "required": true,
+      "help": "What system the source columns express. cartesian: (x, y[, z]); polar: (r, θ[, φ]) with θ/φ in radians; geographic: (lat, lon) in degrees."
+    },
+    "toType": {
+      "type": "enum",
+      "label": "Target coordinate system",
+      "enumValues": ["cartesian2d", "cartesian3d", "polar2d", "polar3d", "geographic"],
+      "required": true,
+      "help": "What system to produce. polar↔cartesian conversions are dimension-preserving (2D↔2D, 3D↔3D). geographic↔cartesian uses ECEF (Earth-Centered Earth-Fixed) on the WGS84 ellipsoid; output is 3D."
+    },
+    "sourceColumns": {
+      "type": "array",
+      "label": "Source columns",
+      "required": true,
+      "help": "The columns carrying the source coordinates, in canonical order: cartesian: [x, y, z?]; polar: [r, theta, phi?]; geographic: [lat, lon].",
+      "items": { "type": "column_ref", "label": "column", "columnFrom": "in" }
+    },
+    "outputPrefix": {
+      "type": "string",
+      "label": "Output column prefix",
+      "default": "coord_",
+      "help": "Prepended to each generated output column name. Output names follow the canonical order of the target system: cartesian → x/y[/z]; polar → r/theta[/phi]; geographic → lat/lon."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["spatial", "geometry", "coordinates", "convert", "polar", "cartesian", "geographic"],
+  "requires": [{"kind": "spatial"}],
+  "aliases": ["projection", "lat lon", "x y"]
+}

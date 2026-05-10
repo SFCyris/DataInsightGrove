@@ -1,0 +1,112 @@
+{
+  "id": "export_to_image",
+  "version": "1.0.0",
+  "label": "🖼 Export to image",
+  "description": "Render the data as a PNG/SVG via matplotlib + seaborn. Pick 1 column (distribution), 2 columns (scatter / categorical), or 3 columns (heatmap or 3-D scatter). 'auto' picks a sensible chart from the column types.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "kind": {
+      "type": "enum",
+      "label": "Chart kind",
+      "enumValues": ["auto", "histogram", "bar_counts", "scatter", "line", "hexbin", "heatmap", "scatter3d"],
+      "default": "auto",
+      "required": true,
+      "help": "'auto' inspects the columns + types and picks one. Override for explicit control."
+    },
+    "x": {
+      "type": "column_ref",
+      "label": "X column",
+      "columnFrom": "in",
+      "help": "First axis. Required for 2D/3D charts; optional for distribution charts (then samples the chosen value column)."
+    },
+    "y": {
+      "type": "column_ref",
+      "label": "Y column",
+      "columnFrom": "in",
+      "help": "Second axis. Required for scatter / line / heatmap / scatter3d.",
+      "visibleWhen": { "kind": "scatter" }
+    },
+    "y2": {
+      "type": "column_ref",
+      "label": "Y column",
+      "columnFrom": "in",
+      "visibleWhen": { "kind": "line" }
+    },
+    "y3": {
+      "type": "column_ref",
+      "label": "Y column",
+      "columnFrom": "in",
+      "visibleWhen": { "kind": "hexbin" }
+    },
+    "y4": {
+      "type": "column_ref",
+      "label": "Y column",
+      "columnFrom": "in",
+      "visibleWhen": { "kind": "heatmap" }
+    },
+    "y5": {
+      "type": "column_ref",
+      "label": "Y column",
+      "columnFrom": "in",
+      "visibleWhen": { "kind": "scatter3d" }
+    },
+    "value": {
+      "type": "column_ref",
+      "label": "Value / size column",
+      "columnFrom": "in",
+      "help": "Third channel — colors a heatmap cell or sizes a scatter marker."
+    },
+    "z": {
+      "type": "column_ref",
+      "label": "Z column (3-D scatter)",
+      "columnFrom": "in",
+      "visibleWhen": { "kind": "scatter3d" }
+    },
+    "title": { "type": "string", "label": "Title" },
+    "format": {
+      "type": "enum",
+      "label": "Format",
+      "enumValues": ["png", "svg"],
+      "default": "png",
+      "required": true
+    },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1600, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 1200, "min": 200, "max": 4000 },
+    "dpi":    { "type": "integer", "label": "DPI",         "default": 144,  "min": 60,  "max": 600,
+                "help": "144 ≈ Retina; 300 = print quality. The live preview caps at 144 even when set higher (300-DPI raster scaled to a small preview pane makes labels look oversized); your full Run honors the value as-set.",
+                "visibleWhen": { "format": "png" } },
+    "font_scale": {
+      "type": "number",
+      "label": "Font scale (auto when blank)",
+      "min": 0.3, "max": 3.0,
+      "help": "Multiplier on label / tick / legend fonts. Leave blank for auto — the renderer picks a seaborn context (paper / notebook / talk) sized to the figure dimensions. Set explicitly to override (1.0 = notebook baseline)."
+    },
+    "max_points": {
+      "type": "integer",
+      "label": "Max points to plot",
+      "default": 50000,
+      "min": 100,
+      "max": 1000000,
+      "help": "If the input has more rows than this, the step samples down. Plots aren't useful past a few hundred thousand points."
+    },
+    "path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "recommendedMaxRows": {
+    "_default": 50000,
+    "scatter":   5000,
+    "scatter3d": 5000,
+    "line":      10000,
+    "heatmap":   50000,
+    "hexbin":    200000,
+    "histogram": 500000,
+    "bar_counts": 50000
+  },
+  "tags": ["export", "image", "plot", "viz", "matplotlib", "seaborn"],
+  "aliases": ["chart", "plot", "visualize", "save image", "screenshot"]
+}

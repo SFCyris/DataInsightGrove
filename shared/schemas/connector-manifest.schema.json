@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://datainsightgrove.local/schemas/connector-manifest.v1.json",
+  "title": "DIG Connector Manifest",
+  "description": "Manifest for a data source / sink connector. Same general shape as step manifests but simpler — connectors don't run inside the DAG, they read/write at the dataset and output boundaries.",
+  "type": "object",
+  "required": ["id", "version", "label", "kind", "options"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "kind": {
+      "enum": ["source", "sink", "both"],
+      "description": "Source = reads data; sink = writes data; both = supports both directions."
+    },
+    "uriSchemes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "URI schemes this connector handles, e.g. ['file'] or ['file','s3']."
+    },
+    "fileExtensions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File extensions this connector recognizes when probing a source. Lowercase, no leading dot, e.g. ['csv','tsv']."
+    },
+    "options": {
+      "type": "object",
+      "description": "Per-connector option spec map. Same shape as step paramSpec.",
+      "patternProperties": {
+        "^[a-z][a-zA-Z0-9_]*$": {
+          "$ref": "https://datainsightgrove.local/schemas/step-manifest.v1.json#/$defs/paramSpec"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

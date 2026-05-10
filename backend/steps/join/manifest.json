@@ -1,0 +1,74 @@
+{
+  "id": "join",
+  "version": "1.3.0",
+  "label": "🔗 Join",
+  "description": "Combine rows from two inputs by matching values in key columns. Cardinality strip surfaces row-count consequences before you commit; suggestions auto-detect likely keys; per-key match-quality bars catch wrong-column-picked, type-coercion, and zero-overlap cases upfront. The Result columns panel makes provenance (left/right/coalesced) glanceable and lets each column be excluded or renamed inline.",
+  "category": "combine",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 2, "max": 2, "ports": ["left", "right"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "kind": {
+      "type": "enum",
+      "label": "Join type",
+      "enumValues": ["inner", "left", "right", "full", "anti_left", "anti_right"],
+      "default": "inner",
+      "required": true,
+      "widget": "join_type_icons",
+      "help": "inner = matching rows only; left/right = keep all of one side; full = keep both sides' rows (NULLs where unmatched); anti_left = rows on the left WITHOUT a match; anti_right = mirror."
+    },
+    "keys": {
+      "type": "array",
+      "label": "Keys",
+      "required": true,
+      "widget": "join_keys_builder",
+      "items": {
+        "type": "object",
+        "label": "Key",
+        "properties": {
+          "left":      { "type": "column_ref", "label": "Left",  "columnFrom": "left",  "required": true },
+          "right":     { "type": "column_ref", "label": "Right (or low bound for BETWEEN)", "columnFrom": "right", "required": true },
+          "op":        { "type": "enum",   "label": "Op", "enumValues": ["=", "≈", "<", "<=", ">", ">=", "between"], "default": "=" },
+          "rightHigh": { "type": "column_ref", "label": "Right high bound (BETWEEN only)", "columnFrom": "right" }
+        }
+      }
+    },
+    "columnCollisions": {
+      "type": "enum",
+      "label": "Column collision rule",
+      "enumValues": ["keep_both", "keep_left", "keep_right", "coalesce"],
+      "default": "keep_both",
+      "help": "How to resolve columns that exist on both sides (and aren't keys). 'keep_both' suffixes them; 'coalesce' uses left, falling back to right when null; 'keep_left'/'keep_right' drops one side."
+    },
+    "suffixes": {
+      "type": "array",
+      "label": "Suffixes for keep_both",
+      "items": { "type": "string", "label": "Suffix" },
+      "default": ["_left", "_right"],
+      "help": "Two-element list — first applied to left's collision, second to right's."
+    },
+    "outputColumns": {
+      "type": "object",
+      "label": "Result columns",
+      "widget": "result_columns_panel",
+      "default": { "excluded": [], "renames": {} },
+      "help": "Per-column include + rename for the joined output. Defaults to every column at its natural name. Provenance IDs key on the source side: 'L:<col>' for left, 'R:<col>' for right, 'C:<col>' for coalesced (when collision rule = coalesce).",
+      "properties": {
+        "excluded": {
+          "type": "array",
+          "label": "Excluded",
+          "items": { "type": "string", "label": "Provenance ID" }
+        },
+        "renames": {
+          "type": "object",
+          "label": "Renames"
+        }
+      }
+    }
+  },
+  "preview": { "rowImpact": "unknown", "schemaImpact": "rebuilds" },
+  "tags": ["join", "combine", "merge"],
+  "aliases": ["merge", "lookup", "vlookup", "inner join", "left join", "match"]
+}

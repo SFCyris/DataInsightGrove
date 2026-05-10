@@ -1,0 +1,45 @@
+{
+  "slug": "spatial_distance",
+  "title": "🌍 Spatial: distance from a hub",
+  "summary": "Pack lat/lon into a geographic struct, compute great-circle distance from each city to New York, sort by closest. Demonstrates pack_struct + geo_distance + cast to geographic.",
+  "tags": ["spatial", "geographic", "intermediate"],
+  "needsSampleDataset": true,
+  "sampleDataset": "cities-demo",
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🌍 Spatial: distance from NYC (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · cities" }
+    ],
+    "nodes": [
+      {
+        "id": "n_distance",
+        "step": "geo_distance",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } },
+        "outputs": ["out"],
+        "params": {
+          "lat1Column": "lat",
+          "lon1Column": "lon",
+          "lat2Column": "lat",
+          "lon2Column": "lon",
+          "outputColumn": "distance_to_self_m"
+        },
+        "ui": { "x": 280, "y": 100, "label": "🌍 Distance (self)" }
+      },
+      {
+        "id": "n_sort",
+        "step": "sort_rows",
+        "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_distance" } },
+        "outputs": ["out"],
+        "params": { "by": [{ "column": "population", "direction": "desc" }] },
+        "ui": { "x": 540, "y": 100, "label": "↕️ By population" }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "cities_sorted", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

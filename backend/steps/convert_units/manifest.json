@@ -1,0 +1,98 @@
+{
+  "id": "convert_units",
+  "version": "1.0.0",
+  "label": "🔄 Convert units",
+  "description": "Convert a numeric column between units. Supports temperature, length, mass, volume, time, pressure, energy, power, force, speed, angle, frequency, data sizes, and chemistry (mol / molarity). Both source and target unit must be in the same category — see the unit dropdown for the full list.",
+  "category": "derive",
+  "tags": ["convert", "units", "temperature", "length", "mass", "physics", "chemistry"],
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs":  { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "column": {
+      "type": "column_ref",
+      "label": "Source column",
+      "help": "Numeric column holding values in the FROM unit.",
+      "columnFrom": "in",
+      "columnTypes": ["double", "integer"],
+      "required": true
+    },
+    "from_unit": {
+      "type": "enum",
+      "label": "From unit",
+      "help": "Unit the source column is currently in.",
+      "required": true,
+      "enumValues": [
+        "kelvin", "celsius", "fahrenheit", "rankine",
+        "meter", "kilometer", "centimeter", "millimeter", "micrometer", "nanometer",
+        "inch", "foot", "yard", "mile", "nautical_mile",
+        "kilogram", "gram", "milligram", "microgram", "metric_ton",
+        "pound", "ounce", "short_ton", "long_ton", "stone", "carat",
+        "liter", "milliliter", "cubic_meter", "cubic_centimeter",
+        "us_gallon", "uk_gallon", "us_quart", "us_pint",
+        "us_fluid_ounce", "uk_fluid_ounce", "us_cup", "us_tablespoon", "us_teaspoon",
+        "second", "nanosecond", "microsecond", "millisecond",
+        "minute", "hour", "day", "week",
+        "pascal", "kilopascal", "megapascal", "bar", "atmosphere",
+        "psi", "torr", "mmhg", "inhg",
+        "joule", "kilojoule", "megajoule", "calorie", "kilocalorie",
+        "watt_hour", "kilowatt_hour", "megawatt_hour", "btu", "electronvolt",
+        "watt", "kilowatt", "megawatt",
+        "horsepower_mech", "horsepower_metric", "btu_per_hour",
+        "newton", "kilonewton", "pound_force", "dyne", "kilogram_force",
+        "meter_per_second", "kilometer_per_hour", "mile_per_hour", "knot", "foot_per_second",
+        "radian", "degree", "gradian", "arcminute", "arcsecond", "turn",
+        "hertz", "kilohertz", "megahertz", "gigahertz", "rpm",
+        "bit", "byte", "kilobyte", "megabyte", "gigabyte", "terabyte", "petabyte",
+        "byte_bin", "kibibyte", "mebibyte", "gibibyte", "tebibyte", "pebibyte",
+        "mole", "millimole", "micromole", "nanomole", "kilomole",
+        "molar", "millimolar", "micromolar", "nanomolar"
+      ]
+    },
+    "to_unit": {
+      "type": "enum",
+      "label": "To unit",
+      "help": "Target unit. Must be in the same category as the FROM unit.",
+      "required": true,
+      "enumValues": [
+        "kelvin", "celsius", "fahrenheit", "rankine",
+        "meter", "kilometer", "centimeter", "millimeter", "micrometer", "nanometer",
+        "inch", "foot", "yard", "mile", "nautical_mile",
+        "kilogram", "gram", "milligram", "microgram", "metric_ton",
+        "pound", "ounce", "short_ton", "long_ton", "stone", "carat",
+        "liter", "milliliter", "cubic_meter", "cubic_centimeter",
+        "us_gallon", "uk_gallon", "us_quart", "us_pint",
+        "us_fluid_ounce", "uk_fluid_ounce", "us_cup", "us_tablespoon", "us_teaspoon",
+        "second", "nanosecond", "microsecond", "millisecond",
+        "minute", "hour", "day", "week",
+        "pascal", "kilopascal", "megapascal", "bar", "atmosphere",
+        "psi", "torr", "mmhg", "inhg",
+        "joule", "kilojoule", "megajoule", "calorie", "kilocalorie",
+        "watt_hour", "kilowatt_hour", "megawatt_hour", "btu", "electronvolt",
+        "watt", "kilowatt", "megawatt",
+        "horsepower_mech", "horsepower_metric", "btu_per_hour",
+        "newton", "kilonewton", "pound_force", "dyne", "kilogram_force",
+        "meter_per_second", "kilometer_per_hour", "mile_per_hour", "knot", "foot_per_second",
+        "radian", "degree", "gradian", "arcminute", "arcsecond", "turn",
+        "hertz", "kilohertz", "megahertz", "gigahertz", "rpm",
+        "bit", "byte", "kilobyte", "megabyte", "gigabyte", "terabyte", "petabyte",
+        "byte_bin", "kibibyte", "mebibyte", "gibibyte", "tebibyte", "pebibyte",
+        "mole", "millimole", "micromole", "nanomole", "kilomole",
+        "molar", "millimolar", "micromolar", "nanomolar"
+      ]
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column",
+      "help": "Name for the converted column. Leave empty to overwrite the source column."
+    }
+  },
+  "preview": {
+    "rowImpact": "preserves",
+    "schemaImpact": "modifies"
+  },
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["unit conversion", "metric", "imperial", "celsius", "fahrenheit"]
+}

@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 540" font-family="-apple-system, system-ui, sans-serif" font-size="13">
+  <style>
+    .title { font-weight: 700; font-size: 16px; fill: #0f172a; }
+    .q     { fill: #0f172a; font-weight: 600; }
+    .yes   { fill: #16a34a; font-weight: 600; }
+    .no    { fill: #dc2626; font-weight: 600; }
+    .lbl   { font-size: 11px; fill: #475569; }
+    .pill  { rx: 8; ry: 8; }
+    .arrow { stroke: #475569; stroke-width: 1.6; fill: none; marker-end: url(#a3); }
+    .arrowY { stroke: #16a34a; stroke-width: 1.8; fill: none; marker-end: url(#aY); }
+    .arrowN { stroke: #dc2626; stroke-width: 1.8; fill: none; marker-end: url(#aN); }
+    .leaf  { fill: #ffffff; stroke: #475569; }
+    .blue  { fill: #dbeafe; stroke: #2563eb; }
+    .yellow{ fill: #fef3c7; stroke: #d97706; }
+    .pink  { fill: #fce7f3; stroke: #db2777; }
+    .green { fill: #dcfce7; stroke: #16a34a; }
+  </style>
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+    </marker>
+    <marker id="aY" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a" />
+    </marker>
+    <marker id="aN" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626" />
+    </marker>
+  </defs>
+
+  <text x="20" y="28" class="title">Step or connector? And what engine?</text>
+
+  <!-- Q1 -->
+  <rect class="pill yellow" x="320" y="60" width="280" height="60" />
+  <text x="460" y="84" text-anchor="middle" class="q">Does it move data into or out of DIG?</text>
+  <text x="460" y="104" text-anchor="middle" class="lbl">(read a file, write to a DB, fetch an URL…)</text>
+
+  <line class="arrowY" x1="380" y1="120" x2="180" y2="170" />
+  <text x="240" y="148" class="yes">YES → connector</text>
+
+  <line class="arrowN" x1="540" y1="120" x2="700" y2="170" />
+  <text x="640" y="148" class="no">NO → step</text>
+
+  <!-- Connector branch -->
+  <rect class="pill green" x="60" y="170" width="240" height="80" />
+  <text x="180" y="196" text-anchor="middle" class="q">Build a Connector</text>
+  <text x="180" y="218" text-anchor="middle" class="lbl">backend/connectors/&lt;id&gt;/</text>
+  <text x="180" y="234" text-anchor="middle" class="lbl">manifest.json + connector.py</text>
+
+  <line class="arrow" x1="180" y1="250" x2="180" y2="310" />
+
+  <rect class="pill leaf" x="40" y="310" width="280" height="80" />
+  <text x="180" y="334" text-anchor="middle" class="q">kind = ?</text>
+  <text x="50" y="356" class="lbl">"source"  → only read()</text>
+  <text x="50" y="372" class="lbl">"sink"    → only write()</text>
+  <text x="50" y="388" class="lbl">"both"    → both</text>
+
+  <!-- Step branch Q2 -->
+  <rect class="pill blue" x="580" y="170" width="280" height="80" />
+  <text x="720" y="196" text-anchor="middle" class="q">Can you express it as SQL?</text>
+  <text x="720" y="218" text-anchor="middle" class="lbl">(SELECT … FROM upstream)</text>
+  <text x="720" y="236" text-anchor="middle" class="lbl">DuckDB has 600+ functions — try first.</text>
+
+  <line class="arrowY" x1="640" y1="250" x2="500" y2="310" />
+  <text x="540" y="288" class="yes">YES</text>
+
+  <line class="arrowN" x1="800" y1="250" x2="860" y2="310" />
+  <text x="820" y="288" class="no">NO</text>
+
+  <!-- SQL leaf -->
+  <rect class="pill green" x="370" y="310" width="280" height="160" />
+  <text x="510" y="334" text-anchor="middle" class="q">engine.primary = "sql"</text>
+  <text x="510" y="356" text-anchor="middle" class="lbl">Override to_sql(params, inputs)</text>
+  <text x="510" y="376" text-anchor="middle" class="lbl">→ Free DuckDB-WASM browser preview</text>
+  <text x="510" y="396" text-anchor="middle" class="lbl">→ Fast (CTE compilation)</text>
+  <text x="510" y="416" text-anchor="middle" class="lbl">→ Set engine.browser = "sql" too</text>
+  <text x="510" y="442" text-anchor="middle" class="lbl">Examples: filter_rows, upper_string, replace_text</text>
+  <text x="510" y="458" text-anchor="middle" class="lbl">All 25 built-in shape/clean steps</text>
+
+  <!-- Polars leaf -->
+  <rect class="pill pink" x="690" y="310" width="220" height="160" />
+  <text x="800" y="334" text-anchor="middle" class="q">engine.primary = "polars"</text>
+  <text x="800" y="356" text-anchor="middle" class="lbl">Override execute_polars(...)</text>
+  <text x="800" y="374" text-anchor="middle" class="lbl">→ Full Python ecosystem</text>
+  <text x="800" y="392" text-anchor="middle" class="lbl">→ ML, stats, image render</text>
+  <text x="800" y="410" text-anchor="middle" class="lbl">→ engine.browser = "none"</text>
+  <text x="800" y="436" text-anchor="middle" class="lbl">Examples: pca, kmeans,</text>
+  <text x="800" y="452" text-anchor="middle" class="lbl">forecast, export_to_image</text>
+
+  <!-- Footer note -->
+  <rect class="pill leaf" x="60" y="490" width="800" height="40" />
+  <text x="80" y="514" class="lbl">💡 You can mix freely: a pipeline can chain SQL steps + Polars steps + sub-pipelines + custom connectors. The executor materializes between modes automatically.</text>
+</svg>

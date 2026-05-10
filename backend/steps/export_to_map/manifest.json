@@ -1,0 +1,97 @@
+{
+  "id": "export_to_map",
+  "version": "1.0.0",
+  "label": "🗺 Export to map",
+  "description": "Render geographical points on an interactive world map. Pick one column with the location (lat,lon string, separate lat/lon columns, or WKT POINT). Optional name + comment columns control the hover tooltip.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "format": {
+      "type": "enum",
+      "label": "Location format",
+      "enumValues": ["lat_lon", "lon_lat", "wkt_point", "separate_columns"],
+      "default": "lat_lon",
+      "required": true,
+      "help": "How the location column encodes coordinates. 'lat_lon' = '37.77,-122.42' (Google / Apple style), 'lon_lat' = '-122.42,37.77' (GeoJSON / WKT axis order), 'wkt_point' = 'POINT(-122.42 37.77)', 'separate_columns' = pick a lat column and a lon column separately."
+    },
+    "location": {
+      "type": "column_ref",
+      "label": "Location column",
+      "columnFrom": "in",
+      "help": "The column with the geographical coordinates. Required unless format = 'separate_columns' (then leave blank and pick lat_col + lon_col instead)."
+    },
+    "lat_col": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "format": "separate_columns" }
+    },
+    "lon_col": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "format": "separate_columns" }
+    },
+    "name_col": {
+      "type": "column_ref",
+      "label": "Name column (optional)",
+      "columnFrom": "in",
+      "help": "Column used as the bold tooltip headline. If blank, the row index is used."
+    },
+    "comment_col": {
+      "type": "column_ref",
+      "label": "Comment column (optional)",
+      "columnFrom": "in",
+      "help": "Column rendered underneath the headline. Free-form text."
+    },
+    "title": { "type": "string", "label": "Title" },
+    "marker_color": {
+      "type": "string",
+      "label": "Marker color",
+      "default": "#10b981",
+      "help": "Any valid CSS color — hex, rgb(), or named. Default emerald (#10b981) matches the DIG palette."
+    },
+    "marker_radius": {
+      "type": "integer",
+      "label": "Marker radius (px)",
+      "default": 6,
+      "min": 2,
+      "max": 30
+    },
+    "tile_provider": {
+      "type": "enum",
+      "label": "Map tiles",
+      "enumValues": ["osm", "carto-light", "carto-dark", "esri-natgeo"],
+      "default": "carto-light",
+      "help": "Tile basemap. Carto Light is the cleanest for data overlays; OSM has the most labels; Esri NatGeo is the prettiest but heaviest."
+    },
+    "max_points": {
+      "type": "integer",
+      "label": "Max points to plot",
+      "default": 20000,
+      "min": 100,
+      "max": 200000,
+      "help": "If the input has more rows than this, the step samples down. Browsers struggle past ~50K markers."
+    },
+    "format_out": {
+      "type": "enum",
+      "label": "Output format",
+      "enumValues": ["html", "png"],
+      "default": "html",
+      "help": "'html' produces an interactive Leaflet map (hover tooltips, zoom, pan). 'png' produces a static rasterised view — useful for headless CI."
+    },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1200, "min": 320, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 800,  "min": 240, "max": 4000 },
+    "path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.html (or .png)." }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "recommendedMaxRows": {
+    "_default": 20000
+  },
+  "tags": ["export", "map", "geo", "leaflet", "viz", "world", "longitude", "latitude"],
+  "aliases": ["map", "world map", "geo plot", "lat/lon", "earth map"]
+}

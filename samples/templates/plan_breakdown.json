@@ -1,0 +1,38 @@
+{
+  "slug": "plan_breakdown",
+  "title": "🧪 Plan-tier breakdown",
+  "summary": "Customer count per plan tier, with average revenue. A starting shape for SaaS-style analysis.",
+  "tags": ["aggregate", "saas", "beginner"],
+  "needsSampleDataset": true,
+  "document": {
+    "schemaVersion": 1,
+    "id": "{{PIPELINE_ID}}",
+    "name": "🧪 Plan-tier breakdown (template)",
+    "datasets": [
+      { "id": "ds_demo", "connector": "parquet", "uri": "{{DEMO_DATASET_URI}}", "label": "demo · customers" }
+    ],
+    "nodes": [
+      {
+        "id": "n_agg", "step": "group_aggregate", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "ds_demo" } }, "outputs": ["out"],
+        "params": {
+          "groupBy": ["plan", "status"],
+          "aggregates": [
+            { "fn": "count", "as": "n" },
+            { "fn": "mean", "column": "monthly_revenue", "as": "avg_revenue" }
+          ]
+        },
+        "ui": { "x": 280, "y": 100 }
+      },
+      {
+        "id": "n_sort", "step": "sort_rows", "stepVersion": "1.0.0",
+        "inputs": { "in": { "ref": "n_agg" } }, "outputs": ["out"],
+        "params": { "by": [{ "column": "n", "direction": "desc" }] },
+        "ui": { "x": 540, "y": 100 }
+      }
+    ],
+    "outputs": [
+      { "id": "o", "name": "plan_breakdown", "from": { "ref": "n_sort" } }
+    ]
+  }
+}

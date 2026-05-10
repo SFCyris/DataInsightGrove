@@ -1,0 +1,23 @@
+{
+  "id": "bigquery",
+  "version": "1.0.0",
+  "label": "🟦 BigQuery",
+  "description": "Reverse-ETL write to a BigQuery table. URI is bigquery://<project>/<dataset>?credentials=<path-to-service-account-json>. Requires `google-cloud-bigquery` and `pandas-gbq` (or ADC).",
+  "kind": "sink",
+  "uriSchemes": ["bigquery"],
+  "options": {
+    "table": {
+      "type": "string",
+      "label": "Target table",
+      "required": true,
+      "help": "Just the table name. Project + dataset come from the URI."
+    },
+    "if_exists": {
+      "type": "enum",
+      "label": "Write mode (when table exists)",
+      "enumValues": ["append", "replace", "fail"],
+      "default": "append"
+    }
+  },
+  "tags": ["warehouse", "sql", "reverse-etl"]
+}

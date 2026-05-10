@@ -1,0 +1,116 @@
+[project]
+name = "dig"
+# ── Single source of truth for the project version. ──────────────────────
+# Other sites read it via:
+#   • backend/dig/__init__.py  → importlib.metadata.version("dig") at import
+#   • /health endpoint         → returns __version__ from above
+#   • frontend display         → reads /health.version (no hardcoded copy)
+# The frontend's package.json carries its own "version" only because npm
+# tooling expects the field; nothing user-facing reads it.
+version = "0.10.0"
+description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Sebastian Cyris" }]
+keywords = [
+  "data-preparation", "etl", "elt", "duckdb", "polars",
+  "self-hosted", "plugin", "datainsightgrove", "dig",
+]
+# `dependencies` MUST stay under [project] — TOML section headers are
+# sticky until the next [section]. Putting [project.urls] before this
+# would silently re-target it as project.urls.dependencies (a list under
+# URLs), which Hatchling rejects with "URL `dependencies` of field
+# `project.urls` must be a string". URLs section lives at the bottom now.
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "python-ulid>=2.7",
+  "jsonschema>=4.22",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Runtime engines and storage — required from Phase 1 onwards. Listed here as
+# extras so Phase 0 can install a minimal footprint.
+engine = [
+  "polars>=1.0",
+  "duckdb>=1.0",
+  "pyarrow>=16",
+]
+storage = [
+  "sqlalchemy[asyncio]>=2.0",
+  "aiosqlite>=0.20",
+  "alembic>=1.13",
+]
+connectors = [
+  "openpyxl>=3.1",   # excel .xlsx fallback (used when fastexcel can't open a file)
+  "fastexcel>=0.13", # excel reader — Rust calamine, supports both .xlsx and legacy .xls
+  "xlsxwriter>=3.2", # excel write — used by polars.DataFrame.write_excel
+]
+jdbc = [
+  # Generic JDBC bridge — any DB with a JDBC JAR (Postgres, MySQL, Oracle,
+  # MSSQL, DB2, Snowflake, …). Requires a Java runtime on the host. We keep
+  # this in its own extra because the JVM dependency is a barrier the user
+  # opts into deliberately.
+  "JPype1>=1.5",
+  "jaydebeapi>=1.2",
+]
+visualize = [
+  "matplotlib>=3.8",
+  "seaborn>=0.13",
+]
+ml = [
+  # Statistical / ML steps (pca, kmeans, dbscan, t_sne, umap, linear_regression).
+  # Heavy deps — installed only when the user opts into the [ml] extra.
+  "scikit-learn>=1.4",
+  "umap-learn>=0.5",
+  "statsmodels>=0.14",   # seasonal_decompose, classical forecasting
+  "scipy>=1.11",         # used transitively by the others; pin so we know what we're getting
+]
+science = [
+  # Scientific / research file-format connectors. Each connector imports
+  # its heavy dep lazily inside read(), so connectors stay registered
+  # even without these installed — but reading a .h5 / .nc / .fits / .mat
+  # file then errors with a clear "pip install dig[science]" message.
+  "h5py>=3.10",          # hdf5 + matlab v7.3
+  "scipy>=1.11",         # matlab v7- (loadmat); shared with [ml]
+  "netCDF4>=1.6",        # netcdf classic + netcdf4
+  "xarray>=2024.0",      # netcdf high-level reader
+  "astropy>=6.0",        # fits (astronomy)
+]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.27",
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
+[project.scripts]
+dig-api = "dig.api.main:run"
+
+[project.urls]
+Homepage      = "https://github.com/SFCyris/DataInsightGrove"
+Repository    = "https://github.com/SFCyris/DataInsightGrove"
+Documentation = "https://github.com/SFCyris/DataInsightGrove/tree/main/docs"
+Issues        = "https://github.com/SFCyris/DataInsightGrove/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dig"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "TID"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

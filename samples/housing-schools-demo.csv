@@ -1,0 +1,1201 @@
+school_id,school_name,city,state,school_type,rating_1_10,enrollment,latitude,longitude
+SCH-00001,River K-12 School,Denver,CO,K-12,9,270,39.517508,-104.941755
+SCH-00002,Spring Middle School,Los Angeles,CA,middle,7,277,34.099281,-118.032252
+SCH-00003,Ridge High School,New York,NY,high,10,537,40.643831,-74.200515
+SCH-00004,Sunset Middle School,Miami,FL,middle,7,835,25.892231,-80.098969
+SCH-00005,Sunset Elementary School,New York,NY,elementary,5,289,40.617863,-74.260928
+SCH-00006,Lincoln Elementary School,San Francisco,CA,elementary,8,694,37.997016,-122.415682
+SCH-00007,Lincoln Elementary School,Austin,TX,elementary,5,736,30.086914,-97.924308
+SCH-00008,Park High School,Seattle,WA,high,6,594,47.512467,-121.997596
+SCH-00009,Birch Charter School,Denver,CO,charter,10,911,39.954076,-105.174344
+SCH-00010,Winter High School,San Francisco,CA,high,7,687,38.012729,-122.535352
+SCH-00011,Mission High School,Miami,FL,high,4,432,25.74744,-80.358511
+SCH-00012,Pine Elementary School,Austin,TX,elementary,6,512,30.207503,-97.574819
+SCH-00013,Birch Elementary School,Los Angeles,CA,elementary,6,344,34.205305,-118.075326
+SCH-00014,Birch Elementary School,San Francisco,CA,elementary,9,540,37.584986,-122.376012
+SCH-00015,Hill High School,Chicago,IL,high,9,175,41.946496,-87.695903
+SCH-00016,Forest K-12 School,Chicago,IL,K-12,8,480,41.824849,-87.654914
+SCH-00017,Ridge Elementary School,Austin,TX,elementary,7,768,30.229273,-98.002761
+SCH-00018,Market Charter School,San Francisco,CA,charter,4,634,37.596422,-122.182409
+SCH-00019,Cedar Elementary School,Austin,TX,elementary,9,765,30.467626,-97.725629
+SCH-00020,Winter Elementary School,Seattle,WA,elementary,7,699,47.382332,-122.146361
+SCH-00021,River Elementary School,Denver,CO,elementary,7,766,39.744432,-104.689785
+SCH-00022,Jefferson Elementary School,Miami,FL,elementary,5,142,25.731269,-80.48198
+SCH-00023,Madison K-12 School,New York,NY,K-12,8,443,40.750957,-74.005181
+SCH-00024,Jefferson High School,New York,NY,high,9,257,40.862466,-73.826017
+SCH-00025,Ridge High School,New York,NY,high,9,689,40.79682,-73.885866
+SCH-00026,Cedar Elementary School,Los Angeles,CA,elementary,9,637,33.860342,-118.377624
+SCH-00027,Madison Elementary School,Los Angeles,CA,elementary,8,724,33.926069,-118.265963
+SCH-00028,Hill Elementary School,Chicago,IL,elementary,8,164,41.85672,-87.946964
+SCH-00029,Valley High School,Miami,FL,high,7,743,25.745995,-80.119425
+SCH-00030,Madison Charter School,Miami,FL,charter,7,553,25.624945,-80.41807
+SCH-00031,Pine Elementary School,San Francisco,CA,elementary,8,443,37.679116,-122.348535
+SCH-00032,River Elementary School,Los Angeles,CA,elementary,8,395,34.228752,-118.092849
+SCH-00033,Oak K-12 School,San Francisco,CA,K-12,8,376,37.973884,-122.552364
+SCH-00034,Oak Middle School,Chicago,IL,middle,9,206,41.773551,-87.502283
+SCH-00035,Lake Middle School,San Francisco,CA,middle,6,701,38.035526,-122.447321
+SCH-00036,Birch Elementary School,Seattle,WA,elementary,6,347,47.410183,-122.592728
+SCH-00037,Lincoln High School,Chicago,IL,high,6,467,42.012854,-87.832629
+SCH-00038,River Middle School,New York,NY,middle,7,714,40.805419,-73.951471
+SCH-00039,Jefferson Elementary School,Chicago,IL,elementary,6,635,41.957334,-87.535202
+SCH-00040,Ridge Elementary School,Los Angeles,CA,elementary,6,467,34.070456,-118.202747
+SCH-00041,Forest Elementary School,Chicago,IL,elementary,10,774,41.753707,-87.888999
+SCH-00042,Autumn Charter School,Los Angeles,CA,charter,8,598,34.297209,-118.234556
+SCH-00043,Oak Middle School,Chicago,IL,middle,10,508,41.915149,-87.981851
+SCH-00044,Valley K-12 School,San Francisco,CA,K-12,5,240,37.88191,-122.575642
+SCH-00045,Elm Middle School,Seattle,WA,middle,10,449,47.703991,-122.596314
+SCH-00046,Lake High School,Los Angeles,CA,high,8,305,33.910213,-118.112783
+SCH-00047,Washington Elementary School,Seattle,WA,elementary,10,1116,47.407387,-122.53071
+SCH-00048,Madison Middle School,Chicago,IL,middle,8,1094,41.784288,-87.774518
+SCH-00049,Lincoln Elementary School,Denver,CO,elementary,5,447,39.665568,-105.005782
+SCH-00050,Spring K-12 School,Los Angeles,CA,K-12,5,182,33.940797,-118.498638
+SCH-00051,Ridge Elementary School,Los Angeles,CA,elementary,6,226,34.109854,-118.138107
+SCH-00052,Autumn Elementary School,Miami,FL,elementary,7,617,25.669965,-80.334336
+SCH-00053,Walnut Charter School,Denver,CO,charter,7,637,39.49597,-105.137921
+SCH-00054,Cedar Middle School,Seattle,WA,middle,7,438,47.558255,-122.529797
+SCH-00055,Autumn Elementary School,Chicago,IL,elementary,8,142,41.688805,-87.389764
+SCH-00056,Valley Elementary School,New York,NY,elementary,5,295,40.676168,-74.133563
+SCH-00057,Madison Elementary School,Austin,TX,elementary,5,475,30.325972,-97.841728
+SCH-00058,Sunset Elementary School,Chicago,IL,elementary,7,415,41.772346,-87.448864
+SCH-00059,Oak Charter School,Seattle,WA,charter,7,518,47.581287,-122.030415
+SCH-00060,Autumn Middle School,San Francisco,CA,middle,7,498,37.579085,-122.466752
+SCH-00061,Madison Elementary School,Los Angeles,CA,elementary,10,761,33.845563,-118.054325
+SCH-00062,Forest Elementary School,San Francisco,CA,elementary,6,686,37.790398,-122.146473
+SCH-00063,Ridge High School,San Francisco,CA,high,9,711,37.586007,-122.503485
+SCH-00064,Sunrise High School,San Francisco,CA,high,8,1069,37.907435,-122.669656
+SCH-00065,Lake Elementary School,Los Angeles,CA,elementary,6,900,34.224147,-118.439172
+SCH-00066,Mission Elementary School,San Francisco,CA,elementary,9,695,37.639831,-122.593962
+SCH-00067,Pine High School,Seattle,WA,high,8,510,47.769977,-122.17769
+SCH-00068,Lake Charter School,New York,NY,charter,8,551,40.523483,-74.084297
+SCH-00069,Walnut Middle School,Seattle,WA,middle,6,241,47.56582,-122.651567
+SCH-00070,Spring High School,Chicago,IL,high,8,429,41.850676,-87.812937
+SCH-00071,Pine Elementary School,Los Angeles,CA,elementary,5,718,34.025688,-118.020196
+SCH-00072,Ridge Middle School,Seattle,WA,middle,6,501,47.706381,-122.635085
+SCH-00073,Lake Elementary School,Seattle,WA,elementary,4,690,47.739611,-122.248676
+SCH-00074,Park Elementary School,New York,NY,elementary,5,748,40.591739,-74.2041
+SCH-00075,Sunset Charter School,San Francisco,CA,charter,6,122,37.771065,-122.640731
+SCH-00076,Winter Elementary School,Austin,TX,elementary,7,913,30.253687,-98.029227
+SCH-00077,Spring K-12 School,Miami,FL,K-12,6,785,25.833392,-80.189063
+SCH-00078,Pine Elementary School,Los Angeles,CA,elementary,8,390,34.294779,-118.360321
+SCH-00079,Maple K-12 School,New York,NY,K-12,7,807,40.646713,-74.244993
+SCH-00080,Pine Charter School,Los Angeles,CA,charter,7,494,33.929173,-118.237435
+SCH-00081,Oak Middle School,Chicago,IL,middle,6,483,41.770758,-87.452947
+SCH-00082,Sunrise Middle School,Seattle,WA,middle,8,280,47.737505,-122.604631
+SCH-00083,Spring Elementary School,New York,NY,elementary,8,643,40.485733,-74.147994
+SCH-00084,Lake K-12 School,Denver,CO,K-12,8,649,39.561053,-105.114385
+SCH-00085,Pine Middle School,Austin,TX,middle,7,604,30.197422,-97.964818
+SCH-00086,Washington Elementary School,Chicago,IL,elementary,9,159,41.970812,-87.3853
+SCH-00087,Forest Elementary School,Los Angeles,CA,elementary,5,572,33.854218,-118.398099
+SCH-00088,Park High School,Austin,TX,high,9,599,30.017805,-97.646181
+SCH-00089,Walnut Middle School,New York,NY,middle,7,591,40.718523,-74.246638
+SCH-00090,Elm Elementary School,Miami,FL,elementary,9,735,25.889044,-80.343406
+SCH-00091,Sunset Elementary School,Chicago,IL,elementary,8,721,41.994756,-87.681501
+SCH-00092,Market Middle School,New York,NY,middle,7,335,40.703418,-74.303009
+SCH-00093,Valley Middle School,New York,NY,middle,7,420,40.593155,-73.718959
+SCH-00094,Madison Elementary School,Miami,FL,elementary,8,737,25.587221,-80.384526
+SCH-00095,Birch Middle School,San Francisco,CA,middle,9,60,37.831093,-122.67121
+SCH-00096,Valley Elementary School,Los Angeles,CA,elementary,6,450,33.964167,-118.126492
+SCH-00097,Jefferson Elementary School,Seattle,WA,elementary,9,329,47.797153,-122.130571
+SCH-00098,Lake Middle School,Denver,CO,middle,6,60,39.846636,-104.70947
+SCH-00099,Maple High School,Miami,FL,high,9,389,25.992543,-80.28305
+SCH-00100,Lake Elementary School,Los Angeles,CA,elementary,7,522,33.967778,-118.38867
+SCH-00101,Hill Middle School,San Francisco,CA,middle,8,1012,37.734035,-122.463495
+SCH-00102,Autumn High School,Miami,FL,high,6,108,25.683585,-80.313042
+SCH-00103,Lincoln Elementary School,Denver,CO,elementary,10,734,39.864649,-105.267339
+SCH-00104,Mission High School,Los Angeles,CA,high,10,143,34.176494,-118.361795
+SCH-00105,Washington Middle School,New York,NY,middle,7,233,40.926506,-73.83007
+SCH-00106,Valley Elementary School,Los Angeles,CA,elementary,8,771,33.8025,-118.231129
+SCH-00107,Oak Charter School,Los Angeles,CA,charter,10,516,34.273455,-118.104869
+SCH-00108,Cedar Elementary School,Los Angeles,CA,elementary,8,591,33.785967,-118.296629
+SCH-00109,Summer Middle School,Denver,CO,middle,9,443,39.853003,-105.206226
+SCH-00110,Summer Elementary School,San Francisco,CA,elementary,10,762,37.762346,-122.635495
+SCH-00111,River Middle School,New York,NY,middle,7,650,40.446878,-73.951507
+SCH-00112,Elm Elementary School,Seattle,WA,elementary,5,135,47.57007,-122.095215
+SCH-00113,Pine Middle School,Los Angeles,CA,middle,6,419,34.270822,-118.343983
+SCH-00114,Hill Elementary School,Seattle,WA,elementary,5,722,47.478793,-122.122391
+SCH-00115,Valley Elementary School,Chicago,IL,elementary,9,614,41.794564,-87.461531
+SCH-00116,Lincoln High School,San Francisco,CA,high,4,594,37.67234,-122.671601
+SCH-00117,Washington Middle School,Los Angeles,CA,middle,8,97,34.254068,-118.044918
+SCH-00118,Park Middle School,Denver,CO,middle,8,614,39.851925,-104.696344
+SCH-00119,Ridge Middle School,Los Angeles,CA,middle,8,60,34.230192,-118.017601
+SCH-00120,Mission High School,New York,NY,high,4,532,40.538148,-74.064277
+SCH-00121,Maple Elementary School,Denver,CO,elementary,7,312,39.977208,-105.009236
+SCH-00122,Mission Elementary School,Chicago,IL,elementary,5,362,41.783553,-87.580088
+SCH-00123,Autumn Elementary School,New York,NY,elementary,7,356,40.778301,-74.11351
+SCH-00124,Lincoln Middle School,San Francisco,CA,middle,9,575,37.733234,-122.256181
+SCH-00125,Lake High School,Miami,FL,high,8,694,25.55324,-80.024945
+SCH-00126,Winter Elementary School,Seattle,WA,elementary,9,637,47.528331,-122.602739
+SCH-00127,Ridge High School,San Francisco,CA,high,7,711,37.703446,-122.389859
+SCH-00128,Mission Middle School,San Francisco,CA,middle,6,813,37.846494,-122.427924
+SCH-00129,Sunrise Middle School,Seattle,WA,middle,9,857,47.57209,-122.338735
+SCH-00130,Pine Elementary School,San Francisco,CA,elementary,9,419,38.000366,-122.238649
+SCH-00131,Spring Elementary School,Los Angeles,CA,elementary,8,589,33.943198,-118.347921
+SCH-00132,Madison Middle School,San Francisco,CA,middle,7,60,37.580819,-122.408387
+SCH-00133,Washington Middle School,Los Angeles,CA,middle,8,481,34.097634,-118.26682
+SCH-00134,Maple High School,Austin,TX,high,10,688,30.325487,-97.787663
+SCH-00135,Winter High School,Austin,TX,high,9,737,30.30231,-97.997761
+SCH-00136,Washington K-12 School,San Francisco,CA,K-12,6,765,37.550396,-122.299494
+SCH-00137,Summer Elementary School,Austin,TX,elementary,10,357,30.121277,-97.852059
+SCH-00138,Washington High School,Seattle,WA,high,7,941,47.844324,-122.280333
+SCH-00139,Lincoln Elementary School,San Francisco,CA,elementary,6,779,37.838217,-122.348359
+SCH-00140,Jefferson Elementary School,Chicago,IL,elementary,6,797,42.028749,-87.740796
+SCH-00141,Autumn Charter School,Los Angeles,CA,charter,6,412,34.048921,-117.937658
+SCH-00142,River Elementary School,New York,NY,elementary,9,312,40.546307,-74.202092
+SCH-00143,Sunrise K-12 School,Los Angeles,CA,K-12,6,983,34.179203,-118.365509
+SCH-00144,Hill High School,Miami,FL,high,7,461,25.860345,-80.370958
+SCH-00145,Washington Charter School,San Francisco,CA,charter,7,531,37.869347,-122.102011
+SCH-00146,Summer Middle School,Miami,FL,middle,6,577,25.905374,-80.35233
+SCH-00147,Park High School,Seattle,WA,high,6,60,47.420225,-122.155374
+SCH-00148,Sunset Middle School,Austin,TX,middle,6,262,30.515164,-97.732682
+SCH-00149,Birch Middle School,Seattle,WA,middle,7,472,47.857452,-122.312518
+SCH-00150,Oak High School,San Francisco,CA,high,10,168,37.646639,-122.499228
+SCH-00151,Lincoln Charter School,Seattle,WA,charter,7,343,47.841865,-122.445431
+SCH-00152,Sunrise Middle School,Seattle,WA,middle,10,351,47.525663,-122.357807
+SCH-00153,Lincoln Middle School,Chicago,IL,middle,6,623,42.074073,-87.650778
+SCH-00154,Market Elementary School,Seattle,WA,elementary,8,490,47.662776,-122.661827
+SCH-00155,Cedar Elementary School,San Francisco,CA,elementary,8,243,37.507002,-122.428767
+SCH-00156,Cedar Elementary School,San Francisco,CA,elementary,8,77,37.691676,-122.240224
+SCH-00157,Lincoln Elementary School,New York,NY,elementary,7,658,40.654134,-74.205457
+SCH-00158,Oak High School,New York,NY,high,8,840,40.702747,-73.697923
+SCH-00159,Elm Charter School,Chicago,IL,charter,9,267,41.93278,-87.903417
+SCH-00160,Lincoln Elementary School,Los Angeles,CA,elementary,6,454,34.107404,-118.409269
+SCH-00161,Jefferson Charter School,Los Angeles,CA,charter,10,651,33.926988,-118.183672
+SCH-00162,Jefferson Elementary School,Miami,FL,elementary,6,612,25.773924,-80.164514
+SCH-00163,Madison Elementary School,Los Angeles,CA,elementary,8,388,33.963575,-118.509841
+SCH-00164,Winter Charter School,Seattle,WA,charter,8,213,47.675288,-122.223915
+SCH-00165,Market Elementary School,Los Angeles,CA,elementary,9,444,33.843179,-118.273143
+SCH-00166,Forest Elementary School,Chicago,IL,elementary,6,459,41.801626,-87.668905
+SCH-00167,Market Elementary School,Los Angeles,CA,elementary,6,1103,34.2644,-118.413867
+SCH-00168,Oak Middle School,Los Angeles,CA,middle,5,560,34.122336,-117.974415
+SCH-00169,Sunset Middle School,New York,NY,middle,10,563,40.485039,-74.018738
+SCH-00170,Lincoln High School,Austin,TX,high,9,646,30.324369,-97.585028
+SCH-00171,Washington Elementary School,Los Angeles,CA,elementary,7,386,34.067924,-117.995112
+SCH-00172,Cedar High School,Los Angeles,CA,high,6,724,33.888235,-118.235476
+SCH-00173,Autumn High School,Denver,CO,high,7,722,39.656258,-104.866437
+SCH-00174,Cedar Elementary School,Los Angeles,CA,elementary,6,747,33.983822,-118.107444
+SCH-00175,Hill Elementary School,Los Angeles,CA,elementary,9,421,34.198273,-117.994234
+SCH-00176,Washington Middle School,Los Angeles,CA,middle,8,587,33.990511,-118.269128
+SCH-00177,Lake Elementary School,Los Angeles,CA,elementary,8,796,34.060281,-118.138131
+SCH-00178,Sunrise Middle School,Denver,CO,middle,8,711,39.501605,-105.091571
+SCH-00179,River Elementary School,New York,NY,elementary,6,499,40.811375,-73.917278
+SCH-00180,Valley Elementary School,New York,NY,elementary,9,907,40.737314,-73.92746
+SCH-00181,Oak Middle School,Austin,TX,middle,8,300,30.039379,-97.882943
+SCH-00182,Summer High School,Chicago,IL,high,6,536,42.054302,-87.555337
+SCH-00183,Maple Charter School,Chicago,IL,charter,7,324,41.699886,-87.864255
+SCH-00184,River Elementary School,Los Angeles,CA,elementary,5,550,33.957868,-118.268432
+SCH-00185,Summer Elementary School,Denver,CO,elementary,8,499,39.665033,-105.278128
+SCH-00186,Madison Elementary School,Austin,TX,elementary,7,936,30.44014,-97.733655
+SCH-00187,Forest High School,Miami,FL,high,9,798,25.767009,-79.947476
+SCH-00188,Summer Middle School,New York,NY,middle,7,276,40.947498,-74.087058
+SCH-00189,Jefferson High School,New York,NY,high,8,529,40.714407,-73.882607
+SCH-00190,Forest Elementary School,Seattle,WA,elementary,7,789,47.614953,-122.092094
+SCH-00191,Market High School,Los Angeles,CA,high,7,433,33.898824,-118.285632
+SCH-00192,Jefferson Elementary School,Seattle,WA,elementary,7,1002,47.727922,-122.57854
+SCH-00193,Washington Elementary School,Chicago,IL,elementary,6,442,41.849093,-87.566541
+SCH-00194,River K-12 School,New York,NY,K-12,9,666,40.72736,-74.295986
+SCH-00195,Autumn Elementary School,Chicago,IL,elementary,6,731,41.790261,-87.308108
+SCH-00196,Oak High School,Los Angeles,CA,high,8,493,34.23633,-118.164909
+SCH-00197,Cedar Elementary School,Austin,TX,elementary,5,1139,30.349403,-97.803817
+SCH-00198,Madison Middle School,Miami,FL,middle,6,195,25.579347,-80.241768
+SCH-00199,Cedar Middle School,New York,NY,middle,6,203,40.622883,-74.286459
+SCH-00200,Maple Middle School,Los Angeles,CA,middle,8,231,34.205144,-118.408184
+SCH-00201,Mission Middle School,San Francisco,CA,middle,6,1013,37.579653,-122.544183
+SCH-00202,Ridge High School,San Francisco,CA,high,10,460,37.738977,-122.081642
+SCH-00203,Cedar Elementary School,San Francisco,CA,elementary,8,473,37.527727,-122.390527
+SCH-00204,Oak Charter School,Chicago,IL,charter,7,506,41.775261,-87.458899
+SCH-00205,Sunset High School,Chicago,IL,high,9,860,42.119873,-87.699315
+SCH-00206,Birch Elementary School,Miami,FL,elementary,9,523,25.888661,-80.321846
+SCH-00207,Spring Elementary School,San Francisco,CA,elementary,7,638,37.700085,-122.74072
+SCH-00208,Mission Elementary School,Los Angeles,CA,elementary,4,290,34.247198,-118.424965
+SCH-00209,Valley Middle School,Chicago,IL,middle,7,507,41.943049,-87.552755
+SCH-00210,Park Middle School,Denver,CO,middle,8,198,39.688712,-104.738313
+SCH-00211,Pine Elementary School,San Francisco,CA,elementary,8,380,37.93787,-122.195932
+SCH-00212,Park Middle School,Seattle,WA,middle,4,60,47.356864,-122.217644
+SCH-00213,Sunset High School,Chicago,IL,high,7,659,41.898048,-87.308708
+SCH-00214,Market Elementary School,Denver,CO,elementary,7,259,39.852013,-105.23175
+SCH-00215,Spring Elementary School,New York,NY,elementary,9,752,40.744705,-74.288971
+SCH-00216,Winter High School,Denver,CO,high,8,725,39.78893,-105.143121
+SCH-00217,Jefferson Elementary School,Los Angeles,CA,elementary,8,714,34.29378,-118.16179
+SCH-00218,Washington Charter School,Seattle,WA,charter,8,509,47.750547,-122.336306
+SCH-00219,Ridge Elementary School,Miami,FL,elementary,9,587,25.713171,-80.028827
+SCH-00220,Madison Middle School,San Francisco,CA,middle,9,737,37.812669,-122.44356
+SCH-00221,Mission Middle School,Denver,CO,middle,7,614,39.778026,-104.884161
+SCH-00222,Mission High School,Denver,CO,high,10,656,39.632975,-105.037934
+SCH-00223,Market K-12 School,Chicago,IL,K-12,8,497,42.084625,-87.692031
+SCH-00224,Lincoln High School,New York,NY,high,8,165,40.774871,-73.826659
+SCH-00225,Winter Elementary School,Chicago,IL,elementary,6,802,42.113698,-87.722623
+SCH-00226,Summer K-12 School,San Francisco,CA,K-12,10,505,37.592096,-122.267774
+SCH-00227,Park Middle School,Chicago,IL,middle,6,480,42.101262,-87.658517
+SCH-00228,Walnut Elementary School,San Francisco,CA,elementary,8,543,37.828716,-122.622901
+SCH-00229,Maple High School,Miami,FL,high,10,975,25.750037,-80.035764
+SCH-00230,Sunrise High School,Los Angeles,CA,high,6,785,33.974929,-118.125725
+SCH-00231,Maple Charter School,Miami,FL,charter,6,419,25.837558,-80.476826
+SCH-00232,Sunset Elementary School,Seattle,WA,elementary,7,389,47.353543,-122.400956
+SCH-00233,Oak Elementary School,New York,NY,elementary,7,672,40.777768,-73.667595
+SCH-00234,Oak High School,Denver,CO,high,9,652,39.658428,-104.852722
+SCH-00235,Market Elementary School,New York,NY,elementary,7,385,40.664949,-74.200121
+SCH-00236,Sunset High School,Los Angeles,CA,high,6,630,34.23108,-118.275642
+SCH-00237,River High School,Austin,TX,high,7,447,30.256508,-98.001582
+SCH-00238,Sunset High School,Los Angeles,CA,high,8,659,33.901283,-118.085722
+SCH-00239,River Elementary School,San Francisco,CA,elementary,7,596,37.754411,-122.501721
+SCH-00240,Lake Elementary School,Los Angeles,CA,elementary,10,329,34.23229,-118.256642
+SCH-00241,Winter Elementary School,San Francisco,CA,elementary,7,557,37.978512,-122.629206
+SCH-00242,Park Elementary School,Miami,FL,elementary,9,305,25.655116,-80.289718
+SCH-00243,Forest High School,San Francisco,CA,high,7,499,37.845335,-122.168394
+SCH-00244,Autumn Elementary School,Los Angeles,CA,elementary,8,677,34.207221,-118.086056
+SCH-00245,Birch Middle School,Los Angeles,CA,middle,9,703,33.85631,-118.145716
+SCH-00246,Cedar High School,New York,NY,high,7,496,40.890163,-73.924695
+SCH-00247,Spring Charter School,Miami,FL,charter,8,1090,25.953925,-80.395716
+SCH-00248,Spring Elementary School,New York,NY,elementary,6,382,40.822138,-74.172084
+SCH-00249,Park Elementary School,Austin,TX,elementary,9,831,30.063676,-97.822005
+SCH-00250,Washington High School,San Francisco,CA,high,6,354,37.683646,-122.49688
+SCH-00251,Cedar Charter School,Denver,CO,charter,5,626,39.986923,-104.975357
+SCH-00252,Hill Middle School,Chicago,IL,middle,7,1007,41.717331,-87.375382
+SCH-00253,Madison Elementary School,Austin,TX,elementary,6,253,30.298596,-97.688727
+SCH-00254,Sunrise High School,New York,NY,high,6,804,40.444977,-73.992398
+SCH-00255,Summer Middle School,Los Angeles,CA,middle,6,685,34.025363,-118.038026
+SCH-00256,Jefferson Elementary School,New York,NY,elementary,6,698,40.841585,-73.966122
+SCH-00257,Market Elementary School,Los Angeles,CA,elementary,7,781,33.858839,-118.132394
+SCH-00258,Sunset K-12 School,San Francisco,CA,K-12,9,378,37.536329,-122.367766
+SCH-00259,Market High School,New York,NY,high,5,597,40.728619,-74.332422
+SCH-00260,Market Elementary School,Denver,CO,elementary,7,635,39.660176,-104.856318
+SCH-00261,Valley Elementary School,Denver,CO,elementary,8,667,39.473321,-105.007097
+SCH-00262,Spring Elementary School,Seattle,WA,elementary,7,607,47.682963,-122.453777
+SCH-00263,Sunrise Elementary School,San Francisco,CA,elementary,7,823,37.843972,-122.640506
+SCH-00264,Sunset K-12 School,Los Angeles,CA,K-12,9,174,34.073103,-118.099822
+SCH-00265,Market Elementary School,Seattle,WA,elementary,9,934,47.576517,-122.672707
+SCH-00266,Valley Elementary School,Chicago,IL,elementary,5,788,42.117291,-87.591207
+SCH-00267,Maple High School,San Francisco,CA,high,4,872,37.560055,-122.415974
+SCH-00268,Jefferson Middle School,San Francisco,CA,middle,6,328,37.759974,-122.646626
+SCH-00269,Birch Charter School,Denver,CO,charter,7,270,39.87833,-104.820987
+SCH-00270,River Elementary School,New York,NY,elementary,8,265,40.799764,-74.166161
+SCH-00271,Walnut Middle School,Los Angeles,CA,middle,7,993,34.229122,-118.395308
+SCH-00272,Sunset Elementary School,San Francisco,CA,elementary,7,558,37.669162,-122.455752
+SCH-00273,Winter K-12 School,Chicago,IL,K-12,6,411,41.963588,-87.658915
+SCH-00274,Sunrise Elementary School,Los Angeles,CA,elementary,5,815,34.052835,-117.953896
+SCH-00275,Elm Charter School,Los Angeles,CA,charter,8,970,34.036688,-118.450221
+SCH-00276,Market High School,San Francisco,CA,high,10,681,37.675421,-122.294076
+SCH-00277,Washington High School,Los Angeles,CA,high,5,343,34.28411,-118.397926
+SCH-00278,Pine Charter School,Denver,CO,charter,9,947,39.541895,-104.78639
+SCH-00279,Lincoln High School,Los Angeles,CA,high,7,343,33.842824,-118.345085
+SCH-00280,Sunrise Middle School,Los Angeles,CA,middle,6,881,34.10443,-118.501388
+SCH-00281,Mission High School,Los Angeles,CA,high,5,399,33.96611,-118.418084
+SCH-00282,Winter Elementary School,New York,NY,elementary,8,617,40.846618,-74.03074
+SCH-00283,Walnut High School,San Francisco,CA,high,5,547,37.7424,-122.330875
+SCH-00284,Winter Elementary School,Los Angeles,CA,elementary,7,834,33.911885,-118.024382
+SCH-00285,Park High School,Los Angeles,CA,high,10,60,33.84004,-118.296936
+SCH-00286,Jefferson Middle School,San Francisco,CA,middle,6,883,37.58558,-122.594678
+SCH-00287,Birch Elementary School,San Francisco,CA,elementary,7,586,37.750848,-122.75733
+SCH-00288,Pine Middle School,Seattle,WA,middle,7,176,47.540233,-122.275436
+SCH-00289,Pine High School,Chicago,IL,high,6,585,41.85497,-87.854359
+SCH-00290,Oak High School,San Francisco,CA,high,8,264,37.991739,-122.550111
+SCH-00291,Park High School,Los Angeles,CA,high,9,391,33.961792,-118.525746
+SCH-00292,Summer Elementary School,Seattle,WA,elementary,8,355,47.705897,-122.308575
+SCH-00293,Hill Elementary School,Chicago,IL,elementary,5,662,41.887928,-87.5713
+SCH-00294,Forest Elementary School,Denver,CO,elementary,10,580,39.553151,-105.168632
+SCH-00295,Cedar Elementary School,Austin,TX,elementary,8,792,30.104384,-97.769117
+SCH-00296,Cedar Charter School,Miami,FL,charter,5,438,25.846294,-80.161818
+SCH-00297,Lincoln Elementary School,New York,NY,elementary,7,548,40.479204,-73.837606
+SCH-00298,Sunrise Elementary School,Seattle,WA,elementary,5,475,47.500202,-122.134804
+SCH-00299,Jefferson High School,Miami,FL,high,6,687,25.708619,-80.245064
+SCH-00300,Ridge Elementary School,Seattle,WA,elementary,9,608,47.528804,-122.492693
+SCH-00301,Pine Elementary School,New York,NY,elementary,6,379,40.868544,-74.207624
+SCH-00302,Ridge Elementary School,Miami,FL,elementary,8,602,25.602613,-80.425834
+SCH-00303,Maple K-12 School,Los Angeles,CA,K-12,8,817,34.164052,-118.184926
+SCH-00304,Oak Middle School,Denver,CO,middle,5,300,39.638132,-105.258634
+SCH-00305,Walnut Charter School,Los Angeles,CA,charter,8,427,33.820102,-118.196856
+SCH-00306,Birch Middle School,San Francisco,CA,middle,6,275,37.740705,-122.61924
+SCH-00307,Washington Middle School,Chicago,IL,middle,8,713,41.933685,-87.324422
+SCH-00308,Autumn Charter School,Miami,FL,charter,7,619,25.99736,-80.29968
+SCH-00309,Maple Elementary School,Miami,FL,elementary,9,810,25.675761,-80.022839
+SCH-00310,Sunset Elementary School,Chicago,IL,elementary,6,350,41.686867,-87.795961
+SCH-00311,Pine High School,Miami,FL,high,6,449,25.840775,-80.271327
+SCH-00312,Ridge Elementary School,Seattle,WA,elementary,8,574,47.46709,-122.040857
+SCH-00313,Sunset K-12 School,Denver,CO,K-12,8,630,39.714138,-105.210385
+SCH-00314,Birch Elementary School,Miami,FL,elementary,8,602,25.808562,-80.118869
+SCH-00315,Elm Charter School,New York,NY,charter,5,642,40.508283,-74.009706
+SCH-00316,Elm High School,San Francisco,CA,high,6,504,37.912936,-122.188652
+SCH-00317,Autumn Elementary School,Los Angeles,CA,elementary,6,582,33.951784,-117.952259
+SCH-00318,Washington Elementary School,New York,NY,elementary,8,647,40.505473,-74.133068
+SCH-00319,Jefferson Elementary School,Seattle,WA,elementary,7,720,47.801051,-122.131578
+SCH-00320,Forest Charter School,Los Angeles,CA,charter,5,481,34.240561,-118.122748
+SCH-00321,Walnut Elementary School,Chicago,IL,elementary,9,462,41.93625,-87.599864
+SCH-00322,Maple Elementary School,Seattle,WA,elementary,8,678,47.635428,-122.299441
+SCH-00323,Pine Elementary School,Austin,TX,elementary,7,502,30.067035,-97.582444
+SCH-00324,Sunset Middle School,New York,NY,middle,8,435,40.768364,-74.107051
+SCH-00325,Sunrise Charter School,Seattle,WA,charter,7,1300,47.446419,-122.315565
+SCH-00326,Birch Elementary School,Los Angeles,CA,elementary,6,454,34.091825,-118.388784
+SCH-00327,Jefferson Elementary School,Chicago,IL,elementary,8,962,42.000014,-87.47299
+SCH-00328,Mission High School,Austin,TX,high,7,326,30.322261,-97.596707
+SCH-00329,Summer High School,Los Angeles,CA,high,8,831,34.03741,-118.013609
+SCH-00330,Jefferson Elementary School,Seattle,WA,elementary,7,812,47.691305,-122.577414
+SCH-00331,Washington Elementary School,Denver,CO,elementary,6,317,39.85489,-105.042329
+SCH-00332,Summer Elementary School,Seattle,WA,elementary,5,321,47.453216,-122.255125
+SCH-00333,Valley High School,Los Angeles,CA,high,7,258,33.927729,-118.363896
+SCH-00334,Park Elementary School,Seattle,WA,elementary,5,307,47.510759,-122.120444
+SCH-00335,Oak High School,New York,NY,high,7,319,40.538086,-74.201492
+SCH-00336,Madison Elementary School,San Francisco,CA,elementary,8,348,37.988937,-122.620084
+SCH-00337,Sunset Elementary School,San Francisco,CA,elementary,5,837,37.582845,-122.320767
+SCH-00338,Mission Middle School,Miami,FL,middle,7,215,25.618655,-80.208591
+SCH-00339,Park Elementary School,Los Angeles,CA,elementary,5,544,33.9569,-118.219276
+SCH-00340,Jefferson Middle School,Los Angeles,CA,middle,7,609,34.307348,-118.259003
+SCH-00341,Valley Middle School,Los Angeles,CA,middle,8,407,34.090821,-118.384939
+SCH-00342,Elm Middle School,New York,NY,middle,6,529,40.804577,-74.222081
+SCH-00343,Pine Charter School,New York,NY,charter,7,664,40.482403,-74.048545
+SCH-00344,Mission Middle School,San Francisco,CA,middle,7,579,37.590349,-122.512069
+SCH-00345,Summer High School,New York,NY,high,8,320,40.763517,-74.341391
+SCH-00346,Birch High School,Seattle,WA,high,9,288,47.711851,-122.630826
+SCH-00347,Oak K-12 School,Los Angeles,CA,K-12,6,1030,34.091543,-118.044658
+SCH-00348,Elm High School,Los Angeles,CA,high,7,95,34.206401,-118.090224
+SCH-00349,Madison Middle School,Seattle,WA,middle,8,631,47.839706,-122.312382
+SCH-00350,Autumn High School,San Francisco,CA,high,7,263,37.91334,-122.20172
+SCH-00351,River Elementary School,Chicago,IL,elementary,6,662,41.741341,-87.572104
+SCH-00352,Hill Middle School,New York,NY,middle,3,563,40.666983,-73.731606
+SCH-00353,Valley Elementary School,Chicago,IL,elementary,9,512,42.008016,-87.821771
+SCH-00354,Maple Middle School,Miami,FL,middle,6,339,25.785523,-80.21162
+SCH-00355,Lincoln Middle School,Seattle,WA,middle,7,129,47.38616,-122.543461
+SCH-00356,Madison Elementary School,San Francisco,CA,elementary,5,996,37.756731,-122.513762
+SCH-00357,Cedar Elementary School,Seattle,WA,elementary,5,815,47.572854,-122.227579
+SCH-00358,Birch High School,Los Angeles,CA,high,6,383,33.970521,-118.130958
+SCH-00359,Valley High School,San Francisco,CA,high,9,888,37.95499,-122.271919
+SCH-00360,Winter Middle School,Chicago,IL,middle,6,890,41.995019,-87.545399
+SCH-00361,Summer Elementary School,Miami,FL,elementary,6,644,25.940768,-79.978375
+SCH-00362,Mission High School,Denver,CO,high,7,347,39.723069,-104.665697
+SCH-00363,Winter Elementary School,New York,NY,elementary,8,575,40.521393,-74.13295
+SCH-00364,River Middle School,New York,NY,middle,5,904,40.939288,-74.180145
+SCH-00365,Lincoln Elementary School,Miami,FL,elementary,3,709,25.832192,-80.391645
+SCH-00366,Spring Middle School,San Francisco,CA,middle,9,459,37.926219,-122.529186
+SCH-00367,Maple Elementary School,New York,NY,elementary,5,568,40.589565,-74.228067
+SCH-00368,Winter Charter School,San Francisco,CA,charter,7,508,37.569039,-122.621667
+SCH-00369,Mission Middle School,Seattle,WA,middle,6,1151,47.644131,-121.989796
+SCH-00370,Walnut High School,Austin,TX,high,6,846,30.429072,-97.509596
+SCH-00371,Valley Elementary School,Denver,CO,elementary,6,360,39.696528,-104.73179
+SCH-00372,Winter Elementary School,Chicago,IL,elementary,9,507,41.720239,-87.842448
+SCH-00373,Market High School,San Francisco,CA,high,9,673,37.646547,-122.172528
+SCH-00374,Lincoln Elementary School,Chicago,IL,elementary,8,847,41.818642,-87.284843
+SCH-00375,Elm Middle School,San Francisco,CA,middle,8,505,37.705762,-122.520706
+SCH-00376,Sunrise Charter School,Chicago,IL,charter,6,272,41.956032,-87.3764
+SCH-00377,Hill Charter School,Denver,CO,charter,7,508,39.738872,-104.851613
+SCH-00378,Park K-12 School,Los Angeles,CA,K-12,9,913,33.78537,-118.282344
+SCH-00379,Lake Elementary School,Miami,FL,elementary,6,402,25.702785,-80.067489
+SCH-00380,Birch Middle School,Denver,CO,middle,6,741,39.883074,-105.054135
+SCH-00381,Oak Elementary School,Miami,FL,elementary,9,918,25.558596,-80.197547
+SCH-00382,Forest Elementary School,Austin,TX,elementary,7,957,30.115658,-97.654392
+SCH-00383,Mission High School,Los Angeles,CA,high,8,464,34.01,-118.504839
+SCH-00384,Cedar Elementary School,Los Angeles,CA,elementary,7,745,34.181329,-118.351612
+SCH-00385,Mission Charter School,New York,NY,charter,8,336,40.623379,-73.786747
+SCH-00386,River Middle School,San Francisco,CA,middle,7,126,37.894304,-122.689893
+SCH-00387,Forest Middle School,Seattle,WA,middle,7,812,47.76747,-122.254301
+SCH-00388,Forest High School,Los Angeles,CA,high,8,384,33.968693,-118.158121
+SCH-00389,Summer Middle School,Los Angeles,CA,middle,8,629,34.286964,-118.129833
+SCH-00390,Madison High School,San Francisco,CA,high,9,266,37.799236,-122.714757
+SCH-00391,Lincoln High School,San Francisco,CA,high,7,577,37.704754,-122.5635
+SCH-00392,Sunrise High School,New York,NY,high,9,1029,40.706202,-73.745586
+SCH-00393,Summer K-12 School,San Francisco,CA,K-12,9,916,37.974232,-122.395409
+SCH-00394,Elm Elementary School,Los Angeles,CA,elementary,8,350,34.296346,-118.166079
+SCH-00395,Summer Elementary School,Los Angeles,CA,elementary,6,563,34.110014,-118.200817
+SCH-00396,Lake Elementary School,Los Angeles,CA,elementary,9,874,34.248059,-118.446621
+SCH-00397,Forest Middle School,Miami,FL,middle,6,616,25.58153,-80.016436
+SCH-00398,Ridge Elementary School,Austin,TX,elementary,5,966,30.444067,-97.97364
+SCH-00399,Elm Elementary School,Los Angeles,CA,elementary,6,605,34.314036,-118.274418
+SCH-00400,Lincoln Elementary School,Los Angeles,CA,elementary,7,459,34.212005,-118.002116
+SCH-00401,Elm Elementary School,New York,NY,elementary,4,531,40.799144,-74.025864
+SCH-00402,Forest Charter School,Los Angeles,CA,charter,8,284,33.971072,-118.010514
+SCH-00403,Spring Elementary School,New York,NY,elementary,9,664,40.696741,-74.301696
+SCH-00404,Mission Elementary School,Miami,FL,elementary,6,446,25.950057,-80.302855
+SCH-00405,Lake High School,Miami,FL,high,10,610,25.989675,-80.048081
+SCH-00406,Elm Elementary School,San Francisco,CA,elementary,8,573,37.78632,-122.483649
+SCH-00407,Sunrise Elementary School,Los Angeles,CA,elementary,7,438,34.30999,-118.184447
+SCH-00408,Valley High School,Denver,CO,high,8,767,39.654672,-104.829532
+SCH-00409,Washington Middle School,Seattle,WA,middle,5,440,47.582294,-122.554775
+SCH-00410,Sunset High School,Denver,CO,high,6,801,39.81024,-105.136642
+SCH-00411,Walnut Elementary School,Seattle,WA,elementary,8,359,47.672674,-122.505179
+SCH-00412,Autumn Elementary School,Miami,FL,elementary,8,461,25.719048,-79.986804
+SCH-00413,Autumn Charter School,Los Angeles,CA,charter,10,327,34.233595,-118.375568
+SCH-00414,Valley Middle School,Los Angeles,CA,middle,7,462,34.046989,-117.991655
+SCH-00415,Summer Elementary School,Miami,FL,elementary,7,225,25.592766,-80.247909
+SCH-00416,Summer Middle School,Austin,TX,middle,9,320,30.158637,-97.628018
+SCH-00417,Lake High School,Miami,FL,high,4,474,25.742308,-80.350733
+SCH-00418,Washington High School,Los Angeles,CA,high,4,1048,34.064401,-118.188841
+SCH-00419,Sunrise Middle School,Los Angeles,CA,middle,7,375,33.815274,-118.268907
+SCH-00420,Jefferson Middle School,Los Angeles,CA,middle,8,307,34.059117,-118.526442
+SCH-00421,Ridge Elementary School,Miami,FL,elementary,6,626,25.537685,-80.340513
+SCH-00422,Hill High School,San Francisco,CA,high,8,926,37.989916,-122.223305
+SCH-00423,Sunset Elementary School,New York,NY,elementary,5,545,40.674987,-73.674593
+SCH-00424,Park K-12 School,New York,NY,K-12,7,497,40.844973,-74.262696
+SCH-00425,Spring Charter School,Chicago,IL,charter,3,275,41.674085,-87.423652
+SCH-00426,Lincoln Elementary School,Los Angeles,CA,elementary,8,510,34.072413,-118.14454
+SCH-00427,Winter Elementary School,Los Angeles,CA,elementary,8,422,34.213996,-118.312106
+SCH-00428,River Middle School,Los Angeles,CA,middle,9,406,33.902335,-118.376906
+SCH-00429,Spring Elementary School,San Francisco,CA,elementary,5,837,37.911003,-122.566107
+SCH-00430,Forest Charter School,Chicago,IL,charter,9,945,41.935854,-87.816815
+SCH-00431,Forest Middle School,Chicago,IL,middle,7,833,41.872878,-87.579568
+SCH-00432,Winter High School,Seattle,WA,high,8,913,47.519698,-122.250263
+SCH-00433,Mission Elementary School,San Francisco,CA,elementary,9,381,37.69681,-122.387987
+SCH-00434,Cedar Elementary School,Denver,CO,elementary,5,468,39.529719,-105.152241
+SCH-00435,Lincoln Elementary School,San Francisco,CA,elementary,7,549,37.820081,-122.400345
+SCH-00436,Cedar Elementary School,Seattle,WA,elementary,5,512,47.46235,-122.153152
+SCH-00437,Birch High School,Chicago,IL,high,9,543,41.92301,-87.288105
+SCH-00438,Mission Middle School,Seattle,WA,middle,6,441,47.472179,-121.986525
+SCH-00439,Valley High School,Miami,FL,high,7,117,25.852588,-80.426014
+SCH-00440,Sunrise Elementary School,Chicago,IL,elementary,9,283,41.833389,-87.325327
+SCH-00441,Lake Elementary School,San Francisco,CA,elementary,7,967,37.644911,-122.203405
+SCH-00442,Park High School,Austin,TX,high,8,403,30.172206,-97.749022
+SCH-00443,Mission Middle School,Seattle,WA,middle,10,855,47.474544,-122.12402
+SCH-00444,Sunset Middle School,Los Angeles,CA,middle,7,475,34.286178,-118.191002
+SCH-00445,Maple Elementary School,Austin,TX,elementary,7,470,30.366624,-97.873162
+SCH-00446,Forest High School,Los Angeles,CA,high,7,342,33.999944,-118.246875
+SCH-00447,Spring Charter School,New York,NY,charter,9,495,40.87166,-73.777579
+SCH-00448,Pine Elementary School,New York,NY,elementary,8,269,40.682697,-74.09357
+SCH-00449,Lake Charter School,New York,NY,charter,7,439,40.658965,-73.686826
+SCH-00450,Maple K-12 School,Miami,FL,K-12,5,136,25.590224,-80.250526
+SCH-00451,Hill High School,Los Angeles,CA,high,8,461,33.861173,-118.237544
+SCH-00452,Market Middle School,New York,NY,middle,6,593,40.546959,-73.880604
+SCH-00453,Sunrise High School,Denver,CO,high,8,832,39.522827,-105.105775
+SCH-00454,Lake Middle School,Austin,TX,middle,6,936,30.230325,-97.788639
+SCH-00455,Madison Elementary School,Denver,CO,elementary,7,587,39.762708,-104.708034
+SCH-00456,Hill Elementary School,San Francisco,CA,elementary,8,241,37.725213,-122.551118
+SCH-00457,Birch Elementary School,Austin,TX,elementary,7,352,30.479361,-97.844815
+SCH-00458,Forest High School,Chicago,IL,high,7,659,41.864713,-87.769786
+SCH-00459,Market High School,Seattle,WA,high,8,661,47.675154,-122.652571
+SCH-00460,Winter High School,Miami,FL,high,7,446,25.605592,-80.30827
+SCH-00461,Valley Elementary School,Chicago,IL,elementary,7,920,41.938496,-87.571974
+SCH-00462,Birch Elementary School,New York,NY,elementary,9,559,40.72802,-74.308286
+SCH-00463,Lincoln Elementary School,Seattle,WA,elementary,7,381,47.631356,-122.460411
+SCH-00464,Pine Charter School,Chicago,IL,charter,9,370,41.779232,-87.4583
+SCH-00465,Madison Elementary School,Miami,FL,elementary,6,308,25.708667,-80.427877
+SCH-00466,Park Elementary School,Chicago,IL,elementary,6,611,41.788986,-87.505269
+SCH-00467,Park High School,Denver,CO,high,10,967,39.596279,-104.858925
+SCH-00468,Mission Elementary School,Chicago,IL,elementary,8,765,41.87317,-87.596248
+SCH-00469,Valley Elementary School,San Francisco,CA,elementary,6,542,37.72592,-122.377744
+SCH-00470,Walnut High School,Austin,TX,high,7,211,30.184767,-97.826903
+SCH-00471,Forest Middle School,New York,NY,middle,5,601,40.705915,-74.227693
+SCH-00472,Ridge K-12 School,Austin,TX,K-12,8,660,30.430226,-97.795662
+SCH-00473,Mission High School,Miami,FL,high,7,672,25.667517,-80.246299
+SCH-00474,Birch High School,Los Angeles,CA,high,5,633,34.134906,-118.302266
+SCH-00475,Lake High School,San Francisco,CA,high,8,443,37.682721,-122.44767
+SCH-00476,Lake Middle School,Chicago,IL,middle,10,299,41.977341,-87.330067
+SCH-00477,Ridge Elementary School,Miami,FL,elementary,9,565,25.992671,-80.277953
+SCH-00478,River High School,San Francisco,CA,high,4,428,37.747325,-122.103935
+SCH-00479,Cedar High School,San Francisco,CA,high,8,328,37.882725,-122.14085
+SCH-00480,Cedar Middle School,Denver,CO,middle,7,651,39.830397,-104.7844
+SCH-00481,Valley Elementary School,Seattle,WA,elementary,7,438,47.508475,-122.260447
+SCH-00482,Jefferson Elementary School,Miami,FL,elementary,7,700,25.644516,-80.132968
+SCH-00483,Forest Charter School,Denver,CO,charter,8,587,39.666918,-105.225143
+SCH-00484,Maple High School,San Francisco,CA,high,7,319,37.810581,-122.558714
+SCH-00485,Lake High School,Miami,FL,high,6,855,25.601109,-80.116714
+SCH-00486,Walnut Charter School,Los Angeles,CA,charter,10,440,33.859655,-118.370171
+SCH-00487,Summer Elementary School,Denver,CO,elementary,8,778,39.707552,-105.102488
+SCH-00488,Walnut Elementary School,Austin,TX,elementary,6,839,30.441909,-97.554126
+SCH-00489,Hill Middle School,Denver,CO,middle,6,157,39.75694,-105.24111
+SCH-00490,Summer Charter School,Denver,CO,charter,8,427,39.775145,-104.755434
+SCH-00491,Winter High School,Seattle,WA,high,7,751,47.794513,-122.061053
+SCH-00492,Summer Middle School,New York,NY,middle,8,321,40.700335,-74.331962
+SCH-00493,Jefferson Middle School,Austin,TX,middle,7,78,30.200312,-98.027879
+SCH-00494,Forest Elementary School,Seattle,WA,elementary,8,583,47.498478,-122.355537
+SCH-00495,Lake Middle School,Seattle,WA,middle,7,445,47.572758,-121.999525
+SCH-00496,Madison Elementary School,Seattle,WA,elementary,8,445,47.740062,-121.99967
+SCH-00497,Mission Elementary School,Seattle,WA,elementary,4,184,47.503574,-122.369628
+SCH-00498,Madison Elementary School,San Francisco,CA,elementary,9,598,37.731873,-122.742136
+SCH-00499,Birch Elementary School,San Francisco,CA,elementary,5,1003,37.748322,-122.141061
+SCH-00500,Hill Elementary School,Los Angeles,CA,elementary,6,518,34.077565,-118.283702
+SCH-00501,Mission Middle School,San Francisco,CA,middle,7,546,37.698431,-122.641134
+SCH-00502,Winter High School,Los Angeles,CA,high,6,899,33.86038,-118.282374
+SCH-00503,Sunrise Elementary School,New York,NY,elementary,6,178,40.622204,-73.783569
+SCH-00504,Ridge Elementary School,Chicago,IL,elementary,7,483,41.816137,-87.763428
+SCH-00505,Washington Middle School,Seattle,WA,middle,9,131,47.572669,-122.416259
+SCH-00506,Hill Elementary School,New York,NY,elementary,6,581,40.958928,-73.892692
+SCH-00507,Park Elementary School,Los Angeles,CA,elementary,5,1333,34.203363,-118.103556
+SCH-00508,Valley Elementary School,Los Angeles,CA,elementary,5,480,34.053228,-118.280276
+SCH-00509,Lincoln Charter School,San Francisco,CA,charter,5,476,37.751564,-122.145961
+SCH-00510,Washington Elementary School,Los Angeles,CA,elementary,7,756,34.227444,-118.444874
+SCH-00511,Hill Elementary School,Los Angeles,CA,elementary,6,663,34.004568,-118.11304
+SCH-00512,Park K-12 School,Austin,TX,K-12,7,646,30.116256,-97.765048
+SCH-00513,Jefferson Elementary School,Los Angeles,CA,elementary,7,536,34.229925,-118.470063
+SCH-00514,Jefferson Elementary School,Chicago,IL,elementary,7,262,41.811205,-87.766044
+SCH-00515,Ridge Elementary School,Chicago,IL,elementary,10,452,41.713515,-87.689862
+SCH-00516,Jefferson Middle School,Los Angeles,CA,middle,6,792,34.11269,-118.044368
+SCH-00517,Madison Elementary School,Seattle,WA,elementary,8,701,47.767127,-122.609247
+SCH-00518,Jefferson Elementary School,San Francisco,CA,elementary,6,639,37.888805,-122.60052
+SCH-00519,Ridge Elementary School,Austin,TX,elementary,6,679,30.443466,-97.554205
+SCH-00520,Walnut High School,Austin,TX,high,8,476,30.349946,-97.545409
+SCH-00521,Cedar Middle School,San Francisco,CA,middle,7,1086,38.027556,-122.41726
+SCH-00522,Washington High School,Chicago,IL,high,8,454,41.841243,-87.68858
+SCH-00523,Maple Elementary School,San Francisco,CA,elementary,6,399,37.828135,-122.434059
+SCH-00524,Jefferson Middle School,Los Angeles,CA,middle,7,151,33.886492,-118.12431
+SCH-00525,Oak Elementary School,Chicago,IL,elementary,6,920,41.882378,-87.913213
+SCH-00526,Pine K-12 School,Miami,FL,K-12,6,452,25.886196,-80.027364
+SCH-00527,Cedar Elementary School,Austin,TX,elementary,6,782,30.330351,-97.849596
+SCH-00528,Forest Elementary School,San Francisco,CA,elementary,8,360,37.819587,-122.472818
+SCH-00529,Mission Elementary School,Los Angeles,CA,elementary,9,547,34.289979,-118.33313
+SCH-00530,Washington K-12 School,San Francisco,CA,K-12,6,464,37.615258,-122.473518
+SCH-00531,Lake K-12 School,Denver,CO,K-12,7,601,39.81584,-105.062278
+SCH-00532,Valley Elementary School,San Francisco,CA,elementary,10,833,37.82846,-122.199621
+SCH-00533,Lake High School,Miami,FL,high,8,60,25.817875,-79.94711
+SCH-00534,Mission Elementary School,Los Angeles,CA,elementary,7,580,34.042882,-118.413833
+SCH-00535,Valley High School,Los Angeles,CA,high,5,538,33.851546,-118.33389
+SCH-00536,Ridge High School,Seattle,WA,high,8,824,47.627732,-122.278419
+SCH-00537,Hill Charter School,San Francisco,CA,charter,8,374,37.697119,-122.376943
+SCH-00538,Winter Elementary School,Los Angeles,CA,elementary,7,719,34.061714,-118.561542
+SCH-00539,Hill Elementary School,Miami,FL,elementary,8,669,25.52204,-80.234647
+SCH-00540,Hill High School,New York,NY,high,8,844,40.79434,-73.872992
+SCH-00541,Walnut Middle School,New York,NY,middle,7,410,40.737472,-73.997071
+SCH-00542,Market Elementary School,Miami,FL,elementary,8,521,25.708938,-80.442193
+SCH-00543,Winter Elementary School,San Francisco,CA,elementary,5,523,37.514168,-122.366723
+SCH-00544,Washington Charter School,Seattle,WA,charter,6,494,47.784038,-122.54685
+SCH-00545,Madison Middle School,Los Angeles,CA,middle,5,297,34.147731,-118.070884
+SCH-00546,Sunrise Elementary School,Denver,CO,elementary,6,534,39.637948,-105.149637
+SCH-00547,Maple Elementary School,Seattle,WA,elementary,8,307,47.610736,-122.097288
+SCH-00548,Winter Middle School,Los Angeles,CA,middle,6,997,33.960362,-118.21938
+SCH-00549,Park Elementary School,New York,NY,elementary,9,500,40.765679,-74.309119
+SCH-00550,Ridge Middle School,Miami,FL,middle,10,444,25.832117,-80.337619
+SCH-00551,Lincoln Elementary School,Los Angeles,CA,elementary,8,359,33.939969,-118.124261
+SCH-00552,Market Elementary School,Los Angeles,CA,elementary,9,739,34.230674,-118.114666
+SCH-00553,Madison Middle School,Miami,FL,middle,9,494,25.716591,-80.016877
+SCH-00554,Madison K-12 School,San Francisco,CA,K-12,6,1081,37.973094,-122.443647
+SCH-00555,Sunrise Charter School,Los Angeles,CA,charter,10,427,34.149804,-118.025806
+SCH-00556,Hill High School,San Francisco,CA,high,8,476,37.70016,-122.349574
+SCH-00557,Autumn Middle School,Austin,TX,middle,8,415,30.235851,-97.488011
+SCH-00558,Walnut Middle School,Los Angeles,CA,middle,5,832,34.008936,-118.329402
+SCH-00559,Valley Elementary School,San Francisco,CA,elementary,7,843,37.9098,-122.338758
+SCH-00560,Summer Elementary School,Austin,TX,elementary,8,429,30.080098,-97.849441
+SCH-00561,Sunrise Elementary School,New York,NY,elementary,9,716,40.448975,-74.015552
+SCH-00562,Pine High School,Chicago,IL,high,5,509,41.844533,-87.513359
+SCH-00563,Cedar Elementary School,Seattle,WA,elementary,9,399,47.587966,-122.150459
+SCH-00564,Jefferson Elementary School,Los Angeles,CA,elementary,8,1072,34.068152,-118.39148
+SCH-00565,Sunrise Charter School,Los Angeles,CA,charter,9,630,33.86343,-118.370842
+SCH-00566,Sunrise Elementary School,Los Angeles,CA,elementary,6,790,33.977113,-118.100958
+SCH-00567,Winter Elementary School,New York,NY,elementary,9,713,40.71632,-74.224071
+SCH-00568,Mission High School,New York,NY,high,6,748,40.875087,-74.165722
+SCH-00569,Winter High School,San Francisco,CA,high,5,620,37.803027,-122.641408
+SCH-00570,Ridge Elementary School,Austin,TX,elementary,7,265,30.050317,-97.901782
+SCH-00571,Hill Elementary School,Seattle,WA,elementary,7,717,47.734886,-122.005498
+SCH-00572,Autumn Elementary School,San Francisco,CA,elementary,8,60,37.806183,-122.650075
+SCH-00573,Mission Elementary School,Los Angeles,CA,elementary,8,535,34.172572,-118.126537
+SCH-00574,Birch High School,San Francisco,CA,high,9,397,37.816946,-122.514253
+SCH-00575,Mission Middle School,Chicago,IL,middle,5,491,41.652197,-87.486841
+SCH-00576,Oak Middle School,Denver,CO,middle,8,454,39.958619,-104.83001
+SCH-00577,Market High School,Miami,FL,high,7,360,25.683954,-80.10689
+SCH-00578,Forest Elementary School,Miami,FL,elementary,7,606,25.855971,-80.378139
+SCH-00579,Sunset Elementary School,Los Angeles,CA,elementary,7,506,34.006874,-117.990405
+SCH-00580,Cedar Middle School,Miami,FL,middle,9,769,25.953957,-80.287792
+SCH-00581,Winter Elementary School,New York,NY,elementary,6,556,40.598355,-73.874194
+SCH-00582,Pine Middle School,Austin,TX,middle,7,733,30.346804,-97.762512
+SCH-00583,Summer Elementary School,New York,NY,elementary,7,111,40.8872,-73.872656
+SCH-00584,Washington Elementary School,Chicago,IL,elementary,5,587,42.102703,-87.65959
+SCH-00585,River Elementary School,Austin,TX,elementary,9,279,30.345659,-97.554518
+SCH-00586,Pine Middle School,Los Angeles,CA,middle,8,246,33.949964,-118.031024
+SCH-00587,Summer High School,Los Angeles,CA,high,5,212,34.272635,-118.266503
+SCH-00588,Winter Elementary School,Los Angeles,CA,elementary,8,692,33.9283,-118.322444
+SCH-00589,Walnut K-12 School,Chicago,IL,K-12,9,644,42.021158,-87.701643
+SCH-00590,Elm Middle School,New York,NY,middle,4,274,40.541985,-73.836282
+SCH-00591,Washington Middle School,Miami,FL,middle,4,341,25.596598,-79.978129
+SCH-00592,Walnut Elementary School,Denver,CO,elementary,6,134,39.54,-104.894873
+SCH-00593,Spring Middle School,Miami,FL,middle,6,341,25.687946,-79.95395
+SCH-00594,Walnut Elementary School,Denver,CO,elementary,9,639,39.598756,-104.778474
+SCH-00595,River Elementary School,Chicago,IL,elementary,9,890,42.066893,-87.783409
+SCH-00596,Pine Middle School,San Francisco,CA,middle,7,512,37.638349,-122.638543
+SCH-00597,Winter Charter School,Los Angeles,CA,charter,8,541,34.085975,-118.477302
+SCH-00598,Spring Elementary School,New York,NY,elementary,8,639,40.452204,-74.058534
+SCH-00599,Cedar Elementary School,San Francisco,CA,elementary,9,1241,37.715479,-122.416013
+SCH-00600,Autumn Middle School,San Francisco,CA,middle,7,560,37.864485,-122.232842
+SCH-00601,Jefferson Charter School,Austin,TX,charter,6,719,30.259766,-97.962521
+SCH-00602,Elm Elementary School,San Francisco,CA,elementary,6,615,37.565991,-122.339434
+SCH-00603,Washington Elementary School,San Francisco,CA,elementary,10,531,37.539031,-122.55982
+SCH-00604,Spring Charter School,Chicago,IL,charter,7,88,41.862884,-87.515822
+SCH-00605,Lake Elementary School,San Francisco,CA,elementary,8,405,37.696805,-122.283858
+SCH-00606,Pine Charter School,Los Angeles,CA,charter,5,237,33.958491,-118.153933
+SCH-00607,Mission Elementary School,Chicago,IL,elementary,7,363,41.872651,-87.809741
+SCH-00608,Sunset High School,Los Angeles,CA,high,8,1041,34.093139,-118.153598
+SCH-00609,Oak Elementary School,Denver,CO,elementary,6,382,39.697947,-104.82019
+SCH-00610,Park High School,Denver,CO,high,9,736,39.911028,-104.934925
+SCH-00611,Pine High School,Miami,FL,high,9,527,25.505402,-80.198774
+SCH-00612,Maple Middle School,Los Angeles,CA,middle,6,536,33.998993,-118.048829
+SCH-00613,Sunset Middle School,Seattle,WA,middle,6,978,47.501921,-122.539486
+SCH-00614,Market Middle School,Los Angeles,CA,middle,6,648,34.093643,-118.544822
+SCH-00615,Walnut High School,Miami,FL,high,8,483,25.564948,-80.339365
+SCH-00616,Autumn Middle School,Los Angeles,CA,middle,5,615,34.11101,-118.164897
+SCH-00617,Pine K-12 School,Austin,TX,K-12,7,442,30.36867,-97.803581
+SCH-00618,Pine High School,Seattle,WA,high,6,910,47.5009,-122.128271
+SCH-00619,Spring Middle School,Chicago,IL,middle,6,796,41.870492,-87.852478
+SCH-00620,Elm Middle School,Denver,CO,middle,6,742,39.694432,-104.770237
+SCH-00621,Maple Elementary School,Los Angeles,CA,elementary,5,694,33.976849,-118.537162
+SCH-00622,Autumn Elementary School,Los Angeles,CA,elementary,6,274,34.112358,-118.295655
+SCH-00623,Washington Elementary School,New York,NY,elementary,10,220,40.684868,-73.803753
+SCH-00624,Oak High School,Los Angeles,CA,high,7,475,34.26333,-118.231083
+SCH-00625,Pine Elementary School,Chicago,IL,elementary,8,725,41.700902,-87.483104
+SCH-00626,Lake Elementary School,Los Angeles,CA,elementary,7,274,33.928695,-118.081292
+SCH-00627,Maple Elementary School,Chicago,IL,elementary,6,1008,41.75192,-87.547177
+SCH-00628,Summer Elementary School,Miami,FL,elementary,7,650,25.808533,-80.071491
+SCH-00629,Lake High School,San Francisco,CA,high,6,305,37.905188,-122.180293
+SCH-00630,Ridge Charter School,Los Angeles,CA,charter,6,688,34.011614,-118.129014
+SCH-00631,Forest Elementary School,Denver,CO,elementary,7,748,39.546324,-104.896414
+SCH-00632,Jefferson Middle School,Denver,CO,middle,7,845,39.838919,-104.669518
+SCH-00633,Summer High School,Denver,CO,high,9,182,39.866792,-105.108308
+SCH-00634,Oak Elementary School,Miami,FL,elementary,5,780,25.803259,-80.353361
+SCH-00635,River Elementary School,New York,NY,elementary,5,724,40.585177,-74.204337
+SCH-00636,Lake Charter School,Miami,FL,charter,9,236,25.672576,-80.008761
+SCH-00637,Washington Middle School,Chicago,IL,middle,8,771,41.854746,-87.364091
+SCH-00638,Sunset Middle School,Miami,FL,middle,5,516,25.647891,-79.92638
+SCH-00639,Park K-12 School,Seattle,WA,K-12,5,926,47.491833,-122.161199
+SCH-00640,Madison Middle School,San Francisco,CA,middle,8,794,37.782008,-122.662863
+SCH-00641,Winter Elementary School,Los Angeles,CA,elementary,8,628,33.873035,-118.118056
+SCH-00642,Maple K-12 School,Denver,CO,K-12,6,364,39.557456,-105.140584
+SCH-00643,Valley Elementary School,Chicago,IL,elementary,5,592,41.918828,-87.904764
+SCH-00644,Market Middle School,Los Angeles,CA,middle,8,512,34.128467,-118.047972
+SCH-00645,Sunset Middle School,Chicago,IL,middle,9,637,41.997493,-87.843007
+SCH-00646,Elm Elementary School,Denver,CO,elementary,7,471,39.866199,-104.934672
+SCH-00647,Madison Middle School,San Francisco,CA,middle,7,595,37.979539,-122.620123
+SCH-00648,Jefferson High School,Seattle,WA,high,8,630,47.725384,-122.225624
+SCH-00649,Madison Middle School,Austin,TX,middle,7,655,30.195961,-97.542616
+SCH-00650,Autumn Elementary School,Los Angeles,CA,elementary,6,716,34.100068,-118.493606
+SCH-00651,Ridge Elementary School,Seattle,WA,elementary,7,600,47.471241,-122.40369
+SCH-00652,Washington High School,Miami,FL,high,6,752,25.903096,-80.198631
+SCH-00653,Lincoln High School,Miami,FL,high,6,650,25.68207,-80.432134
+SCH-00654,Cedar High School,Austin,TX,high,6,691,30.255294,-97.823301
+SCH-00655,Sunset Middle School,Miami,FL,middle,5,316,25.760549,-80.304812
+SCH-00656,Mission Elementary School,Los Angeles,CA,elementary,6,202,33.883294,-118.390633
+SCH-00657,Summer Charter School,Denver,CO,charter,7,575,39.695185,-105.018645
+SCH-00658,Park Elementary School,Austin,TX,elementary,8,643,30.072744,-97.535353
+SCH-00659,Walnut High School,New York,NY,high,5,275,40.761908,-74.356582
+SCH-00660,Jefferson Charter School,Austin,TX,charter,8,552,30.138309,-97.992517
+SCH-00661,Birch Elementary School,Denver,CO,elementary,7,587,39.973879,-104.878173
+SCH-00662,Lake Elementary School,Miami,FL,elementary,8,800,25.801583,-80.075204
+SCH-00663,Ridge K-12 School,Denver,CO,K-12,10,582,39.586135,-104.855907
+SCH-00664,Jefferson Middle School,Los Angeles,CA,middle,6,738,34.205687,-118.175386
+SCH-00665,Spring High School,New York,NY,high,8,523,40.552343,-74.056207
+SCH-00666,Winter Elementary School,Chicago,IL,elementary,7,415,42.04065,-87.48633
+SCH-00667,Sunset Elementary School,New York,NY,elementary,8,131,40.846299,-74.013728
+SCH-00668,Park Elementary School,Miami,FL,elementary,8,443,25.791887,-80.252418
+SCH-00669,Ridge Elementary School,Chicago,IL,elementary,8,652,41.875386,-87.438611
+SCH-00670,Elm Elementary School,Miami,FL,elementary,9,485,25.529497,-80.212445
+SCH-00671,Forest Charter School,Seattle,WA,charter,9,906,47.445515,-122.646845
+SCH-00672,Cedar High School,San Francisco,CA,high,6,679,37.964141,-122.457937
+SCH-00673,Birch Charter School,Los Angeles,CA,charter,6,858,34.200411,-118.427904
+SCH-00674,Cedar Elementary School,Los Angeles,CA,elementary,7,524,33.964114,-118.521079
+SCH-00675,Ridge Elementary School,Seattle,WA,elementary,8,342,47.39781,-122.46624
+SCH-00676,Valley Charter School,Chicago,IL,charter,6,770,42.004128,-87.847978
+SCH-00677,Madison Elementary School,Chicago,IL,elementary,8,728,41.770695,-87.482606
+SCH-00678,Madison Elementary School,San Francisco,CA,elementary,5,463,37.902617,-122.372353
+SCH-00679,Lincoln High School,Los Angeles,CA,high,6,721,33.967146,-118.470552
+SCH-00680,Sunset Middle School,Denver,CO,middle,8,336,39.629693,-105.077749
+SCH-00681,Hill High School,San Francisco,CA,high,6,872,37.867456,-122.181566
+SCH-00682,Autumn Elementary School,Miami,FL,elementary,8,898,25.515869,-80.152134
+SCH-00683,Lake Middle School,San Francisco,CA,middle,9,625,37.635709,-122.481535
+SCH-00684,Washington High School,Miami,FL,high,6,958,25.929483,-80.251258
+SCH-00685,Forest Middle School,Miami,FL,middle,9,869,25.679478,-80.042694
+SCH-00686,Park High School,Chicago,IL,high,8,631,41.818526,-87.376421
+SCH-00687,Valley Elementary School,Los Angeles,CA,elementary,9,614,33.905066,-118.327827
+SCH-00688,Sunset Elementary School,Seattle,WA,elementary,8,603,47.668163,-122.66707
+SCH-00689,Lincoln Middle School,Denver,CO,middle,9,740,39.650252,-105.04235
+SCH-00690,Lake High School,Los Angeles,CA,high,8,634,34.128584,-118.444242
+SCH-00691,Autumn K-12 School,Los Angeles,CA,K-12,5,487,34.060065,-118.365733
+SCH-00692,Jefferson Elementary School,Miami,FL,elementary,7,689,25.984544,-80.084942
+SCH-00693,Cedar Elementary School,San Francisco,CA,elementary,8,220,37.525318,-122.435195
+SCH-00694,Madison Middle School,San Francisco,CA,middle,6,546,37.646398,-122.292211
+SCH-00695,Market Charter School,Seattle,WA,charter,6,391,47.642039,-122.528876
+SCH-00696,Lincoln Elementary School,Miami,FL,elementary,8,654,25.729469,-80.404038
+SCH-00697,Ridge High School,San Francisco,CA,high,8,583,37.877372,-122.576095
+SCH-00698,Valley Elementary School,Los Angeles,CA,elementary,4,522,34.163316,-118.196835
+SCH-00699,Spring Charter School,Chicago,IL,charter,8,410,42.043569,-87.870804
+SCH-00700,Cedar High School,Miami,FL,high,5,391,25.972561,-80.364592
+SCH-00701,Park Middle School,Los Angeles,CA,middle,8,268,34.083741,-118.309076
+SCH-00702,Jefferson Charter School,Los Angeles,CA,charter,10,470,34.180178,-118.393793
+SCH-00703,Mission Elementary School,Seattle,WA,elementary,8,658,47.540493,-122.405649
+SCH-00704,Valley Elementary School,Los Angeles,CA,elementary,7,571,33.872132,-118.353076
+SCH-00705,Walnut Middle School,Seattle,WA,middle,9,513,47.675221,-122.408522
+SCH-00706,Winter K-12 School,New York,NY,K-12,8,769,40.977078,-73.994185
+SCH-00707,Maple High School,Chicago,IL,high,9,503,41.915157,-87.461129
+SCH-00708,Lake Elementary School,New York,NY,elementary,6,751,40.826692,-74.160283
+SCH-00709,Pine Charter School,Chicago,IL,charter,7,801,41.794707,-87.681073
+SCH-00710,River Elementary School,San Francisco,CA,elementary,4,336,37.578318,-122.29444
+SCH-00711,Birch High School,San Francisco,CA,high,8,272,37.570226,-122.204225
+SCH-00712,Jefferson High School,San Francisco,CA,high,8,431,37.768025,-122.54385
+SCH-00713,Valley Charter School,Denver,CO,charter,6,516,39.552088,-105.235051
+SCH-00714,Jefferson Elementary School,Chicago,IL,elementary,9,514,41.706567,-87.707347
+SCH-00715,Autumn Charter School,San Francisco,CA,charter,7,913,37.935395,-122.500391
+SCH-00716,Mission Elementary School,San Francisco,CA,elementary,8,759,37.707732,-122.595361
+SCH-00717,Cedar Middle School,Austin,TX,middle,6,631,30.379311,-97.83228
+SCH-00718,Walnut High School,New York,NY,high,9,170,40.501539,-73.934238
+SCH-00719,Oak Charter School,San Francisco,CA,charter,8,861,37.750823,-122.147677
+SCH-00720,Sunrise High School,San Francisco,CA,high,9,448,37.605566,-122.512789
+SCH-00721,Mission Elementary School,Los Angeles,CA,elementary,8,595,33.814244,-118.255664
+SCH-00722,Cedar Charter School,Denver,CO,charter,7,252,39.834256,-104.709626
+SCH-00723,Lincoln High School,San Francisco,CA,high,7,390,37.656938,-122.692673
+SCH-00724,Elm Middle School,Austin,TX,middle,9,657,30.009254,-97.790979
+SCH-00725,Lake K-12 School,New York,NY,K-12,4,207,40.749713,-73.876985
+SCH-00726,Spring Middle School,San Francisco,CA,middle,9,353,37.803498,-122.608182
+SCH-00727,Madison Elementary School,Los Angeles,CA,elementary,7,229,33.837138,-118.104358
+SCH-00728,Lincoln Elementary School,Miami,FL,elementary,10,370,25.84608,-80.065486
+SCH-00729,Winter Elementary School,Miami,FL,elementary,7,559,25.81689,-80.139813
+SCH-00730,Hill Elementary School,Denver,CO,elementary,7,438,39.641651,-105.065307
+SCH-00731,Winter Elementary School,Los Angeles,CA,elementary,8,199,34.004098,-118.348305
+SCH-00732,Summer Middle School,Los Angeles,CA,middle,7,538,34.229103,-118.351691
+SCH-00733,River High School,Seattle,WA,high,9,757,47.558524,-122.100477
+SCH-00734,Summer High School,San Francisco,CA,high,8,591,37.881738,-122.565568
+SCH-00735,Lake Elementary School,New York,NY,elementary,10,773,40.795778,-74.077656
+SCH-00736,Ridge Elementary School,San Francisco,CA,elementary,10,925,37.817627,-122.61511
+SCH-00737,Sunrise K-12 School,Seattle,WA,K-12,7,604,47.836845,-122.404498
+SCH-00738,Forest Elementary School,Miami,FL,elementary,6,159,25.689124,-79.98804
+SCH-00739,Forest Elementary School,Denver,CO,elementary,7,178,39.9443,-105.049967
+SCH-00740,Hill Middle School,Miami,FL,middle,7,590,25.560193,-80.093295
+SCH-00741,Market Elementary School,Denver,CO,elementary,8,109,39.891236,-104.847141
+SCH-00742,Park Middle School,Denver,CO,middle,3,454,39.758635,-104.997711
+SCH-00743,Lake High School,Seattle,WA,high,6,159,47.565373,-122.604712
+SCH-00744,Cedar Middle School,Miami,FL,middle,5,726,25.78767,-80.243557
+SCH-00745,Hill High School,New York,NY,high,9,251,40.709926,-74.239479
+SCH-00746,Lincoln Middle School,San Francisco,CA,middle,5,557,37.82099,-122.232887
+SCH-00747,Sunset K-12 School,Denver,CO,K-12,7,552,39.723931,-104.943768
+SCH-00748,Summer Elementary School,New York,NY,elementary,8,141,40.582023,-73.717499
+SCH-00749,Ridge High School,Chicago,IL,high,7,690,41.994422,-87.540624
+SCH-00750,Elm High School,Austin,TX,high,8,337,30.391738,-97.968857
+SCH-00751,Sunrise High School,New York,NY,high,5,749,40.526122,-74.003949
+SCH-00752,Valley Charter School,Los Angeles,CA,charter,7,335,33.809827,-118.236907
+SCH-00753,Winter Middle School,Chicago,IL,middle,7,371,41.651167,-87.740179
+SCH-00754,Autumn High School,Miami,FL,high,8,1045,25.80694,-80.258844
+SCH-00755,Hill K-12 School,New York,NY,K-12,7,569,40.930658,-73.805837
+SCH-00756,Maple Middle School,Austin,TX,middle,5,748,30.280899,-97.923699
+SCH-00757,Ridge High School,Denver,CO,high,8,852,39.512636,-104.799051
+SCH-00758,Summer Elementary School,Austin,TX,elementary,7,508,30.381893,-97.67108
+SCH-00759,Sunrise Middle School,Los Angeles,CA,middle,8,537,34.204788,-118.078996
+SCH-00760,Madison High School,Austin,TX,high,5,432,30.146997,-97.979946
+SCH-00761,Washington Middle School,New York,NY,middle,5,787,40.786572,-74.257816
+SCH-00762,Walnut Middle School,Austin,TX,middle,6,448,30.216932,-97.923442
+SCH-00763,Hill Elementary School,San Francisco,CA,elementary,8,440,37.601815,-122.663841
+SCH-00764,Cedar K-12 School,Austin,TX,K-12,7,287,30.107419,-97.919878
+SCH-00765,Sunset Elementary School,Seattle,WA,elementary,8,378,47.606708,-122.159233
+SCH-00766,Maple Elementary School,Los Angeles,CA,elementary,7,465,34.114006,-118.409973
+SCH-00767,Walnut Elementary School,New York,NY,elementary,7,771,40.694516,-74.058902
+SCH-00768,Lincoln High School,New York,NY,high,8,830,40.93225,-73.928561
+SCH-00769,Jefferson Middle School,Austin,TX,middle,7,568,30.211565,-97.839073
+SCH-00770,Park Elementary School,Chicago,IL,elementary,10,450,42.09831,-87.609349
+SCH-00771,Cedar Middle School,Miami,FL,middle,8,743,25.991365,-80.074081
+SCH-00772,River Elementary School,Miami,FL,elementary,6,504,25.686295,-80.330245
+SCH-00773,Lincoln Elementary School,Seattle,WA,elementary,6,678,47.620384,-122.529005
+SCH-00774,Valley Elementary School,Los Angeles,CA,elementary,10,371,34.202149,-118.274714
+SCH-00775,Sunset Elementary School,Austin,TX,elementary,5,687,30.314563,-97.459356
+SCH-00776,Washington High School,Chicago,IL,high,8,225,41.835157,-87.794121
+SCH-00777,Cedar Elementary School,Miami,FL,elementary,10,292,25.916915,-80.051972
+SCH-00778,Pine Charter School,Miami,FL,charter,5,395,25.499362,-80.139904
+SCH-00779,Ridge Elementary School,Chicago,IL,elementary,8,742,41.791506,-87.518849
+SCH-00780,Cedar Middle School,Seattle,WA,middle,7,698,47.707749,-122.322
+SCH-00781,Spring Elementary School,New York,NY,elementary,6,390,40.796609,-74.124195
+SCH-00782,Sunrise Elementary School,Miami,FL,elementary,6,497,25.80716,-80.175774
+SCH-00783,Birch K-12 School,Denver,CO,K-12,9,295,39.868575,-105.023298
+SCH-00784,Spring High School,Austin,TX,high,8,425,30.323557,-97.438252
+SCH-00785,River Charter School,New York,NY,charter,6,192,40.51099,-74.011576
+SCH-00786,Ridge Elementary School,Los Angeles,CA,elementary,7,632,34.096244,-118.524366
+SCH-00787,Valley High School,Austin,TX,high,6,857,30.318744,-97.665791
+SCH-00788,Ridge High School,San Francisco,CA,high,8,514,37.734052,-122.675162
+SCH-00789,Park Elementary School,San Francisco,CA,elementary,6,1029,37.951874,-122.38669
+SCH-00790,Ridge Elementary School,Los Angeles,CA,elementary,9,474,34.115186,-118.135421
+SCH-00791,Market Middle School,San Francisco,CA,middle,7,523,37.717825,-122.595717
+SCH-00792,Oak Elementary School,San Francisco,CA,elementary,6,599,37.730898,-122.695311
+SCH-00793,Cedar Elementary School,San Francisco,CA,elementary,9,444,37.761,-122.271346
+SCH-00794,Winter Elementary School,New York,NY,elementary,7,961,40.931529,-74.179427
+SCH-00795,Lake High School,Austin,TX,high,7,354,30.432247,-97.969013
+SCH-00796,Sunrise Middle School,Seattle,WA,middle,8,472,47.790416,-122.148108
+SCH-00797,Hill High School,New York,NY,high,8,619,40.553435,-74.235597
+SCH-00798,River High School,Los Angeles,CA,high,6,474,33.858713,-118.132523
+SCH-00799,Ridge High School,San Francisco,CA,high,6,430,38.005594,-122.438958
+SCH-00800,Madison Middle School,Seattle,WA,middle,6,1039,47.716483,-122.663856
+SCH-00801,Winter Charter School,Los Angeles,CA,charter,7,978,34.298593,-118.230539
+SCH-00802,Jefferson Elementary School,New York,NY,elementary,6,536,40.710142,-74.245564
+SCH-00803,Spring Middle School,Los Angeles,CA,middle,6,742,34.057366,-118.087813
+SCH-00804,Forest Middle School,Los Angeles,CA,middle,6,585,34.214475,-118.311511
+SCH-00805,Park Elementary School,Chicago,IL,elementary,9,713,41.777081,-87.939444
+SCH-00806,Jefferson Elementary School,Miami,FL,elementary,7,755,25.649382,-80.460517
+SCH-00807,Summer Middle School,Los Angeles,CA,middle,9,534,34.067085,-118.3516
+SCH-00808,Mission Middle School,San Francisco,CA,middle,8,710,37.831998,-122.268382
+SCH-00809,Market K-12 School,Miami,FL,K-12,6,690,25.966352,-80.177835
+SCH-00810,Walnut High School,San Francisco,CA,high,7,657,37.85779,-122.58352
+SCH-00811,Walnut Elementary School,Los Angeles,CA,elementary,7,729,34.27698,-118.069232
+SCH-00812,Sunrise High School,Los Angeles,CA,high,10,159,33.965063,-118.201525
+SCH-00813,Lake Middle School,San Francisco,CA,middle,6,397,37.979508,-122.56675
+SCH-00814,Market Middle School,San Francisco,CA,middle,5,254,38.031256,-122.357904
+SCH-00815,Summer Elementary School,Denver,CO,elementary,7,436,39.727675,-105.174804
+SCH-00816,Maple K-12 School,Los Angeles,CA,K-12,9,472,34.174704,-118.120951
+SCH-00817,Lincoln Elementary School,Denver,CO,elementary,4,637,39.665566,-105.002733
+SCH-00818,Winter Elementary School,Los Angeles,CA,elementary,7,814,33.944494,-118.19875
+SCH-00819,Birch Charter School,Miami,FL,charter,7,497,25.566307,-80.142853
+SCH-00820,Forest Elementary School,Chicago,IL,elementary,8,389,41.674834,-87.620181
+SCH-00821,Oak High School,Los Angeles,CA,high,7,453,33.949523,-118.45294
+SCH-00822,Cedar Elementary School,Chicago,IL,elementary,7,275,41.786004,-87.461448
+SCH-00823,Jefferson Middle School,Denver,CO,middle,7,673,39.782161,-105.109309
+SCH-00824,Park Elementary School,Austin,TX,elementary,9,351,30.123639,-97.562258
+SCH-00825,Birch Elementary School,Miami,FL,elementary,6,260,25.556374,-80.279635
+SCH-00826,Valley Elementary School,New York,NY,elementary,6,668,40.712799,-73.848686
+SCH-00827,Madison Elementary School,New York,NY,elementary,8,980,40.628964,-73.984749
+SCH-00828,Park Elementary School,New York,NY,elementary,5,850,40.598155,-74.231983
+SCH-00829,Pine Elementary School,Denver,CO,elementary,4,402,39.74222,-104.911508
+SCH-00830,Mission Middle School,Denver,CO,middle,10,746,39.615737,-104.893052
+SCH-00831,Oak Elementary School,San Francisco,CA,elementary,7,637,37.946185,-122.326123
+SCH-00832,Birch Elementary School,Miami,FL,elementary,5,745,25.680338,-80.069935
+SCH-00833,Market High School,Denver,CO,high,8,330,39.724685,-104.686387
+SCH-00834,Madison Elementary School,New York,NY,elementary,6,289,40.625024,-73.900025
+SCH-00835,Maple Middle School,Seattle,WA,middle,8,447,47.416533,-122.322424
+SCH-00836,Summer Elementary School,Los Angeles,CA,elementary,5,392,34.245728,-118.375054
+SCH-00837,Market Middle School,Los Angeles,CA,middle,6,517,33.971408,-118.543934
+SCH-00838,Valley Middle School,San Francisco,CA,middle,7,459,37.928398,-122.181446
+SCH-00839,Park Charter School,Austin,TX,charter,8,513,30.510488,-97.763563
+SCH-00840,Oak Elementary School,Chicago,IL,elementary,9,326,41.998924,-87.460894
+SCH-00841,Sunrise Elementary School,Los Angeles,CA,elementary,10,636,33.921362,-118.1419
+SCH-00842,Autumn Elementary School,Denver,CO,elementary,8,604,39.601875,-104.957892
+SCH-00843,Jefferson High School,Los Angeles,CA,high,7,596,34.175129,-118.035918
+SCH-00844,Autumn Elementary School,San Francisco,CA,elementary,7,431,37.66026,-122.371072
+SCH-00845,Cedar Elementary School,Chicago,IL,elementary,9,571,41.864187,-87.578766
+SCH-00846,Hill Middle School,New York,NY,middle,9,562,40.584535,-73.956421
+SCH-00847,Birch Middle School,San Francisco,CA,middle,9,1028,37.762528,-122.752682
+SCH-00848,Winter Elementary School,New York,NY,elementary,4,486,40.578865,-74.184822
+SCH-00849,Forest Middle School,San Francisco,CA,middle,7,700,37.763999,-122.172843
+SCH-00850,Ridge Charter School,Denver,CO,charter,8,1023,39.965216,-105.182807
+SCH-00851,Washington Elementary School,Miami,FL,elementary,7,371,25.795652,-80.268705
+SCH-00852,Ridge Elementary School,Denver,CO,elementary,7,435,39.960688,-104.964443
+SCH-00853,Walnut Middle School,Miami,FL,middle,6,607,25.642786,-80.007904
+SCH-00854,Maple Elementary School,Chicago,IL,elementary,7,764,41.891179,-87.549616
+SCH-00855,Autumn Middle School,Austin,TX,middle,8,800,30.328683,-97.612806
+SCH-00856,Lincoln Elementary School,San Francisco,CA,elementary,6,940,37.869096,-122.447108
+SCH-00857,Hill Elementary School,Miami,FL,elementary,6,60,25.930627,-80.080767
+SCH-00858,Madison High School,Los Angeles,CA,high,7,721,34.113932,-118.343397
+SCH-00859,Spring Elementary School,Chicago,IL,elementary,7,134,41.91498,-87.394732
+SCH-00860,Sunset High School,Miami,FL,high,9,514,25.633223,-80.058078
+SCH-00861,Lincoln K-12 School,Chicago,IL,K-12,6,576,41.764486,-87.6042
+SCH-00862,Walnut Elementary School,San Francisco,CA,elementary,6,643,37.698912,-122.389058
+SCH-00863,Hill Elementary School,Los Angeles,CA,elementary,5,552,34.200433,-118.462558
+SCH-00864,Spring Elementary School,Austin,TX,elementary,6,551,30.433396,-97.837194
+SCH-00865,Jefferson Elementary School,Los Angeles,CA,elementary,5,499,34.013536,-118.553621
+SCH-00866,Forest Elementary School,Miami,FL,elementary,6,683,25.659651,-80.404583
+SCH-00867,Winter Middle School,Seattle,WA,middle,9,638,47.515665,-122.170196
+SCH-00868,Oak Elementary School,New York,NY,elementary,7,374,40.820982,-74.310695
+SCH-00869,River Middle School,New York,NY,middle,9,369,40.794303,-73.851797
+SCH-00870,Birch Charter School,Denver,CO,charter,5,421,39.777493,-104.965983
+SCH-00871,River Charter School,Los Angeles,CA,charter,6,313,34.038835,-118.533453
+SCH-00872,Spring Middle School,San Francisco,CA,middle,8,578,37.722376,-122.542332
+SCH-00873,Forest Elementary School,Austin,TX,elementary,8,577,30.297476,-98.035169
+SCH-00874,Ridge Elementary School,Seattle,WA,elementary,9,571,47.485491,-122.137962
+SCH-00875,Sunrise Elementary School,Los Angeles,CA,elementary,9,536,34.046422,-118.566115
+SCH-00876,Summer Elementary School,Austin,TX,elementary,9,1018,30.440654,-97.631296
+SCH-00877,Hill Elementary School,New York,NY,elementary,9,151,40.648217,-73.814145
+SCH-00878,Autumn K-12 School,San Francisco,CA,K-12,5,546,37.895286,-122.685183
+SCH-00879,Autumn Elementary School,San Francisco,CA,elementary,4,532,37.93569,-122.370999
+SCH-00880,Forest Charter School,New York,NY,charter,6,357,40.818812,-73.89952
+SCH-00881,Madison Middle School,San Francisco,CA,middle,5,516,37.698886,-122.622377
+SCH-00882,Summer Charter School,Seattle,WA,charter,9,1256,47.394463,-122.529877
+SCH-00883,Ridge Elementary School,Miami,FL,elementary,8,825,25.691978,-80.39057
+SCH-00884,Sunrise Elementary School,Seattle,WA,elementary,8,670,47.557723,-122.133898
+SCH-00885,Cedar Charter School,Los Angeles,CA,charter,8,1062,34.186356,-118.315996
+SCH-00886,Lincoln Middle School,Los Angeles,CA,middle,6,563,34.02601,-118.155556
+SCH-00887,Forest High School,Chicago,IL,high,6,84,41.872752,-87.952774
+SCH-00888,Elm Elementary School,New York,NY,elementary,8,544,40.782052,-73.959043
+SCH-00889,Madison Middle School,Miami,FL,middle,7,571,25.663571,-80.399205
+SCH-00890,Spring Elementary School,Austin,TX,elementary,6,524,30.40447,-97.630209
+SCH-00891,Lake Charter School,Miami,FL,charter,9,785,25.542792,-80.272898
+SCH-00892,Oak High School,Los Angeles,CA,high,9,616,33.949339,-118.126368
+SCH-00893,Lake Elementary School,New York,NY,elementary,6,237,40.764995,-73.9231
+SCH-00894,Spring Elementary School,Austin,TX,elementary,7,332,30.424614,-97.95806
+SCH-00895,Pine Elementary School,Los Angeles,CA,elementary,8,783,34.208904,-118.431112
+SCH-00896,Summer High School,San Francisco,CA,high,8,481,37.684166,-122.547248
+SCH-00897,Washington Elementary School,Seattle,WA,elementary,7,757,47.775852,-122.219964
+SCH-00898,Jefferson High School,Seattle,WA,high,9,705,47.718279,-122.402418
+SCH-00899,Winter High School,Chicago,IL,high,6,550,42.012509,-87.793333
+SCH-00900,River High School,New York,NY,high,9,955,40.92282,-73.93688
+SCH-00901,Oak Charter School,Seattle,WA,charter,6,583,47.610511,-122.331298
+SCH-00902,Spring Elementary School,Los Angeles,CA,elementary,6,501,34.289231,-118.218203
+SCH-00903,Oak High School,Denver,CO,high,8,847,39.54188,-105.142194
+SCH-00904,Elm Elementary School,New York,NY,elementary,7,924,40.635974,-73.732223
+SCH-00905,Jefferson Elementary School,Seattle,WA,elementary,6,401,47.420816,-122.508431
+SCH-00906,Lincoln Elementary School,New York,NY,elementary,7,120,40.669427,-73.803312
+SCH-00907,Oak Elementary School,Los Angeles,CA,elementary,5,180,33.935103,-118.117648
+SCH-00908,Jefferson Elementary School,Los Angeles,CA,elementary,6,604,33.980334,-118.456644
+SCH-00909,Ridge K-12 School,Miami,FL,K-12,8,796,25.64441,-80.258861
+SCH-00910,Pine Middle School,New York,NY,middle,9,721,40.699719,-74.320234
+SCH-00911,Maple Elementary School,New York,NY,elementary,6,584,40.694758,-74.35179
+SCH-00912,Elm Elementary School,Austin,TX,elementary,7,873,30.191935,-97.981096
+SCH-00913,Sunset Charter School,Los Angeles,CA,charter,8,201,33.869498,-118.185411
+SCH-00914,River Elementary School,Miami,FL,elementary,6,585,25.741915,-80.237482
+SCH-00915,Sunrise Middle School,New York,NY,middle,7,433,40.650054,-74.245495
+SCH-00916,Summer High School,New York,NY,high,7,474,40.537988,-73.801831
+SCH-00917,Autumn K-12 School,Miami,FL,K-12,6,145,25.895852,-80.035298
+SCH-00918,Ridge High School,New York,NY,high,6,377,40.597945,-73.894329
+SCH-00919,Valley High School,New York,NY,high,6,429,40.592148,-73.780449
+SCH-00920,Cedar Elementary School,Austin,TX,elementary,8,541,30.046384,-97.641635
+SCH-00921,Mission High School,Los Angeles,CA,high,6,815,34.156536,-118.300966
+SCH-00922,Washington Elementary School,New York,NY,elementary,9,60,40.873362,-74.139444
+SCH-00923,Madison Elementary School,Miami,FL,elementary,6,842,25.659911,-80.168153
+SCH-00924,Spring Elementary School,Los Angeles,CA,elementary,6,544,34.083827,-118.245396
+SCH-00925,Lincoln Elementary School,Los Angeles,CA,elementary,7,533,33.947899,-118.17749
+SCH-00926,Lake Elementary School,San Francisco,CA,elementary,10,552,37.647365,-122.341868
+SCH-00927,Washington High School,San Francisco,CA,high,6,400,37.577107,-122.351879
+SCH-00928,Ridge Elementary School,Los Angeles,CA,elementary,7,306,34.085644,-118.546014
+SCH-00929,Hill Elementary School,Denver,CO,elementary,10,365,39.512618,-104.948905
+SCH-00930,Cedar Elementary School,San Francisco,CA,elementary,5,383,37.869256,-122.36937
+SCH-00931,Lake Elementary School,New York,NY,elementary,8,802,40.858503,-73.743385
+SCH-00932,Mission Elementary School,Chicago,IL,elementary,8,233,41.94878,-87.400459
+SCH-00933,Elm Elementary School,New York,NY,elementary,6,663,40.539982,-74.193549
+SCH-00934,Madison Elementary School,Chicago,IL,elementary,6,822,41.738199,-87.757873
+SCH-00935,Summer Elementary School,Miami,FL,elementary,6,749,25.773365,-80.314375
+SCH-00936,Pine Elementary School,San Francisco,CA,elementary,8,634,37.579657,-122.326206
+SCH-00937,Summer Charter School,Austin,TX,charter,4,1185,30.349909,-97.642657
+SCH-00938,Washington High School,Miami,FL,high,8,615,25.774988,-79.987884
+SCH-00939,Jefferson High School,New York,NY,high,9,603,40.808358,-73.687538
+SCH-00940,Pine High School,Los Angeles,CA,high,6,766,33.993083,-118.461366
+SCH-00941,Pine Elementary School,Los Angeles,CA,elementary,6,435,34.205642,-118.183511
+SCH-00942,Valley Middle School,Seattle,WA,middle,7,184,47.520391,-122.120699
+SCH-00943,River Elementary School,New York,NY,elementary,8,660,40.592634,-73.846361
+SCH-00944,Oak Charter School,Austin,TX,charter,6,758,30.397831,-97.709392
+SCH-00945,Forest Middle School,Chicago,IL,middle,9,537,42.021191,-87.891272
+SCH-00946,Valley Elementary School,Miami,FL,elementary,6,560,25.832938,-80.07997
+SCH-00947,Market Elementary School,Denver,CO,elementary,5,590,39.645007,-104.83889
+SCH-00948,Summer High School,San Francisco,CA,high,10,479,37.72259,-122.453497
+SCH-00949,Spring High School,New York,NY,high,5,955,40.572058,-74.154091
+SCH-00950,Madison High School,Los Angeles,CA,high,7,530,34.056087,-118.288145
+SCH-00951,Oak High School,Seattle,WA,high,8,889,47.823353,-122.250515
+SCH-00952,Pine Elementary School,New York,NY,elementary,5,684,40.61415,-73.762208
+SCH-00953,Sunrise Elementary School,Austin,TX,elementary,7,588,30.022178,-97.765824
+SCH-00954,Jefferson K-12 School,Denver,CO,K-12,6,919,39.719664,-105.004296
+SCH-00955,Washington High School,Los Angeles,CA,high,9,422,34.027168,-118.156531
+SCH-00956,Washington Elementary School,Denver,CO,elementary,7,987,39.946856,-104.860642
+SCH-00957,Market Charter School,Chicago,IL,charter,6,612,41.68443,-87.658296
+SCH-00958,Jefferson High School,Seattle,WA,high,8,754,47.664401,-122.679483
+SCH-00959,Pine High School,Los Angeles,CA,high,5,576,34.114517,-118.22942
+SCH-00960,Hill Middle School,New York,NY,middle,10,494,40.834272,-73.726232
+SCH-00961,Sunset Elementary School,Seattle,WA,elementary,7,611,47.665496,-122.566846
+SCH-00962,River Middle School,Denver,CO,middle,10,418,39.593043,-104.705284
+SCH-00963,Walnut High School,New York,NY,high,5,640,40.807979,-74.05689
+SCH-00964,Lake Elementary School,New York,NY,elementary,9,310,40.758648,-73.960502
+SCH-00965,Winter Middle School,Los Angeles,CA,middle,7,471,34.066379,-118.154852
+SCH-00966,Jefferson Middle School,New York,NY,middle,5,497,40.935786,-73.863683
+SCH-00967,Cedar Elementary School,Denver,CO,elementary,7,655,39.736652,-104.660252
+SCH-00968,Hill Elementary School,New York,NY,elementary,7,761,40.955486,-73.863297
+SCH-00969,Lake High School,San Francisco,CA,high,6,474,37.713607,-122.677793
+SCH-00970,Maple Elementary School,Austin,TX,elementary,3,222,30.255248,-98.053484
+SCH-00971,Forest Middle School,Los Angeles,CA,middle,9,326,34.191927,-118.334438
+SCH-00972,Autumn Elementary School,Los Angeles,CA,elementary,7,547,34.172173,-118.346145
+SCH-00973,Washington Elementary School,Miami,FL,elementary,10,555,25.840576,-80.256845
+SCH-00974,Madison Elementary School,Los Angeles,CA,elementary,6,786,33.811483,-118.346167
+SCH-00975,Autumn Elementary School,San Francisco,CA,elementary,7,278,37.846928,-122.125106
+SCH-00976,Pine Elementary School,New York,NY,elementary,4,298,40.800717,-73.873362
+SCH-00977,Ridge Middle School,San Francisco,CA,middle,7,511,37.976769,-122.441407
+SCH-00978,Madison High School,Los Angeles,CA,high,6,669,34.260564,-118.180042
+SCH-00979,Lincoln Elementary School,New York,NY,elementary,7,479,40.68076,-73.841752
+SCH-00980,Lincoln High School,Seattle,WA,high,8,430,47.544294,-122.661672
+SCH-00981,Sunrise Elementary School,San Francisco,CA,elementary,6,324,37.806263,-122.359758
+SCH-00982,Walnut Elementary School,Seattle,WA,elementary,7,992,47.777336,-122.294142
+SCH-00983,Summer High School,San Francisco,CA,high,7,545,37.911718,-122.576695
+SCH-00984,Jefferson Middle School,Austin,TX,middle,7,529,30.441428,-97.785614
+SCH-00985,Market Elementary School,Austin,TX,elementary,8,553,30.328131,-97.764123
+SCH-00986,Park Charter School,Miami,FL,charter,8,506,25.853925,-80.013972
+SCH-00987,Madison Elementary School,San Francisco,CA,elementary,10,391,37.929661,-122.606446
+SCH-00988,Autumn Middle School,Austin,TX,middle,8,161,30.205213,-97.930202
+SCH-00989,Sunset High School,Miami,FL,high,9,444,25.634127,-80.053871
+SCH-00990,Birch Elementary School,Miami,FL,elementary,8,368,25.975044,-80.039728
+SCH-00991,Elm Elementary School,Miami,FL,elementary,6,558,25.925513,-80.084079
+SCH-00992,Lincoln Elementary School,Chicago,IL,elementary,10,598,41.874025,-87.39913
+SCH-00993,Birch Charter School,Austin,TX,charter,6,762,30.386281,-97.579156
+SCH-00994,Sunrise Elementary School,New York,NY,elementary,5,364,40.724496,-73.776776
+SCH-00995,Forest High School,San Francisco,CA,high,10,242,37.937499,-122.26042
+SCH-00996,Summer High School,Seattle,WA,high,8,594,47.65885,-122.16423
+SCH-00997,Cedar Elementary School,Austin,TX,elementary,8,540,30.147156,-97.567961
+SCH-00998,Summer Elementary School,San Francisco,CA,elementary,6,565,37.697258,-122.424568
+SCH-00999,Madison Elementary School,Seattle,WA,elementary,7,267,47.561763,-122.123921
+SCH-01000,Jefferson Elementary School,San Francisco,CA,elementary,8,571,37.749984,-122.570859
+SCH-01001,Sunset Elementary School,New York,NY,elementary,6,64,40.694103,-74.236181
+SCH-01002,Park Middle School,Denver,CO,middle,6,809,39.916309,-105.234279
+SCH-01003,Walnut Elementary School,Seattle,WA,elementary,8,252,47.57655,-122.551562
+SCH-01004,Oak High School,Los Angeles,CA,high,8,692,33.931987,-118.524485
+SCH-01005,Spring Middle School,Chicago,IL,middle,9,398,42.01253,-87.52512
+SCH-01006,Cedar Elementary School,Los Angeles,CA,elementary,7,479,33.848405,-118.205564
+SCH-01007,Jefferson Middle School,New York,NY,middle,7,578,40.58106,-74.03281
+SCH-01008,Jefferson Elementary School,Chicago,IL,elementary,9,60,41.897438,-87.819073
+SCH-01009,Ridge Elementary School,New York,NY,elementary,8,319,40.85074,-74.149112
+SCH-01010,Lake Charter School,San Francisco,CA,charter,8,60,38.009995,-122.312839
+SCH-01011,Elm K-12 School,New York,NY,K-12,8,836,40.868173,-73.859419
+SCH-01012,Forest Middle School,Austin,TX,middle,9,649,30.401812,-97.635332
+SCH-01013,Elm Elementary School,Denver,CO,elementary,6,196,39.661976,-104.662536
+SCH-01014,Maple Middle School,Los Angeles,CA,middle,10,474,34.066011,-118.074785
+SCH-01015,Sunrise High School,Austin,TX,high,8,857,30.045575,-97.826286
+SCH-01016,Valley Middle School,Denver,CO,middle,5,597,39.513605,-105.00556
+SCH-01017,Forest Elementary School,San Francisco,CA,elementary,8,643,37.55716,-122.446021
+SCH-01018,Sunset High School,San Francisco,CA,high,8,805,37.827916,-122.102956
+SCH-01019,Maple Middle School,Seattle,WA,middle,7,661,47.695925,-122.594977
+SCH-01020,Maple Elementary School,Los Angeles,CA,elementary,8,372,34.038886,-117.922794
+SCH-01021,River K-12 School,New York,NY,K-12,7,156,40.930111,-74.02644
+SCH-01022,Madison Middle School,Los Angeles,CA,middle,8,756,34.239038,-118.467485
+SCH-01023,Sunrise Elementary School,Denver,CO,elementary,8,523,39.522265,-104.796831
+SCH-01024,Lincoln High School,Los Angeles,CA,high,6,723,34.062661,-117.976541
+SCH-01025,Sunrise Charter School,Los Angeles,CA,charter,8,703,34.108451,-118.454992
+SCH-01026,Walnut Elementary School,Los Angeles,CA,elementary,4,414,34.029299,-118.227438
+SCH-01027,Autumn Elementary School,Los Angeles,CA,elementary,7,166,34.080881,-118.51761
+SCH-01028,Elm Elementary School,Los Angeles,CA,elementary,5,763,33.909855,-118.021862
+SCH-01029,Madison Elementary School,San Francisco,CA,elementary,8,813,37.752857,-122.431127
+SCH-01030,Hill Elementary School,San Francisco,CA,elementary,7,950,37.572484,-122.311037
+SCH-01031,Spring High School,New York,NY,high,9,717,40.896526,-73.928665
+SCH-01032,Elm Elementary School,Los Angeles,CA,elementary,9,266,33.916568,-118.37308
+SCH-01033,Walnut Elementary School,Seattle,WA,elementary,6,309,47.480112,-122.142261
+SCH-01034,Summer High School,Austin,TX,high,7,360,30.141414,-97.844406
+SCH-01035,Hill High School,Los Angeles,CA,high,6,826,33.848857,-118.061667
+SCH-01036,Winter K-12 School,Chicago,IL,K-12,5,1017,41.993892,-87.850126
+SCH-01037,Lincoln Elementary School,Austin,TX,elementary,10,305,30.036183,-97.860982
+SCH-01038,Lake High School,Los Angeles,CA,high,6,859,33.997065,-118.375955
+SCH-01039,Ridge Middle School,Austin,TX,middle,6,703,30.247246,-97.901308
+SCH-01040,River High School,Miami,FL,high,5,551,25.794059,-80.288366
+SCH-01041,Autumn Elementary School,San Francisco,CA,elementary,5,1004,37.933504,-122.547423
+SCH-01042,Maple Middle School,New York,NY,middle,7,530,40.765343,-74.305812
+SCH-01043,Ridge K-12 School,San Francisco,CA,K-12,5,127,37.722169,-122.430362
+SCH-01044,Walnut Middle School,San Francisco,CA,middle,7,293,37.9869,-122.480486
+SCH-01045,Lake High School,San Francisco,CA,high,7,335,37.84185,-122.399903
+SCH-01046,Winter Middle School,Austin,TX,middle,4,550,29.998158,-97.722174
+SCH-01047,Pine Elementary School,Chicago,IL,elementary,8,856,41.697624,-87.543496
+SCH-01048,Walnut High School,Chicago,IL,high,8,735,41.890097,-87.823656
+SCH-01049,Autumn Elementary School,San Francisco,CA,elementary,10,619,37.727517,-122.221806
+SCH-01050,Park High School,San Francisco,CA,high,6,630,37.589522,-122.37794
+SCH-01051,Summer High School,San Francisco,CA,high,8,296,37.776872,-122.119863
+SCH-01052,Hill Elementary School,Los Angeles,CA,elementary,9,622,33.907558,-118.368568
+SCH-01053,Cedar Elementary School,Austin,TX,elementary,9,539,30.30211,-97.479391
+SCH-01054,Sunset K-12 School,New York,NY,K-12,6,748,40.596777,-73.87963
+SCH-01055,Sunrise Elementary School,Denver,CO,elementary,9,685,39.657776,-105.237808
+SCH-01056,Birch Elementary School,New York,NY,elementary,6,622,40.715147,-73.758662
+SCH-01057,Lincoln Middle School,Denver,CO,middle,7,143,39.591203,-105.01453
+SCH-01058,Madison Elementary School,Los Angeles,CA,elementary,6,744,34.023344,-117.938165
+SCH-01059,Pine Middle School,Seattle,WA,middle,6,599,47.695344,-121.995365
+SCH-01060,Park Elementary School,Denver,CO,elementary,8,396,39.91315,-105.168377
+SCH-01061,Ridge Elementary School,Seattle,WA,elementary,5,591,47.427825,-122.432409
+SCH-01062,Mission Elementary School,San Francisco,CA,elementary,6,542,37.628866,-122.633146
+SCH-01063,Maple Elementary School,Chicago,IL,elementary,9,797,42.02327,-87.564925
+SCH-01064,Sunset Elementary School,Seattle,WA,elementary,8,374,47.791144,-122.279064
+SCH-01065,Lincoln Charter School,Chicago,IL,charter,5,342,41.782051,-87.764787
+SCH-01066,Valley Middle School,Austin,TX,middle,5,649,30.504036,-97.620216
+SCH-01067,Market Elementary School,New York,NY,elementary,8,537,40.671634,-73.816203
+SCH-01068,Valley Charter School,New York,NY,charter,8,258,40.649697,-73.77188
+SCH-01069,Maple High School,Austin,TX,high,5,476,30.070889,-97.899485
+SCH-01070,Pine Middle School,Seattle,WA,middle,6,459,47.565011,-122.177306
+SCH-01071,Cedar Middle School,Los Angeles,CA,middle,8,562,34.116412,-118.36816
+SCH-01072,Winter Elementary School,Seattle,WA,elementary,7,161,47.718969,-122.111788
+SCH-01073,Sunset Elementary School,Austin,TX,elementary,9,499,30.16281,-97.663138
+SCH-01074,Sunset Elementary School,San Francisco,CA,elementary,5,645,37.618056,-122.371768
+SCH-01075,Park Elementary School,Los Angeles,CA,elementary,7,789,34.110236,-118.431611
+SCH-01076,Pine High School,San Francisco,CA,high,7,531,37.752498,-122.479944
+SCH-01077,Washington Elementary School,Seattle,WA,elementary,9,547,47.516156,-122.145594
+SCH-01078,Jefferson Charter School,Austin,TX,charter,9,794,30.494721,-97.717447
+SCH-01079,Walnut Middle School,Denver,CO,middle,8,796,39.873846,-105.279529
+SCH-01080,Lake Elementary School,Los Angeles,CA,elementary,8,929,34.208032,-117.988949
+SCH-01081,Winter Elementary School,San Francisco,CA,elementary,10,498,37.855794,-122.267191
+SCH-01082,Birch Elementary School,New York,NY,elementary,6,330,40.718108,-73.812525
+SCH-01083,Summer Elementary School,Denver,CO,elementary,7,427,39.657713,-105.022535
+SCH-01084,Mission High School,New York,NY,high,6,276,40.898781,-74.00293
+SCH-01085,Oak High School,Los Angeles,CA,high,8,563,34.080942,-118.186974
+SCH-01086,Ridge High School,New York,NY,high,8,853,40.754959,-74.057495
+SCH-01087,Jefferson Elementary School,Chicago,IL,elementary,8,746,41.778605,-87.616878
+SCH-01088,Spring High School,Denver,CO,high,6,566,39.693664,-105.199093
+SCH-01089,Jefferson Elementary School,Los Angeles,CA,elementary,8,637,34.161569,-117.954146
+SCH-01090,Maple Elementary School,New York,NY,elementary,7,449,40.870295,-74.249916
+SCH-01091,Maple Elementary School,Denver,CO,elementary,7,486,39.783819,-105.119603
+SCH-01092,Walnut Elementary School,Los Angeles,CA,elementary,7,347,33.955395,-118.018513
+SCH-01093,Summer Elementary School,Miami,FL,elementary,5,806,25.691534,-80.040962
+SCH-01094,Forest Elementary School,Los Angeles,CA,elementary,8,365,34.211866,-118.111229
+SCH-01095,Elm Elementary School,San Francisco,CA,elementary,10,221,37.734169,-122.368532
+SCH-01096,Walnut Elementary School,Seattle,WA,elementary,5,488,47.60296,-122.47345
+SCH-01097,Maple Elementary School,Austin,TX,elementary,8,139,30.30238,-97.849291
+SCH-01098,Park Elementary School,New York,NY,elementary,5,423,40.593323,-73.919215
+SCH-01099,Autumn Elementary School,Chicago,IL,elementary,6,558,41.780394,-87.571228
+SCH-01100,Hill Middle School,Los Angeles,CA,middle,6,479,33.81624,-118.379144
+SCH-01101,Lake Elementary School,Seattle,WA,elementary,8,103,47.5989,-121.975357
+SCH-01102,Sunrise Elementary School,Los Angeles,CA,elementary,9,732,33.892474,-118.048381
+SCH-01103,Oak Elementary School,Los Angeles,CA,elementary,5,589,34.217769,-118.131533
+SCH-01104,Winter High School,Miami,FL,high,4,558,25.847468,-80.266743
+SCH-01105,Lake High School,San Francisco,CA,high,7,405,37.89972,-122.260924
+SCH-01106,Pine Charter School,Denver,CO,charter,7,279,39.747631,-104.831924
+SCH-01107,Park Middle School,Chicago,IL,middle,8,458,41.960119,-87.914016
+SCH-01108,Birch High School,New York,NY,high,9,499,40.880438,-74.063644
+SCH-01109,Madison High School,New York,NY,high,8,177,40.896762,-74.21046
+SCH-01110,Lake Elementary School,Austin,TX,elementary,5,400,30.172151,-97.628706
+SCH-01111,Winter Elementary School,San Francisco,CA,elementary,7,608,37.620753,-122.191068
+SCH-01112,Birch High School,Chicago,IL,high,8,652,41.732697,-87.601413
+SCH-01113,Park Elementary School,Denver,CO,elementary,9,655,39.697438,-105.115848
+SCH-01114,Hill Elementary School,Miami,FL,elementary,7,846,25.883429,-80.380424
+SCH-01115,Hill K-12 School,Los Angeles,CA,K-12,7,634,33.92067,-118.045846
+SCH-01116,Sunset Elementary School,Chicago,IL,elementary,7,520,41.798189,-87.406518
+SCH-01117,Spring Middle School,Seattle,WA,middle,9,479,47.47968,-122.566673
+SCH-01118,Sunrise High School,Denver,CO,high,6,625,39.858747,-104.932569
+SCH-01119,River Elementary School,New York,NY,elementary,6,416,40.645021,-74.10662
+SCH-01120,Hill High School,Chicago,IL,high,6,763,42.020355,-87.630857
+SCH-01121,Maple K-12 School,Seattle,WA,K-12,8,673,47.602924,-122.425977
+SCH-01122,Elm Elementary School,Seattle,WA,elementary,8,400,47.628099,-122.642299
+SCH-01123,Lincoln Elementary School,Seattle,WA,elementary,8,690,47.631266,-122.257082
+SCH-01124,Oak Elementary School,San Francisco,CA,elementary,7,278,37.925826,-122.260077
+SCH-01125,Walnut K-12 School,Seattle,WA,K-12,7,602,47.408934,-122.101655
+SCH-01126,Ridge Elementary School,New York,NY,elementary,10,477,40.582258,-73.812431
+SCH-01127,Valley Elementary School,San Francisco,CA,elementary,7,649,37.56921,-122.30113
+SCH-01128,Washington Elementary School,Miami,FL,elementary,8,417,25.74253,-80.323707
+SCH-01129,Park High School,Austin,TX,high,9,347,30.493628,-97.911161
+SCH-01130,Winter High School,Chicago,IL,high,10,803,41.885968,-87.931806
+SCH-01131,Park Elementary School,Chicago,IL,elementary,7,439,41.999824,-87.583856
+SCH-01132,Birch Middle School,New York,NY,middle,8,464,40.7512,-73.864438
+SCH-01133,Hill K-12 School,New York,NY,K-12,10,423,40.539444,-73.924065
+SCH-01134,Pine Middle School,San Francisco,CA,middle,8,357,37.947188,-122.411385
+SCH-01135,Oak Elementary School,Miami,FL,elementary,8,252,25.885828,-80.016876
+SCH-01136,Summer K-12 School,Seattle,WA,K-12,7,749,47.770763,-122.019292
+SCH-01137,Elm Elementary School,Los Angeles,CA,elementary,7,508,33.833182,-118.272023
+SCH-01138,Spring K-12 School,Chicago,IL,K-12,5,626,41.757607,-87.670533
+SCH-01139,Park Elementary School,San Francisco,CA,elementary,8,698,37.892224,-122.711381
+SCH-01140,Park Middle School,Chicago,IL,middle,6,824,41.969234,-87.890562
+SCH-01141,Sunrise Elementary School,Denver,CO,elementary,5,673,39.848692,-105.269224
+SCH-01142,Mission Elementary School,Los Angeles,CA,elementary,8,1006,34.282828,-118.338081
+SCH-01143,Cedar Middle School,Los Angeles,CA,middle,8,255,34.249826,-118.398827
+SCH-01144,Washington Elementary School,San Francisco,CA,elementary,10,691,37.643782,-122.642163
+SCH-01145,Maple Elementary School,Miami,FL,elementary,9,272,25.832023,-80.023474
+SCH-01146,Mission Elementary School,San Francisco,CA,elementary,5,388,37.806572,-122.138558
+SCH-01147,Summer High School,Denver,CO,high,8,329,39.698676,-104.75002
+SCH-01148,Maple High School,Seattle,WA,high,4,472,47.852154,-122.396816
+SCH-01149,Valley Elementary School,Seattle,WA,elementary,7,290,47.380487,-122.53398
+SCH-01150,Spring High School,Austin,TX,high,5,513,30.37653,-97.828956
+SCH-01151,Ridge Elementary School,Austin,TX,elementary,6,933,30.251032,-97.926211
+SCH-01152,Park Elementary School,San Francisco,CA,elementary,7,403,37.557544,-122.321106
+SCH-01153,Elm High School,Los Angeles,CA,high,9,934,34.261374,-118.39852
+SCH-01154,Mission Middle School,Seattle,WA,middle,6,907,47.438706,-122.049592
+SCH-01155,Winter Elementary School,Los Angeles,CA,elementary,10,557,34.179333,-118.4592
+SCH-01156,Market Elementary School,Chicago,IL,elementary,6,447,41.785854,-87.724364
+SCH-01157,Mission High School,San Francisco,CA,high,7,580,37.807842,-122.276672
+SCH-01158,Walnut Elementary School,San Francisco,CA,elementary,5,269,37.897785,-122.145769
+SCH-01159,Cedar Elementary School,Miami,FL,elementary,6,665,25.732076,-79.952346
+SCH-01160,Jefferson Charter School,New York,NY,charter,6,715,40.772378,-74.077495
+SCH-01161,Madison Elementary School,New York,NY,elementary,8,708,40.566508,-74.111508
+SCH-01162,Birch Middle School,Los Angeles,CA,middle,8,596,34.144148,-118.001829
+SCH-01163,Sunrise Middle School,Austin,TX,middle,9,840,30.07868,-97.879855
+SCH-01164,Sunset Middle School,San Francisco,CA,middle,6,662,37.859971,-122.705649
+SCH-01165,Mission Elementary School,Los Angeles,CA,elementary,10,755,34.098417,-118.379113
+SCH-01166,Pine Middle School,Denver,CO,middle,7,740,39.789683,-105.233482
+SCH-01167,Sunset Charter School,Chicago,IL,charter,7,768,42.10507,-87.467945
+SCH-01168,Pine Elementary School,Chicago,IL,elementary,9,605,41.676158,-87.643172
+SCH-01169,Winter High School,Chicago,IL,high,9,196,41.655277,-87.656284
+SCH-01170,Maple High School,Denver,CO,high,7,641,39.601867,-105.128457
+SCH-01171,Elm Middle School,Miami,FL,middle,8,1007,25.564615,-80.301282
+SCH-01172,Washington High School,San Francisco,CA,high,8,442,37.79358,-122.531868
+SCH-01173,Washington High School,Seattle,WA,high,10,569,47.783352,-122.156289
+SCH-01174,Mission High School,New York,NY,high,7,553,40.973528,-74.044307
+SCH-01175,Autumn Middle School,San Francisco,CA,middle,8,791,37.698109,-122.127998
+SCH-01176,Winter Elementary School,New York,NY,elementary,7,273,40.491481,-74.141067
+SCH-01177,Elm Middle School,Chicago,IL,middle,10,395,41.835036,-87.357397
+SCH-01178,Summer Elementary School,San Francisco,CA,elementary,8,753,37.772402,-122.106747
+SCH-01179,Sunset High School,Miami,FL,high,9,60,25.844712,-80.195653
+SCH-01180,Forest Middle School,San Francisco,CA,middle,9,438,37.747976,-122.581586
+SCH-01181,Madison High School,San Francisco,CA,high,9,689,37.828671,-122.744893
+SCH-01182,Valley High School,Chicago,IL,high,7,754,41.686454,-87.746369
+SCH-01183,Jefferson Middle School,Chicago,IL,middle,7,569,41.748018,-87.485019
+SCH-01184,Lake Elementary School,Austin,TX,elementary,7,60,30.261428,-97.813414
+SCH-01185,Sunrise Middle School,Seattle,WA,middle,9,552,47.558027,-122.422641
+SCH-01186,Lake High School,Austin,TX,high,7,702,30.179805,-97.965958
+SCH-01187,River Middle School,Los Angeles,CA,middle,8,701,34.08476,-118.204708
+SCH-01188,Summer High School,Miami,FL,high,6,793,25.826595,-80.466572
+SCH-01189,Oak Charter School,San Francisco,CA,charter,7,328,37.907672,-122.161889
+SCH-01190,Spring Elementary School,Miami,FL,elementary,9,630,25.80505,-80.380537
+SCH-01191,Madison High School,Seattle,WA,high,7,660,47.570459,-122.389453
+SCH-01192,Cedar Elementary School,San Francisco,CA,elementary,9,778,37.723416,-122.228691
+SCH-01193,Winter Elementary School,New York,NY,elementary,8,942,40.774332,-74.024547
+SCH-01194,Elm Elementary School,New York,NY,elementary,10,398,40.651991,-73.865118
+SCH-01195,Valley Elementary School,San Francisco,CA,elementary,8,492,37.949612,-122.47787
+SCH-01196,Park High School,Austin,TX,high,8,581,30.275144,-97.507729
+SCH-01197,Birch Elementary School,Austin,TX,elementary,6,783,30.458972,-97.749388
+SCH-01198,Maple Elementary School,Denver,CO,elementary,5,156,39.914274,-104.949202
+SCH-01199,Maple Elementary School,Chicago,IL,elementary,7,456,41.789318,-87.666628
+SCH-01200,Walnut High School,Austin,TX,high,6,186,30.211853,-97.922461

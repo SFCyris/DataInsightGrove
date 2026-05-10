@@ -1,0 +1,19 @@
+{
+  "id": "json",
+  "version": "1.0.0",
+  "label": "🗒 JSON",
+  "description": "Read JSON arrays or newline-delimited JSON (.jsonl).",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["json", "jsonl", "ndjson"],
+  "options": {
+    "format": {
+      "type": "enum",
+      "label": "Format",
+      "enumValues": ["auto", "json", "ndjson"],
+      "default": "auto",
+      "help": "JSON: a single array. NDJSON/JSONL: one JSON object per line."
+    }
+  },
+  "tags": ["json"]
+}
