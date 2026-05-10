@@ -1,0 +1,17 @@
+{
+  "id": "matlab",
+  "version": "1.0.0",
+  "label": "📐 MATLAB",
+  "description": "Read MATLAB .mat files. Supports both legacy (v4–v7, via scipy.io) and v7.3+ (HDF5-based, via h5py). Picks the first 2-D numeric variable by default — use the 'name' option to select a different variable. Requires the [science] extra.",
+  "kind": "source",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["mat"],
+  "options": {
+    "name": {
+      "type": "string",
+      "label": "Variable name",
+      "help": "Which variable inside the .mat file to load. Default: the first 2-D numeric matrix found."
+    }
+  },
+  "tags": ["scientific", "binary", "matlab"]
+}

@@ -1,0 +1,96 @@
+{
+  "id": "umap",
+  "version": "1.0.0",
+  "label": "\ud83c\udf0c UMAP (2-D embedding)",
+  "description": "Uniform Manifold Approximation and Projection \u2014 modern non-linear dim reduction that preserves both local + global structure better than t-SNE and scales to 100k+ rows. Adds UMAP_1 / UMAP_2 columns and renders a scatter.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Feature columns",
+      "columnFrom": "in"
+    },
+    "n_neighbors": {
+      "type": "integer",
+      "label": "Neighbors",
+      "default": 15,
+      "min": 2,
+      "max": 200,
+      "help": "Smaller \u2192 more local structure; larger \u2192 more global. 5\u201350 is typical."
+    },
+    "min_dist": {
+      "type": "number",
+      "label": "Minimum distance",
+      "default": 0.1,
+      "min": 0.0,
+      "max": 1.0,
+      "help": "How tightly UMAP is allowed to pack points; lower \u2192 tighter clumps."
+    },
+    "max_rows": {
+      "type": "integer",
+      "label": "Max rows (sampled)",
+      "default": 50000,
+      "min": 100,
+      "max": 1000000
+    },
+    "scale": {
+      "type": "boolean",
+      "label": "Standardize features",
+      "default": true
+    },
+    "seed": {
+      "type": "integer",
+      "label": "Random seed",
+      "default": 42
+    },
+    "color_by": {
+      "type": "column_ref",
+      "label": "Color points by",
+      "columnFrom": "in"
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render scatter",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "UMAP"
+    }
+  },
+  "preview": {
+    "rowImpact": "may_reduce",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "embedding",
+    "dimensionality-reduction",
+    "umap"
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["dimensionality reduction", "embedding"]
+}

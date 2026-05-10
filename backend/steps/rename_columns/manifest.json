@@ -1,0 +1,29 @@
+{
+  "id": "rename_columns",
+  "version": "1.0.0",
+  "label": "✏️ Rename columns",
+  "description": "Rename one or more columns. Existing column names appear in the dropdown; type the new name.",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "mapping": {
+      "type": "array",
+      "label": "Renames",
+      "items": {
+        "type": "object",
+        "label": "Rename",
+        "properties": {
+          "from": { "type": "column_ref", "label": "From", "columnFrom": "in", "required": true },
+          "to":   { "type": "string", "label": "To", "required": true }
+        }
+      }
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["rename"],
+  "aliases": ["alias", "rename"]
+}

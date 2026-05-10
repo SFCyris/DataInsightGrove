@@ -1,0 +1,16 @@
+{
+  "id": "time_series_pro",
+  "version": "0.2.0",
+  "label": "⏳ Time-series Pro",
+  "description": "Stationarity tests, ACF/PACF lag analysis, changepoint detection, rolling-window anomaly flagging, and median-based outlier replacement. Pairs with the built-in forecast, rolling, resample, and seasonal_decompose for a complete time-series toolkit. Real-world demos: retail forecast, IoT anomaly, healthcare vitals, hospital readmissions, ER load forecast, financial volatility, housing trend, housing inventory anomaly.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": [
+    "adf_test", "kpss_test", "acf_pacf",
+    "changepoint_detection", "anomaly_zscore", "replace_outliers"
+  ],
+  "connectors": [],
+  "pythonRequirements": ["statsmodels>=0.14"]
+}

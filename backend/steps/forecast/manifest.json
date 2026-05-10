@@ -1,0 +1,91 @@
+{
+  "id": "forecast",
+  "version": "1.0.0",
+  "label": "\ud83d\udd2e Forecast (time-series)",
+  "description": "Project a time series N steps into the future. Uses Holt-Winters exponential smoothing (handles trend + seasonality) by default. Output extends the source with future timestamps + a 'forecast' column and 95% prediction intervals.",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "time_column": {
+      "type": "column_ref",
+      "label": "Time column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "value_column": {
+      "type": "column_ref",
+      "label": "Value column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "horizon": {
+      "type": "integer",
+      "label": "Steps to forecast",
+      "default": 30,
+      "min": 1,
+      "max": 10000,
+      "required": true
+    },
+    "method": {
+      "type": "enum",
+      "label": "Method",
+      "enumValues": [
+        "auto",
+        "holt_winters",
+        "ets",
+        "naive"
+      ],
+      "default": "auto",
+      "help": "'auto' picks holt_winters when seasonality is plausible, else ets. 'naive' is last-observation-carried-forward."
+    },
+    "seasonal_period": {
+      "type": "integer",
+      "label": "Seasonal period",
+      "default": 0,
+      "min": 0,
+      "help": "Observations per season (e.g. 7 for weekly cycles in daily data, 12 for yearly cycles in monthly). 0 = auto-detect."
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render forecast plot",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "Forecast"
+    }
+  },
+  "preview": {
+    "rowImpact": "may_grow",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "time-series",
+    "forecast",
+    "prediction",
+    "holt-winters"
+  ],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}],
+  "aliases": ["prediction", "predict", "time series", "holt winters", "ets", "arima"]
+}

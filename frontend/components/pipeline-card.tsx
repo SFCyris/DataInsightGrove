@@ -1,0 +1,167 @@
+"use client";
+
+import Link from "next/link";
+import { motion } from "motion/react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { api, type PipelineSummary } from "@/lib/api/client";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+/**
+ * PipelineCard — single tile in the pipelines library grid.
+ *
+ * Mirrors DatasetCard so the two list pages feel identical:
+ *   - Click anywhere in the card to open it
+ *   - "🗑 Remove" reveals on hover or focus-within (a11y), runs a
+ *     confirm() dialog and a toast-on-result mutation
+ *   - When the backend reports `missingDatasetCount` or `missingOutputCount`
+ *     a "⚠ Missing data" badge replaces the green "ready" pill, with a
+ *     tooltip listing exactly what's gone. This catches the common case of
+ *     "I deleted the demo dataset and now my sample template is broken".
+ */
+export function PipelineCard({ p, index }: { p: PipelineSummary; index: number }) {
+  const queryClient = useQueryClient();
+  const del = useMutation({
+    mutationFn: () => api.deletePipeline(p.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      toast.success(`🗑 Removed "${p.name}"`);
+    },
+    onError: (e: Error) => toast.error(`Delete failed: ${e.message}`),
+  });
+
+  const missingInputs = p.missingDatasetCount ?? 0;
+  const missingOutputs = p.missingOutputCount ?? 0;
+  const hasMissing = missingInputs > 0 || missingOutputs > 0;
+  // Detect a leading emoji in the user-chosen name. If present, we
+  // suppress the decorative 🛤 prefix to avoid the "two adjacent
+  // emojis" rendering the QA agent flagged. Lifted out of the JSX
+  // (was an IIFE inline) because SWC's parser was tripping on the
+  // (() => {...})() construct sitting between two JSX siblings.
+  const startsWithEmoji = /^\p{Extended_Pictographic}/u.test(p.name);
+
+  // Build a precise tooltip so the user knows what to fix without having
+  // to open the editor. Both counts are always shown when nonzero so the
+  // copy reads naturally in either case ("2 inputs", "1 output", or both).
+  const missingTitle = hasMissing
+    ? [
+        missingInputs > 0
+          ? `${missingInputs} input dataset${missingInputs === 1 ? "" : "s"} missing`
+          : null,
+        missingOutputs > 0
+          ? `${missingOutputs} output file${missingOutputs === 1 ? "" : "s"} missing`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        type: "spring",
+        stiffness: 320,
+        damping: 30,
+        delay: 0.04 * index,
+      }}
+      className="group rounded-xl border border-border bg-card hover:border-foreground/30 transition-colors"
+    >
+      <Link
+        href={`/pipelines/${p.id}`}
+        className="flex flex-col gap-2 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {!startsWithEmoji && (
+              <span className="text-xl select-none" aria-hidden>🛤</span>
+            )}
+            <div className="min-w-0">
+              <p className="font-medium truncate">{p.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                pipeline · {p.id.slice(-8)}
+              </p>
+            </div>
+          </div>
+          {hasMissing ? (
+            <span
+              title={missingTitle}
+              className={cn(
+                "text-xs px-2 py-0.5 rounded-full border whitespace-nowrap",
+                "border-amber-300 bg-amber-50 text-amber-800",
+                "dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200",
+              )}
+            >
+              ⚠ Missing data
+            </span>
+          ) : (
+            <span
+              className={cn(
+                "text-xs px-2 py-0.5 rounded-full border whitespace-nowrap",
+                "border-green-200 bg-green-50 text-green-700",
+                "dark:border-green-900 dark:bg-green-950 dark:text-green-300",
+              )}
+            >
+              ✅ ready
+            </span>
+          )}
+        </div>
+        <dl className="grid grid-cols-3 gap-3 text-xs text-muted-foreground tabular-nums pt-1">
+          <div>
+            <dt className="uppercase tracking-wider opacity-60">Datasets</dt>
+            <dd
+              className={cn(
+                "font-medium",
+                missingInputs > 0 ? "text-amber-600 dark:text-amber-300" : "text-foreground",
+              )}
+            >
+              {missingInputs > 0
+                ? `${p.datasetCount} (${missingInputs} ⚠)`
+                : p.datasetCount}
+            </dd>
+          </div>
+          <div>
+            <dt className="uppercase tracking-wider opacity-60">Steps</dt>
+            <dd className="font-medium text-foreground">{p.nodeCount}</dd>
+          </div>
+          <div>
+            <dt className="uppercase tracking-wider opacity-60">Outputs</dt>
+            <dd
+              className={cn(
+                "font-medium",
+                missingOutputs > 0 ? "text-amber-600 dark:text-amber-300" : "text-foreground",
+              )}
+            >
+              {missingOutputs > 0
+                ? `${p.outputCount} (${missingOutputs} ⚠)`
+                : p.outputCount}
+            </dd>
+          </div>
+        </dl>
+      </Link>
+      {/* focus-within keeps the delete button reachable for keyboard users
+          who can't reveal it with a hover. (a11y review finding) */}
+      <div className="flex justify-end px-3 pb-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={del.isPending}
+          onClick={(e) => {
+            e.preventDefault();
+            if (
+              confirm(
+                `Remove "${p.name}"? This deletes the pipeline definition and run history. Datasets are not affected.`,
+              )
+            ) {
+              del.mutate();
+            }
+          }}
+        >
+          {del.isPending ? "⏳" : "🗑"} Remove
+        </Button>
+      </div>
+    </motion.li>
+  );
+}

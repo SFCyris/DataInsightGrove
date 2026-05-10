@@ -1,0 +1,18 @@
+{
+  "id": "parquet",
+  "version": "1.0.0",
+  "label": "🗂 Parquet",
+  "description": "Read and write Apache Parquet files. Native columnar format used by DIG's intermediate cache.",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["parquet", "pq"],
+  "options": {
+    "compression": {
+      "type": "enum",
+      "label": "Compression",
+      "enumValues": ["zstd", "snappy", "gzip", "uncompressed"],
+      "default": "zstd"
+    }
+  },
+  "tags": ["columnar"]
+}

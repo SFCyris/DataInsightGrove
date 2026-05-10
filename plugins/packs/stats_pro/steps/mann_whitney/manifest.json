@@ -1,0 +1,30 @@
+{
+  "id": "mann_whitney",
+  "version": "1.0.0",
+  "label": "📐 Mann-Whitney U test",
+  "description": "Non-parametric two-sample test — works without assuming normality. Use this when t_test's assumptions don't hold or when you have ordinal data. Returns U statistic, p-value, rank-biserial correlation effect size.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "group": {
+      "type": "column_ref", "label": "Group column (binary)", "columnFrom": "in", "required": true
+    },
+    "alternative": {
+      "type": "enum", "label": "Alternative",
+      "enumValues": ["two-sided", "less", "greater"], "default": "two-sided"
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["statistics", "non-parametric"],
+  "aliases": ["wilcoxon rank sum", "u test", "non-parametric", "rank test"],
+  "requires": [{"kind": "numeric"}, {"kind": "any"}]
+}

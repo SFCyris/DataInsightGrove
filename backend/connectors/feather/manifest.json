@@ -1,0 +1,18 @@
+{
+  "id": "feather",
+  "version": "1.0.0",
+  "label": "🪶 Feather / Arrow IPC",
+  "description": "Read and write Apache Arrow IPC files (.feather, .arrow). Columnar, lossless type round-trips, fast random access. Native polars / pyarrow.",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["feather", "arrow"],
+  "options": {
+    "compression": {
+      "type": "enum",
+      "label": "Compression",
+      "enumValues": ["zstd", "lz4", "uncompressed"],
+      "default": "zstd"
+    }
+  },
+  "tags": ["columnar", "arrow", "scientific"]
+}

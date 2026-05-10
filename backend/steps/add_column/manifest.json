@@ -1,0 +1,47 @@
+{
+  "id": "add_column",
+  "version": "1.0.0",
+  "label": "🆕 Add column",
+  "description": "Add a new column with a typed default value. The column can be placed at the start or end of the schema, or before/after a chosen reference column. Leave the default blank to seed every row with NULL.",
+  "category": "derive",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "name": {
+      "type": "string",
+      "label": "New column name",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "columnType": {
+      "type": "enum",
+      "label": "Type",
+      "enumValues": ["string", "integer", "double", "boolean", "date", "datetime"],
+      "default": "string",
+      "required": true
+    },
+    "defaultValue": {
+      "type": "string",
+      "label": "Default value (blank for NULL)",
+      "help": "Cast to the chosen type at runtime. For dates use 'YYYY-MM-DD'; for booleans use 'true' / 'false'."
+    },
+    "position": {
+      "type": "enum",
+      "label": "Position",
+      "enumValues": ["end", "start", "before", "after"],
+      "default": "end"
+    },
+    "reference": {
+      "type": "column_ref",
+      "label": "Reference column",
+      "help": "Only used when Position = before / after — ignored otherwise.",
+      "columnFrom": "in"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["add", "new", "column", "default", "fill", "constant"],
+  "aliases": ["constant column", "default value", "literal column"]
+}

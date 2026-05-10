@@ -1,0 +1,23 @@
+{
+  "id": "tsv",
+  "version": "1.0.0",
+  "label": "📑 TSV",
+  "description": "Tab-separated values. Like CSV but with a literal tab between fields. Worked example from docs/AUTHORING_GUIDE.md.",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["tsv", "tab"],
+  "options": {
+    "header": {
+      "type": "boolean",
+      "label": "First row is header",
+      "default": true
+    },
+    "encoding": {
+      "type": "enum",
+      "label": "Encoding",
+      "enumValues": ["utf-8", "utf-8-sig", "latin-1", "windows-1252"],
+      "default": "utf-8"
+    }
+  },
+  "tags": ["text", "tabular", "tsv"]
+}

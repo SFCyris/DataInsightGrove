@@ -1,0 +1,35 @@
+{
+  "id": "webhook_trigger",
+  "version": "1.0.0",
+  "label": "🔔 Trigger webhook",
+  "description": "Fire a webhook from inside this pipeline. Pick a global webhook by label (defined in Settings → Global webhooks). Webhooks with on='triggered' only fire from this step — never auto-fire on run completion. Data passes through unchanged. If you haven't created any webhooks yet, save the step empty and pick one later.",
+  "category": "output",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "webhookLabel": {
+      "type": "string",
+      "label": "Webhook",
+      "widget": "webhook_picker",
+      "help": "Label of the global webhook to fire. Manage webhooks in Settings → 🔔 Global webhooks. Leave blank to make this a placeholder step you'll wire up later."
+    },
+    "extraPayload": {
+      "type": "string",
+      "label": "Extra payload (JSON, optional)",
+      "widget": "json_textarea",
+      "help": "Merged into the default payload — useful for tagging the call with stage info, e.g. {\"stage\": \"after-cleansing\"}."
+    },
+    "failOnError": {
+      "type": "boolean",
+      "label": "Fail the run if the webhook errors",
+      "default": false,
+      "help": "Off (default): a 5xx or timeout from the receiver is logged but the pipeline continues. On: a webhook failure aborts the pipeline at this step."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["webhook", "trigger", "notify", "side-effect", "integration"],
+  "aliases": ["notify", "http callback", "post webhook"]
+}

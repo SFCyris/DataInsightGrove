@@ -1,0 +1,34 @@
+{
+  "id": "postgres",
+  "version": "1.1.0",
+  "label": "🐘 Postgres",
+  "description": "Read or write a PostgreSQL table. The URI is a standard postgresql:// connection string. Reverse-ETL writes use Polars.write_database with append / replace / fail modes.",
+  "kind": "both",
+  "uriSchemes": ["postgres", "postgresql"],
+  "options": {
+    "table": {
+      "type": "string",
+      "label": "Table name",
+      "help": "On read: SELECT * FROM <table>. On write: target table for the output. Supports schema-qualified names."
+    },
+    "schema": {
+      "type": "string",
+      "label": "Schema",
+      "default": "public",
+      "help": "Defaults to 'public'. Ignored if 'table' is already schema-qualified."
+    },
+    "query": {
+      "type": "expression",
+      "label": "Custom SQL query (read only)",
+      "help": "Used when 'Table name' is empty. Executed verbatim against Postgres. Has no effect on write."
+    },
+    "if_exists": {
+      "type": "enum",
+      "label": "Write mode (when table exists)",
+      "enumValues": ["append", "replace", "fail"],
+      "default": "append",
+      "help": "Reverse-ETL only. 'append' inserts rows; 'replace' drops + recreates; 'fail' aborts if the table exists."
+    }
+  },
+  "tags": ["database", "sql", "rdbms", "reverse-etl"]
+}

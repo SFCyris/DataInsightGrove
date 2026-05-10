@@ -1,0 +1,82 @@
+{
+  "id": "rest_api",
+  "version": "1.0.0",
+  "label": "🌐 REST API (generic)",
+  "description": "One configurable connector for any JSON-returning REST API. Handles auth (bearer / api-key / basic), JSONPath extraction, and four pagination styles (cursor, offset/limit, page-number, Link header). Use when there's no purpose-built connector for your source.",
+  "kind": "source",
+  "uriSchemes": ["http", "https"],
+  "options": {
+    "auth_kind": {
+      "type": "enum",
+      "label": "Authentication",
+      "enumValues": ["none", "bearer", "api_key_query", "api_key_header", "basic"],
+      "default": "none",
+      "help": "How to authenticate. bearer: 'Authorization: Bearer <key>'. api_key_query: appends ?<keyname>=<key> to the URL. api_key_header: '<keyname>: <key>'. basic: 'Authorization: Basic <base64(user:pass)>'."
+    },
+    "auth_value": {
+      "type": "string",
+      "label": "Auth value (bearer token / API key / user:pass)",
+      "default": "",
+      "help": "Sensitive — only the connector sees this; not echoed in logs. For basic auth, format as 'username:password'."
+    },
+    "auth_param_name": {
+      "type": "string",
+      "label": "API-key parameter name",
+      "default": "api_key",
+      "help": "Used only with api_key_query (URL ?<name>=...) or api_key_header (header <name>: ...)."
+    },
+    "json_path": {
+      "type": "string",
+      "label": "JSONPath to records",
+      "default": "$",
+      "help": "Where in the response the records live. '$' = the whole body is an array. '$.data' = response.data is an array. '$.results.items' = nested. Supports dotted paths only (no [*] wildcards)."
+    },
+    "pagination": {
+      "type": "enum",
+      "label": "Pagination style",
+      "enumValues": ["none", "cursor", "offset_limit", "page_number", "link_header"],
+      "default": "none",
+      "help": "none: single fetch. cursor: response includes a cursor field, sent as ?<cursor_param>=<cursor> on next call. offset_limit: ?offset=N&limit=M. page_number: ?page=N. link_header: follows the Link: <...>; rel=\"next\" header."
+    },
+    "cursor_response_path": {
+      "type": "string",
+      "label": "Cursor field in response (for cursor pagination)",
+      "default": "next_cursor",
+      "help": "JSONPath to the cursor in each response. e.g. 'next_cursor', 'meta.next', 'pagination.cursor'."
+    },
+    "cursor_param_name": {
+      "type": "string",
+      "label": "Cursor query param name",
+      "default": "cursor"
+    },
+    "page_size": {
+      "type": "integer",
+      "label": "Page size (for offset/limit or page_number)",
+      "default": 100,
+      "min": 1,
+      "max": 10000
+    },
+    "max_pages": {
+      "type": "integer",
+      "label": "Maximum pages to fetch",
+      "default": 50,
+      "min": 1,
+      "max": 1000,
+      "help": "Hard cap to prevent runaway pagination. Adjust if your API has more pages."
+    },
+    "timeout_s": {
+      "type": "integer",
+      "label": "Per-request timeout (seconds)",
+      "default": 30,
+      "min": 1,
+      "max": 300
+    },
+    "extra_headers": {
+      "type": "object",
+      "label": "Extra request headers",
+      "help": "Additional headers as JSON: {\"X-Custom\": \"value\"}.",
+      "default": {}
+    }
+  },
+  "tags": ["http", "rest", "json", "api", "generic", "saas"]
+}

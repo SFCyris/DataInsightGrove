@@ -1,0 +1,23 @@
+{
+  "id": "pivot_wider",
+  "version": "1.0.0",
+  "label": "↔️ Pivot wider",
+  "description": "Spread distinct values of a column into separate columns. Aggregates a value column when collisions occur.",
+  "category": "aggregate",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "id":     { "type": "column_refs", "label": "Identifier columns (kept as-is)", "columnFrom": "in", "required": true },
+    "names":  { "type": "column_ref",  "label": "Names from",   "columnFrom": "in", "required": true },
+    "values": { "type": "column_ref",  "label": "Values from",  "columnFrom": "in", "required": true },
+    "agg":    { "type": "enum", "label": "When collision",
+                "enumValues": ["sum","mean","min","max","first"], "default": "sum" }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["pivot", "spread", "wide"],
+  "requires": [{"kind": "any", "min": 2}],
+  "aliases": ["pivot", "cross tab", "crosstab", "long to wide"]
+}

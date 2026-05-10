@@ -1,0 +1,35 @@
+{
+  "id": "subpipeline",
+  "version": "1.0.0",
+  "label": "🧩 Sub-pipeline",
+  "description": "Embed another saved pipeline as a single step. Output of the referenced pipeline becomes this step's output. Recursive references are detected and rejected.",
+  "category": "combine",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 0, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "pipeline_id": {
+      "type": "string",
+      "label": "Pipeline ID",
+      "required": true,
+      "help": "ID of a saved pipeline. Open the target pipeline and copy its ID from the URL."
+    },
+    "output_id": {
+      "type": "string",
+      "label": "Output ID (optional)",
+      "help": "Which named output of the referenced pipeline to use. Defaults to the first / only output."
+    },
+    "sample_rows": {
+      "type": "integer",
+      "label": "Sample rows (optional)",
+      "min": 1,
+      "max": 10000000,
+      "help": "Cap the rows pulled from the sub-pipeline. Useful when the inner pipeline is large and you only need a preview."
+    }
+  },
+  "preview": { "rowImpact": "unknown", "schemaImpact": "rebuilds" },
+  "tags": ["composition", "subpipeline", "reuse"],
+  "aliases": ["nested pipeline", "macro", "include pipeline"]
+}

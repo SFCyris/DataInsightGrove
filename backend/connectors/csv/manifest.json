@@ -1,0 +1,36 @@
+{
+  "id": "csv",
+  "version": "1.2.0",
+  "label": "📄 CSV / TSV / delimited text",
+  "description": "Read and write delimited text files. Recognises CSV, TSV, generic .txt, scientific .dat / .data, .tab, .psv. Sniffs the delimiter (comma / tab / semicolon / pipe / single-space) when set to 'auto', and detects whether the first row is a header — when not, columns get sensible names (col_1, col_2, …).",
+  "kind": "both",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["csv", "tsv", "txt", "dat", "data", "tab", "psv"],
+  "options": {
+    "delimiter": {
+      "type": "string",
+      "label": "Delimiter",
+      "default": "auto",
+      "help": "'auto' uses the extension as a hint (.tsv/.tab → tab, .psv → pipe), otherwise sniffs the file (tries , \\t ; | and single space, picks the most consistent). Override with a single character; use \\t literally for tab."
+    },
+    "header": {
+      "type": "enum",
+      "label": "Header row",
+      "enumValues": ["auto", "yes", "no"],
+      "default": "auto",
+      "help": "auto: heuristically detect (data-like row 0 → no header; identifier-like row 0 + numeric rows below → header). yes/no: force the choice. When no header, columns are named col_1, col_2, …"
+    },
+    "encoding": {
+      "type": "enum",
+      "label": "Encoding",
+      "enumValues": ["utf-8", "utf-8-sig", "latin-1", "windows-1252"],
+      "default": "utf-8"
+    },
+    "nullValues": {
+      "type": "array",
+      "label": "Treat as null",
+      "items": { "type": "string", "label": "value" }
+    }
+  },
+  "tags": ["text", "tabular", "csv", "tsv"]
+}

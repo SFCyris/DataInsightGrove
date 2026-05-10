@@ -1,0 +1,36 @@
+{
+  "id": "date_snap",
+  "version": "1.0.0",
+  "label": "📅 Date snap",
+  "description": "Snap a date to the start (or end) of a calendar period: week, month, quarter, year. Useful for grouping daily data into weeks-starting-Monday, months-starting-1st, etc. Output is added as a new column or replaces the original.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "date_column": {
+      "type": "column_ref", "label": "Date column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["date", "datetime"]
+    },
+    "period": {
+      "type": "enum", "label": "Period",
+      "enumValues": ["week", "month", "quarter", "year"],
+      "default": "week"
+    },
+    "boundary": {
+      "type": "enum", "label": "Snap to",
+      "enumValues": ["start", "end"], "default": "start"
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name",
+      "default": "snapped_date"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["dates"],
+  "aliases": ["truncate date", "round date", "date floor", "start of week"],
+  "requires": [{"kind": "temporal"}]
+}

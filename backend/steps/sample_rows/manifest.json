@@ -1,0 +1,29 @@
+{
+  "id": "sample_rows",
+  "version": "1.0.0",
+  "label": "🎲 Sample rows",
+  "description": "Take a random or head/tail sample of rows. Useful for fast iteration on large data.",
+  "category": "shape",
+  "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "kind": { "type": "enum", "label": "Kind",
+              "enumValues": ["head", "tail", "random_n", "random_pct"], "default": "head" },
+    "n":    { "type": "integer", "label": "Rows", "default": 1000, "min": 1, "max": 10000000,
+              "visibleWhen": { "kind": "head" } },
+    "n2":   { "type": "integer", "label": "Rows", "default": 1000, "min": 1, "max": 10000000,
+              "visibleWhen": { "kind": "tail" } },
+    "n3":   { "type": "integer", "label": "Rows", "default": 1000, "min": 1, "max": 10000000,
+              "visibleWhen": { "kind": "random_n" } },
+    "pct":  { "type": "number", "label": "Percent", "default": 10, "min": 0.01, "max": 100,
+              "visibleWhen": { "kind": "random_pct" } },
+    "seed": { "type": "integer", "label": "Random seed", "default": 42,
+              "visibleWhen": { "kind": "random_n" } }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "preserves" },
+  "tags": ["sample", "random", "head"],
+  "aliases": ["random sample", "subset", "shuffle"]
+}

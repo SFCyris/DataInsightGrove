@@ -1,0 +1,17 @@
+{
+  "id": "netcdf",
+  "version": "1.0.0",
+  "label": "🌐 NetCDF",
+  "description": "Read NetCDF files (.nc, .nc4, .cdf) — climate / oceanography / earth-science data with named dimensions and variables. Reads via xarray; flattens to a long-format table with one row per cell and one column per coordinate + the variable's value. Use the 'variable' option to pick which data variable to load. Requires the [science] extra.",
+  "kind": "source",
+  "uriSchemes": ["file"],
+  "fileExtensions": ["nc", "nc4", "cdf"],
+  "options": {
+    "variable": {
+      "type": "string",
+      "label": "Variable name",
+      "help": "Which data variable to load. Default: the first variable in the file. The variable's coordinates become columns alongside the value."
+    }
+  },
+  "tags": ["scientific", "binary", "climate"]
+}

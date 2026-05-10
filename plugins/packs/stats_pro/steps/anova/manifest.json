@@ -1,0 +1,26 @@
+{
+  "id": "anova",
+  "version": "1.0.0",
+  "label": "📐 One-way ANOVA",
+  "description": "One-way ANOVA: does the mean of `value` differ across the levels of `group`? Returns F-statistic, p-value, between/within group sums-of-squares, η² (eta-squared) effect size.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "group": {
+      "type": "column_ref", "label": "Group column", "columnFrom": "in", "required": true
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["statistics"],
+  "aliases": ["one-way anova", "f test", "compare groups"],
+  "requires": [{"kind": "numeric"}, {"kind": "any"}]
+}

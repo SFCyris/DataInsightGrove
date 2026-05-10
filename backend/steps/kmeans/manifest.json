@@ -1,0 +1,82 @@
+{
+  "id": "kmeans",
+  "version": "1.0.0",
+  "label": "\ud83d\udd2e K-Means clustering",
+  "description": "Partitions rows into K clusters by minimizing within-cluster variance. Adds a 'cluster' column and renders a 2-D scatter (uses PCA for dimensionality > 2).",
+  "category": "model",
+  "engine": {
+    "primary": "polars",
+    "browser": "none",
+    "deterministic": true
+  },
+  "io": {
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "in"
+      ]
+    },
+    "outputs": {
+      "min": 1,
+      "max": 1,
+      "ports": [
+        "out"
+      ]
+    }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs",
+      "label": "Feature columns",
+      "columnFrom": "in",
+      "help": "Numeric columns used for clustering. Empty = all numeric columns."
+    },
+    "k": {
+      "type": "integer",
+      "label": "Number of clusters (k)",
+      "default": 4,
+      "min": 2,
+      "max": 50,
+      "required": true
+    },
+    "scale": {
+      "type": "boolean",
+      "label": "Standardize features",
+      "default": true
+    },
+    "seed": {
+      "type": "integer",
+      "label": "Random seed",
+      "default": 42
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "cluster"
+    },
+    "render": {
+      "type": "boolean",
+      "label": "Render scatter plot",
+      "default": true
+    },
+    "title": {
+      "type": "string",
+      "label": "Title",
+      "default": "K-Means clusters"
+    }
+  },
+  "preview": {
+    "rowImpact": "preserves",
+    "schemaImpact": "modifies"
+  },
+  "tags": [
+    "stats",
+    "ml",
+    "clustering",
+    "kmeans",
+    "unsupervised"
+  ],
+  "requires": [{"kind": "numeric", "min": 2}],
+  "aliases": ["cluster", "clustering", "k-means", "centroids"]
+}
