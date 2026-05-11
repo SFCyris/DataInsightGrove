@@ -111,6 +111,14 @@ class Run(Base):
     # overlay (Phase A Layer 1). Optional fields because not every engine path
     # gives us cheap row counts.
     node_metrics: Mapped[dict[str, dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    # Per-node NaN-origin sidecars — populated by the executor's post-step
+    # scanner (Polars steps) and by the cast_type SQL hook. Shape:
+    # { node_id: [ {column, row_indices, cause, source_column?, count, truncated}, … ] }.
+    # Surfaces in the grid as the orange-⚠ NULL variant on cells that became
+    # NULL via a conversion / computation failure on THIS step. Lives on the
+    # producing step only — the next step sees plain NULL. See
+    # `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    nan_origins: Mapped[dict[str, list[dict[str, Any]]] | None] = mapped_column(JSON, nullable=True)
     # Indexed: list_runs orders by `created_at desc`. Composite with
     # pipeline_id would be ideal but two single-column indexes are
     # cheap enough on this workload.

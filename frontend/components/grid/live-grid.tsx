@@ -86,6 +86,20 @@ interface Highlights {
   hovered?: string | null;
 }
 
+/** NaN-origin sidecar from the current step — drives the orange-⚠ NULL
+ *  cell variant and the column-header `⚠ N` badge. One entry per
+ *  (column, cause) tuple. The grid converts `row_indices` to a Set for
+ *  O(1) per-cell lookup at render time. See
+ *  `internal/proposals/NULL_AND_NAN_DISPLAY.md`. */
+export interface NanOriginEntry {
+  column: string;
+  cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
+  count: number;
+  row_indices: number[];
+  truncated: boolean;
+  source_column?: string;
+}
+
 interface Props {
   columns: Column[];
   rows: Array<Record<string, unknown>>;
@@ -117,6 +131,12 @@ interface Props {
    *  `→ N` chip next to the column name; clicking opens Column DNA so
    *  the user can drill into exactly what depends on this column. */
   downstreamImpact?: Record<string, number>;
+  /** Per-node NaN-origin sidecar from the run's RunOut.nanOrigins; the
+   *  caller picks the entries for THIS step (the producing node) and
+   *  passes them here. The grid surfaces them as the orange-⚠ NULL cell
+   *  variant + a `⚠ N` column-header chip. Absent entries means plain
+   *  NULL throughout — the standard cool-grey-blue `◌ NULL` state. */
+  nanOrigins?: NanOriginEntry[];
 }
 
 // Default float formatter — locale-pinned to en-US to keep SSR + client
@@ -142,10 +162,16 @@ const _curFmt = new Intl.NumberFormat("en-US", {
 });
 
 function fmt(v: unknown, type?: string): string {
-  if (v === null || v === undefined) return "—";
+  // Both NULL variants render the literal "NULL" — colour + icon (◌
+  // for plain, ⚠ for conversion failure) carry the state distinction.
+  // See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+  if (v === null || v === undefined) return "NULL";
   if (typeof v === "boolean") return v ? "true" : "false";
   if (typeof v === "number") {
-    if (!isFinite(v)) return "—";
+    // ±Inf survives the wire as a finite-check failure; render as NULL
+    // for consistency. The backend coerces NaN/±Inf → null on the
+    // producing step, so we should never receive a NaN here in practice.
+    if (!isFinite(v)) return "NULL";
     if (type === "scientific") return _sciFmt.format(v);
     if (type === "percentage") return _pctFmt.format(v);
     if (type === "currency") return _curFmt.format(v);
@@ -197,11 +223,36 @@ export function LiveGrid({
   columns, rows, totalRows, sampleRows, loading = false, elapsedMs,
   onColumnAction, onCellQuickFilter, onColumnTrace, onColumnTraceClear,
   emptyHint, highlights, annotations, onSaveAnnotation, ranLocally = true,
-  downstreamImpact,
+  downstreamImpact, nanOrigins,
 }: Props) {
   const added = highlights?.added;
   const renamed = highlights?.renamed;
   const hovered = highlights?.hovered;
+  // Pre-bin the NaN-origin sidecar:
+  //   nanByCol[col]            → Set<rowIndex> for orange-⚠ cell lookup
+  //   nanInfoByCol[col]        → first entry's metadata for the tooltip + header chip
+  //   nanCountByCol[col]       → total NaN/cast-failure cells in this column
+  // Done once per render, O(1) per-cell check after.
+  const { nanByCol, nanInfoByCol, nanCountByCol } = useMemo(() => {
+    const byCol = new Map<string, Set<number>>();
+    const info = new Map<string, NanOriginEntry>();
+    const counts = new Map<string, number>();
+    for (const o of nanOrigins ?? []) {
+      let s = byCol.get(o.column);
+      if (!s) { s = new Set(); byCol.set(o.column, s); }
+      for (const i of o.row_indices) s.add(i);
+      counts.set(o.column, (counts.get(o.column) ?? 0) + o.count);
+      // First-seen entry wins for the per-column tooltip + chip — usually
+      // there's only one entry per column anyway. cast_failure beats
+      // arithmetic_nan if both happened to be present (cast is the more
+      // actionable signal).
+      const existing = info.get(o.column);
+      if (!existing || (o.cause === "cast_failure" && existing.cause !== "cast_failure")) {
+        info.set(o.column, o);
+      }
+    }
+    return { nanByCol: byCol, nanInfoByCol: info, nanCountByCol: counts };
+  }, [nanOrigins]);
   const settings = useSettings();
   const showSparklines = !settings.compactHeaders;
   // Onboarding tooltip on first column ⋯ (one-time per browser).
@@ -580,6 +631,29 @@ export function LiveGrid({
                           );
                         })()}
                         {(() => {
+                          // ⚠ N chip — NaN-origin sidecar count for this
+                          // column on the current step. Only shown on the
+                          // producing step (the next step's sidecar is
+                          // independent — every count resets to zero).
+                          // See internal/proposals/NULL_AND_NAN_DISPLAY.md.
+                          const nc = nanCountByCol.get(c.name);
+                          if (!nc || nc <= 0) return null;
+                          const info = nanInfoByCol.get(c.name);
+                          const causeLabel = info?.cause === "cast_failure"
+                            ? `Conversion failed for ${nc} row${nc === 1 ? "" : "s"}${info?.source_column ? ` (from column "${info.source_column}")` : ""}`
+                            : `Computation produced NaN/±Inf in ${nc} row${nc === 1 ? "" : "s"}`;
+                          return (
+                            <span
+                              role="status"
+                              title={`${causeLabel} on this step. These cells become plain NULL in the next step.`}
+                              aria-label={`${nc} conversion failure${nc === 1 ? "" : "s"} in column ${c.name}`}
+                              className="ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-200/70 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200 border border-orange-400/50"
+                            >
+                              ⚠ {nc}
+                            </span>
+                          );
+                        })()}
+                        {(() => {
                           // Edit-time impact badge — surfaces "X downstream
                           // consumers depend on this column." Click opens
                           // Column DNA so the user can see *exactly* what
@@ -670,6 +744,23 @@ export function LiveGrid({
                       // columns, non-IANA strings for timezone columns.
                       const isCellInvalid = cellInvalidByCol[c.name](v);
                       const colLogicalType = logicalType(c.type);
+                      // NULL semantics — see internal/proposals/NULL_AND_NAN_DISPLAY.md.
+                      // Plain NULL (◌, cool-grey-blue): "value never existed."
+                      // NaN-origin NULL (⚠, light-orange): "the producing step
+                      //   broke this value." Survives one step only — the
+                      //   backend coerces NaN→null, the sidecar tells us which
+                      //   cells were the NaN origins.
+                      const isNullCell = v === null || v === undefined;
+                      const nanRows = nanByCol.get(c.name);
+                      const isNanOrigin = isNullCell && nanRows ? nanRows.has(ri) : false;
+                      const nanInfo = isNanOrigin ? nanInfoByCol.get(c.name) : undefined;
+                      const nullTooltip = isNanOrigin
+                        ? (nanInfo?.cause === "cast_failure"
+                            ? `Conversion failed in this step${nanInfo.source_column ? ` (from column "${nanInfo.source_column}")` : ""}. Becomes plain NULL in the next step.`
+                            : "Computation failed in this step (produced NaN or ±Inf). Becomes plain NULL in the next step.")
+                        : isNullCell
+                          ? "Value not present"
+                          : null;
                       return (
                         <td
                           key={c.name}
@@ -687,34 +778,55 @@ export function LiveGrid({
                                 : colLogicalType === "timezone"
                                   ? `Invalid IANA timezone — try America/New_York, Europe/Berlin, UTC, …`
                                   : `Doesn't look like a valid ${colLogicalType}`
-                              : onCellQuickFilter
-                                ? "⌘+click to filter to this value · ⌘+alt+click to exclude"
-                                : undefined
+                              : nullTooltip
+                                ? nullTooltip
+                                : onCellQuickFilter
+                                  ? "⌘+click to filter to this value · ⌘+alt+click to exclude"
+                                  : undefined
                           }
                           className={[
                             "px-2 py-1 border-b border-border/30 whitespace-nowrap max-w-[260px] truncate transition-colors",
                             NUMERIC_TYPES.has(colLogicalType) ? "text-right" : "",
-                            v === null || v === undefined ? "text-muted-foreground/40 italic" : "",
+                            // Italicise the NULL label without dimming it — the
+                            // colour tokens below carry the state signal.
+                            isNullCell ? "italic" : "",
                             // Invalid wins over EVERY other tint — it's a
                             // hard data-quality signal, not a transient
                             // editor cue.
                             isCellInvalid
                               ? "bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-100 ring-1 ring-inset ring-rose-400/60"
-                              : isAddedCell
-                                ? "bg-emerald-50/40 dark:bg-emerald-900/15"
-                                : isRenamedCell
-                                  ? "bg-amber-50/40 dark:bg-amber-900/10"
-                                  : isExternalHoverCell
-                                    ? "bg-emerald-50/30 dark:bg-emerald-900/10"
-                                    : isColHovered
-                                      // Whole-column hover tint — sage-emerald,
-                                      // designed to feel like a soft spotlight
-                                      // without competing with the diff colors.
-                                      ? "bg-emerald-100/40 dark:bg-emerald-500/10"
-                                      : "",
+                              : isNanOrigin
+                                // Orange-⚠ NULL: a step in THIS run produced
+                                // this missing value. Distinct from rose
+                                // (invalid data) so the two signals don't
+                                // collide.
+                                ? "bg-orange-200/70 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200 ring-1 ring-inset ring-orange-400/50"
+                                : isNullCell
+                                  // Plain NULL: cool-grey-blue. State
+                                  // indicator, not warning.
+                                  ? "bg-slate-200/70 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+                                  : isAddedCell
+                                    ? "bg-emerald-50/40 dark:bg-emerald-900/15"
+                                    : isRenamedCell
+                                      ? "bg-amber-50/40 dark:bg-amber-900/10"
+                                      : isExternalHoverCell
+                                        ? "bg-emerald-50/30 dark:bg-emerald-900/10"
+                                        : isColHovered
+                                          // Whole-column hover tint — sage-emerald,
+                                          // designed to feel like a soft spotlight
+                                          // without competing with the diff colors.
+                                          ? "bg-emerald-100/40 dark:bg-emerald-500/10"
+                                          : "",
                           ].join(" ")}
                         >
-                          {fmt(v, colLogicalType)}
+                          {isNullCell ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span aria-hidden="true">{isNanOrigin ? "⚠" : "◌"}</span>
+                              <span>NULL</span>
+                            </span>
+                          ) : (
+                            fmt(v, colLogicalType)
+                          )}
                         </td>
                       );
                     })}
@@ -764,6 +876,7 @@ export function LiveGrid({
         columns={columns}
         annotation={profileFor ? annotations?.[profileFor.name] : undefined}
         onSaveAnnotation={onSaveAnnotation}
+        nanOrigins={nanOrigins}
         onValueFilter={onCellQuickFilter}
         onRangeFilter={(column, low, high) => {
           // Translate range-filter request into the existing

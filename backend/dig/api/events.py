@@ -72,6 +72,13 @@ class EventKinds:
     DATA_QUALITY_VIOLATION : Final = "data.quality.violation"
     DATA_PROFILE_DRIFT     : Final = "data.profile.drift"
     DATA_ROW_COUNT_ANOMALY : Final = "data.row_count.anomaly"
+    # Emitted by the executor's post-step NaN scanner and by the SQL
+    # cast_type's nan_origin_sql hook — once per (node, column, cause)
+    # tuple when a step produces NaN / ±Inf / cast-failure NULLs. Context:
+    # run_id, pipeline_id, node_id, step_id, column, cause
+    # ("cast_failure"|"arithmetic_nan"|"arithmetic_inf"), source_column,
+    # count. See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    DATA_NAN_PRODUCED      : Final = "data.nan.produced"
 
 
 # Flat list for UI dropdowns + validation. Keep in sync with EventKinds.
@@ -83,7 +90,7 @@ ALL_EVENT_KINDS: tuple[str, ...] = (
     EventKinds.LOGIN_SUCCESS, EventKinds.LOGIN_FAILED,
     EventKinds.DISK_LOW, EventKinds.MEMORY_HIGH,
     EventKinds.DATA_QUALITY_VIOLATION, EventKinds.DATA_PROFILE_DRIFT,
-    EventKinds.DATA_ROW_COUNT_ANOMALY,
+    EventKinds.DATA_ROW_COUNT_ANOMALY, EventKinds.DATA_NAN_PRODUCED,
 )
 
 

@@ -25,6 +25,51 @@ You can always override the auto-detection from the column menu (`⋯ → 🔄 C
 
 ---
 
+## Missing values: NULL display semantics
+
+DIG treats a missing cell as a **state**, not as an empty value. Every missing
+cell renders the label `NULL` — but the background colour and icon tell you
+*why* the value is missing.
+
+| State | Cell text | Background | Icon | Meaning |
+|---|---|---|---|---|
+| Plain NULL | `NULL` | cool-grey-blue | ◌ | The value never existed: optional field left blank, left-join had no match, source column was empty. The DB-style "no data here." |
+| Conversion / computation failure | `NULL` | light-orange | ⚠ | The value existed, but a computation in this step destroyed it — a string-to-number cast that couldn't parse, a divide-by-zero, a `log` of a non-positive number, an `inf - inf`. **Survives one step only:** the next step sees plain NULL. |
+
+### Why two visual variants
+
+The orange-⚠ state is a **diagnostic**, not a data property. It exists to give
+you one step of warning that a transformation just produced a missing value
+where one didn't exist before — so you can fix the upstream logic, add a
+guard, or accept the loss explicitly. By the next step, the cell is
+indistinguishable from any other NULL.
+
+Hovering an orange-⚠ cell shows the cause (cast failure with the source
+column, or "computation produced NaN / ±Inf") in the tooltip. The column
+header also shows a small `⚠ N` badge counting the conversion-failure cells
+in the current step, so they're easy to locate without scanning.
+
+### What stays the same
+
+- All step packs (imputation, audit, DQ) operate on the unified NULL concept —
+  there are no separate "fill NaN" steps. By the time a step downstream of a
+  conversion runs, the cells are already plain NULL.
+- Exports (CSV / Parquet / JSON / DB writes) write a single NULL per missing
+  cell. The diagnostic state is a UI overlay, not a data property.
+- Profile statistics (mean, std, min, max) treat both variants as missing
+  and skip them.
+
+### What this replaces
+
+Previous releases of DIG rendered NULL, NaN, and ±Inf identically as an em-dash
+(`—`). This collapsed two genuinely different situations — "this data was
+never collected" vs. "a step just broke this value" — into one indistinguishable
+signal. The state-aware rendering brings the diagnostic information back into
+the cell without burdening the analyst-mode UI with extra concepts: it's
+still just NULL, with a colour and an icon for context.
+
+---
+
 ## Base physical types
 
 These six are the storage primitives. Every meta-type ultimately maps onto one of them.
@@ -64,7 +109,7 @@ Floating-point number with a fractional part.
 | Aspect | Value |
 |---|---|
 | **Storage** | IEEE 754 64-bit float (`DOUBLE` / `Float64`) |
-| **Constraints** | `NaN` and `±Inf` are valid IEEE values; DIG renders them as `—` |
+| **Constraints** | `NaN` and `±Inf` are valid IEEE values; DIG surfaces them once (in the step that produced them, with a ⚠ warning state) and collapses them to NULL on the next step. See [Missing values: NULL display semantics](#missing-values-null-display-semantics). |
 | **Range** | ±5 × 10⁻³²⁴ (subnormal) to ±1.8 × 10³⁰⁸ |
 | **Granularity** | ~15–17 significant decimal digits |
 | **Min / max** | ±2.225 × 10⁻³⁰⁸ (normal min) / ±1.797 × 10³⁰⁸ |

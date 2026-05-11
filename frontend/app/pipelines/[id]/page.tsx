@@ -2509,6 +2509,18 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               elapsedMs={gridData.elapsedMs}
               ranLocally={preview ? preview.ranLocally : true}
               downstreamImpact={downstreamImpact}
+              nanOrigins={
+                // NaN-origin sidecar for the focused step on the most
+                // recent backend run. Only surfaces in the grid when the
+                // displayed rows come from a backend run path (the row
+                // indices align with the persisted parquet). Empty / no
+                // chip when the user is in the WASM live-preview path
+                // — see internal/proposals/NULL_AND_NAN_DISPLAY.md
+                // "Where the implementation will differ" #2.
+                preview?.ranLocally === false && focusedId
+                  ? effectiveRun?.nanOrigins?.[focusedId] ?? undefined
+                  : undefined
+              }
               onColumnAction={handleColumnAction}
               onCellQuickFilter={handleCellQuickFilter}
               onColumnTrace={handleColumnTrace}

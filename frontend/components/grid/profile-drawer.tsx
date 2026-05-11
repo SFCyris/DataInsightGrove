@@ -37,6 +37,19 @@ interface Props {
    *  drawer renders the same content but as read-only display. */
   onValueFilter?: (column: string, value: unknown, mode: "eq" | "neq") => void;
   onRangeFilter?: (column: string, low: number, high: number) => void;
+  /** NaN-origin sidecar for this step (same shape as LiveGrid's prop).
+   *  Used to render a secondary "of which X were conversion failures"
+   *  line below the Nulls stat on the producing step's output. Empty
+   *  / undefined on every other step (the sidecar is one-step-only).
+   *  See internal/proposals/NULL_AND_NAN_DISPLAY.md. */
+  nanOrigins?: Array<{
+    column: string;
+    cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
+    count: number;
+    row_indices: number[];
+    truncated: boolean;
+    source_column?: string;
+  }>;
 }
 
 const TYPE_EMOJI: Record<string, string> = {
@@ -64,7 +77,7 @@ function fmt(v: unknown): string {
 
 export function ProfileDrawer({
   open, onClose, columnName, columnType, columnStorage, rows, columns, annotation, onSaveAnnotation,
-  onValueFilter, onRangeFilter,
+  onValueFilter, onRangeFilter, nanOrigins,
 }: Props) {
   const [draftNote, setDraftNote] = useState<string>("");
   const [savingNote, setSavingNote] = useState(false);
@@ -362,6 +375,31 @@ export function ProfileDrawer({
                   value={`${fmtInt(profile.nullCount)} (${(profile.nullPct * 100).toFixed(profile.nullPct < 0.01 ? 2 : 1)}%)`}
                   warn={profile.nullPct >= 0.05}
                 />
+                {(() => {
+                  // Per-column conversion-failure count from the
+                  // step's NaN-origin sidecar. Surfaces ONLY on the
+                  // producing step (the sidecar is one-step-only).
+                  // See internal/proposals/NULL_AND_NAN_DISPLAY.md.
+                  const entries = (nanOrigins ?? []).filter(
+                    (o) => o.column === columnName,
+                  );
+                  if (entries.length === 0) return null;
+                  const totalFailures = entries.reduce(
+                    (sum, e) => sum + e.count, 0,
+                  );
+                  const causeLabel = entries.some((e) => e.cause === "cast_failure")
+                    ? "conversion failures"
+                    : "computation NaN/±Inf";
+                  return (
+                    <div
+                      className="col-span-2 -mt-1 ml-1 text-[11px] text-orange-700 dark:text-orange-300"
+                      title="These nulls were produced by THIS step. The next step sees plain NULL."
+                    >
+                      <span aria-hidden>⚠</span>{" "}
+                      of which {fmtInt(totalFailures)} {causeLabel} in this step
+                    </div>
+                  );
+                })()}
                 {profile.mean != null && (
                   <Stat label="Mean" value={fmt(profile.mean)} />
                 )}

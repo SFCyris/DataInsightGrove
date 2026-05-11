@@ -30,7 +30,7 @@ import duckdb
 from dig.engine.dag import infer_schemas, topo_sort, validate
 from dig.engine.pipeline import Node, OutputSpec, Pipeline, Reference, effective_connector
 from dig.engine.registry import connectors, steps
-from dig.engine.step import PolarsContext, Step, quote_ident, quote_str
+from dig.engine.step import NanOrigin, PolarsContext, PolarsResult, Step, quote_ident, quote_str
 from dig.storage.files import data_dir
 
 log = logging.getLogger(__name__)
@@ -52,10 +52,149 @@ class ExecutionResult:
     # the parquet). SQL-only intermediate nodes are marked "success"
     # without row counts — cheap recompute if needed.
     nodeMetrics: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Per-node NaN-origin sidecars — surfaced by the grid as the
+    # orange-⚠ NULL variant on the step that produced the failure.
+    # Shape: { node_id: [ {column, row_indices, cause, source_column?}, … ] }.
+    # See `internal/proposals/NULL_AND_NAN_DISPLAY.md`. Each entry lives on
+    # the producing step ONLY; the next step sees plain NULL because the
+    # executor coerces NaN→None after capturing this record.
+    nanOrigins: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 def _ref_alias(ref: Reference) -> str:
     return ref.ref
+
+
+# Cap row-index lists at 10k per (node, column) tuple — keeps the run JSON
+# payload bounded. Above the cap we record only the first N indices plus a
+# `truncated_count`; the column-header badge still shows the full count.
+_NAN_ORIGIN_ROW_CAP = 10_000
+
+
+def _scan_and_coerce_nan(
+    result: PolarsResult,
+    *,
+    run_id: str,
+    pipeline_id: str | None,
+    node_id: str,
+    step_id: str,
+) -> list[dict[str, Any]]:
+    """Post-step hook — scan float columns for NaN/±Inf, coerce them to
+    NULL on the output frame, attach the row-index sidecar.
+
+    Mutates `result.output` (in-place via `with_columns`) and appends to
+    `result.nan_origins`. Returns the JSON-serialisable form of the
+    origins for this step's output, suitable for storing in the run's
+    `nanOrigins` payload.
+
+    Emits a `data.nan.produced` event per (column, cause) tuple. Best-
+    effort: emit failures are swallowed so they never break the run.
+
+    Cast steps that produce non-float outputs (string→Int with bad rows
+    becoming NULL directly, not NaN) pre-populate `result.nan_origins`
+    BEFORE the scanner runs; this helper does not overwrite those.
+    """
+    import polars as pl
+
+    # Preserve any pre-populated entries (cast steps for non-float targets).
+    pre_existing = list(result.nan_origins)
+    new_entries: list[NanOrigin] = []
+
+    df = result.output
+    for col, dtype in df.schema.items():
+        if dtype not in (pl.Float32, pl.Float64):
+            continue
+        # Split is_nan vs is_infinite so we can record `arithmetic_nan`
+        # vs `arithmetic_inf` distinctly (telemetry uses this; the
+        # tooltip collapses both to "computation failed").
+        nan_mask = df[col].is_nan()
+        inf_mask = df[col].is_infinite()
+        if not (nan_mask.any() or inf_mask.any()):
+            continue
+        if nan_mask.any():
+            indices = [int(i) for i, v in enumerate(nan_mask.to_list()) if v]
+            new_entries.append(NanOrigin(
+                column=col, row_indices=indices,
+                cause="arithmetic_nan", source_column=None,
+            ))
+        if inf_mask.any():
+            indices = [int(i) for i, v in enumerate(inf_mask.to_list()) if v]
+            new_entries.append(NanOrigin(
+                column=col, row_indices=indices,
+                cause="arithmetic_inf", source_column=None,
+            ))
+        # Coerce in place: both NaN and ±Inf become NULL on this step's
+        # persisted output. fill_nan handles NaN; the explicit when/then
+        # below catches ±Inf which fill_nan does not.
+        coerced = (
+            pl.when(df[col].is_nan() | df[col].is_infinite())
+            .then(None)
+            .otherwise(pl.col(col))
+            .alias(col)
+        )
+        df = df.with_columns(coerced)
+    result.output = df
+    result.nan_origins = pre_existing + new_entries
+
+    # Telemetry — emit one event per (column, cause). Logged + swallowed
+    # on failure so the run never breaks because of a telemetry hiccup.
+    if result.nan_origins:
+        try:
+            import asyncio
+            from dig.api.events import EventKinds, emit_event
+
+            async def _emit_all() -> None:
+                for origin in result.nan_origins:
+                    await emit_event(
+                        EventKinds.DATA_NAN_PRODUCED,
+                        run_id=run_id,
+                        pipeline_id=pipeline_id,
+                        node_id=node_id,
+                        step_id=step_id,
+                        column=origin.column,
+                        cause=origin.cause,
+                        source_column=origin.source_column,
+                        count=len(origin.row_indices),
+                    )
+
+            # We're in a worker thread under JobManager. Reuse the main loop
+            # if alive; otherwise spin a one-shot loop (test/script path).
+            try:
+                from dig.jobs.manager import main_loop as _main_loop
+                api_loop = _main_loop()
+            except Exception:
+                api_loop = None
+            if api_loop is not None and api_loop.is_running():
+                asyncio.run_coroutine_threadsafe(_emit_all(), api_loop)
+            else:
+                try:
+                    asyncio.run(_emit_all())
+                except RuntimeError:
+                    # Best-effort: skip if we're already inside a running loop.
+                    pass
+        except Exception:
+            log.exception("nan-origin event emit failed for node %s", node_id)
+
+    return [_nan_origin_to_dict(o) for o in result.nan_origins]
+
+
+def _nan_origin_to_dict(o: NanOrigin) -> dict[str, Any]:
+    """JSON-serialise a NanOrigin, capping row_indices at `_NAN_ORIGIN_ROW_CAP`."""
+    indices = o.row_indices
+    payload: dict[str, Any] = {
+        "column": o.column,
+        "cause": o.cause,
+        "count": len(indices),
+    }
+    if o.source_column is not None:
+        payload["source_column"] = o.source_column
+    if len(indices) > _NAN_ORIGIN_ROW_CAP:
+        payload["row_indices"] = indices[:_NAN_ORIGIN_ROW_CAP]
+        payload["truncated"] = True
+    else:
+        payload["row_indices"] = indices
+        payload["truncated"] = False
+    return payload
 
 
 LINEAGE_COL_PREFIX = "__dig_lineage_"
@@ -323,16 +462,19 @@ def _run_one_output(
     sample_rows: int | None,
     materialized: dict[str, str] | None = None,
     pipeline_chain: tuple[str, ...] = (),
-) -> tuple[str, int, list[dict[str, Any]], list[str]]:
+) -> tuple[str, int, list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     """Run the pipeline up to this output and write a parquet snapshot.
 
-    Returns (parquet_path, row_count, artifacts, columns). `columns`
-    lists the output's column names — used by the post-run drift
-    detector to spot schema changes vs the prior succeeded run.
+    Returns (parquet_path, row_count, artifacts, columns, nan_origins).
+    `columns` lists the output's column names — used by the post-run
+    drift detector to spot schema changes vs the prior succeeded run.
+    `nan_origins` is the post-step sidecar (empty for SQL-only outputs;
+    populated for Polars terminal steps that produced NaN/±Inf).
     """
     terminal = o.from_.ref
     out_path = out_dir / f"{o.name}.parquet"
     artifacts: list[dict[str, Any]] = []
+    nan_origins: list[dict[str, Any]] = []
     materialized = dict(materialized or {})
 
     poly_node = _terminal_polars_node(p, terminal)
@@ -359,6 +501,16 @@ def _run_one_output(
             result = step.execute_polars(input_frames, poly_node.params, ctx)
         except Exception as e:
             raise RuntimeError(f"polars step '{poly_node.id}' ({step.id}) failed: {e}") from e
+
+        # Post-step NaN scan + coerce before persisting the parquet.
+        try:
+            nan_origins = _scan_and_coerce_nan(
+                result, run_id=run_id, pipeline_id=p.id,
+                node_id=poly_node.id, step_id=step.id,
+            )
+        except Exception:
+            log.exception("nan-scan failed for terminal node %s — proceeding without sidecar", poly_node.id)
+            nan_origins = []
 
         df = result.output
         df.write_parquet(out_path, compression="zstd")
@@ -401,7 +553,7 @@ def _run_one_output(
         log.exception("could not read parquet schema for output %s", o.id)
         columns = []
 
-    return str(out_path), row_count, artifacts, columns
+    return str(out_path), row_count, artifacts, columns, nan_origins
 
 
 def execute_subpipeline(
@@ -503,6 +655,9 @@ def execute(
     # populate row counts cheaply (dataframe is already materialized);
     # SQL-intermediate nodes get a status-only entry.
     node_metrics: dict[str, dict[str, Any]] = {}
+    # Per-node NaN-origin sidecars — populated by _scan_and_coerce_nan.
+    # See ExecutionResult.nanOrigins.
+    nan_origins_by_node: dict[str, list[dict[str, Any]]] = {}
 
     try:
         pipeline_outputs: list[OutputSpec] = list(p.outputs)
@@ -560,6 +715,19 @@ def execute(
                 raise RuntimeError(
                     f"polars step '{node.id}' ({step.id}) failed: {e}"
                 ) from e
+            # Post-step NaN scan + coerce — happens BEFORE we persist the
+            # parquet, so the on-disk frame is clean and the sidecar
+            # carries the (column, row_indices, cause) record for the UI.
+            try:
+                origins_payload = _scan_and_coerce_nan(
+                    res, run_id=run_id, pipeline_id=p.id,
+                    node_id=node.id, step_id=step.id,
+                )
+            except Exception:
+                log.exception("nan-scan failed for node %s — proceeding without sidecar", node.id)
+                origins_payload = []
+            if origins_payload:
+                nan_origins_by_node[node.id] = origins_payload
             intermed_path = intermediate_dir / f"{node.id}.parquet"
             res.output.write_parquet(intermed_path, compression="zstd")
             materialized[node.id] = str(intermed_path)
@@ -575,7 +743,7 @@ def execute(
 
         for o in pipeline_outputs:
             term_started = time.perf_counter()
-            path, rc, arts, cols = _run_one_output(
+            path, rc, arts, cols, nan_origins = _run_one_output(
                 con, p, o,
                 out_dir=out_dir, run_id=run_id, sample_rows=sample_rows,
                 materialized=materialized, pipeline_chain=_pipeline_chain,
@@ -584,6 +752,8 @@ def execute(
             row_counts[o.id] = rc
             if arts:
                 artifacts[o.id] = arts
+            if nan_origins:
+                nan_origins_by_node[o.from_.ref] = nan_origins
             # Attach metrics to the terminal node (the one this output is
             # `from_`). This is what the canvas run-state overlay reads
             # AND what the post-run drift detector compares to history.
@@ -605,6 +775,93 @@ def execute(
             if n.id in terminal_ids:
                 continue
             node_metrics[n.id] = {"status": "success"}
+
+        # Run per-step NaN-origin queries (SQL-engine steps that turn
+        # non-null inputs into NULL outputs — the cast_type pattern).
+        # The post-step Polars scanner already covered Polars-engine
+        # steps; this loop picks up the SQL side. Best-effort: failure
+        # to enumerate failing rows logs but doesn't fail the run.
+        for node in topo_sort(p):
+            if node.id in nan_origins_by_node:
+                # Already covered by the Polars post-step scanner; SQL
+                # path would only duplicate.
+                continue
+            try:
+                step = steps().get(node.step)
+            except KeyError:
+                continue
+            inputs_for_node: dict[str, str] = {
+                port: quote_ident(ref.ref) for port, ref in node.inputs.items()
+            }
+            try:
+                nan_hook = step.nan_origin_sql(node.params, inputs_for_node)
+            except Exception:
+                log.exception("nan_origin_sql raised for node %s", node.id)
+                continue
+            if not nan_hook:
+                continue
+            source_col, nan_sql = nan_hook
+            first_input = next(iter(node.inputs.values()), None)
+            if first_input is None:
+                continue
+            try:
+                upstream_sql = compile_to_sql(p, terminal=first_input.ref, overrides=materialized)
+            except Exception:
+                log.exception("nan-origin upstream compile failed for node %s", node.id)
+                continue
+            if not upstream_sql.lstrip().upper().startswith("WITH"):
+                full_sql = nan_sql
+            else:
+                marker = " SELECT * FROM "
+                idx = upstream_sql.rfind(marker)
+                if idx < 0:
+                    continue
+                with_clause = upstream_sql[: idx + 1]
+                full_sql = f"{with_clause}{nan_sql}"
+            try:
+                rows = con.execute(full_sql).fetchall()
+            except Exception:
+                log.exception("nan-origin query failed for node %s (sql: %s)", node.id, full_sql[:200])
+                continue
+            indices = [int(r[0]) for r in rows]
+            if not indices:
+                continue
+            origin = NanOrigin(
+                column=source_col,
+                row_indices=indices,
+                cause="cast_failure",
+                source_column=source_col,
+            )
+            nan_origins_by_node[node.id] = [_nan_origin_to_dict(origin)]
+            # Telemetry for SQL-side cast failures — same event kind as
+            # the Polars-side scanner emits.
+            try:
+                import asyncio as _asyncio
+                from dig.api.events import EventKinds, emit_event
+
+                async def _emit_one() -> None:
+                    await emit_event(
+                        EventKinds.DATA_NAN_PRODUCED,
+                        run_id=run_id, pipeline_id=p.id,
+                        node_id=node.id, step_id=step.id,
+                        column=source_col, cause="cast_failure",
+                        source_column=source_col, count=len(indices),
+                    )
+
+                try:
+                    from dig.jobs.manager import main_loop as _main_loop
+                    api_loop = _main_loop()
+                except Exception:
+                    api_loop = None
+                if api_loop is not None and api_loop.is_running():
+                    _asyncio.run_coroutine_threadsafe(_emit_one(), api_loop)
+                else:
+                    try:
+                        _asyncio.run(_emit_one())
+                    except RuntimeError:
+                        pass
+            except Exception:
+                log.exception("cast-failure event emit failed for node %s", node.id)
 
         # Run per-step validation queries (cast precision, data-quality
         # checks, etc). Each step may opt in by overriding
@@ -678,6 +935,7 @@ def execute(
         return ExecutionResult(
             runId=run_id, outputs=outputs, rowCounts=row_counts, elapsedMs=elapsed_ms,
             artifacts=artifacts, nodeMetrics=node_metrics,
+            nanOrigins=nan_origins_by_node,
         )
     finally:
         # Always release the in-memory DuckDB connection, even on raise.

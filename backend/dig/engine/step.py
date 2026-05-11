@@ -65,16 +65,47 @@ class ColumnLineage:
 
 
 @dataclass
+class NanOrigin:
+    """One column's worth of cells that the step *produced* as NaN / ±Inf.
+
+    Surfaces in the grid as the orange-⚠ NULL variant on the step that
+    produced the failure. The next step sees plain NULL — the executor
+    coerces NaN→None on the producing step's output after capturing this
+    record. See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+
+    Attributes:
+        column: column name in the step's output frame.
+        row_indices: indices (0-based, within the step's output frame)
+            of the cells that were NaN / ±Inf before coercion.
+        cause: how the missing value arose — `"cast_failure"` for a
+            value that didn't survive a type conversion, `"arithmetic_nan"`
+            for `0/0` / `inf-inf` / `log(0)` / etc, `"arithmetic_inf"` for
+            `±inf` from division-by-zero. Tooltip wording collapses the
+            two arithmetic causes into "computation failed"; the field
+            is kept distinct for telemetry.
+        source_column: for `cast_failure`, the pre-cast column name;
+            `None` otherwise.
+    """
+    column: str
+    row_indices: list[int]
+    cause: str  # "cast_failure" | "arithmetic_nan" | "arithmetic_inf"
+    source_column: str | None = None
+
+
+@dataclass
 class PolarsResult:
     """Returned by Step.execute_polars().
 
     `output` is the DataFrame that flows downstream (or simply the input
     passed through, for sink-style steps). `artifacts` is a free-form list of
     files / tables the step wrote — surfaced in the run record for the UI to
-    show.
+    show. `nan_origins` is populated by the executor's post-step scanner
+    (steps may pre-populate it for `cast_failure` cases the scanner can't
+    detect — Int/Bool casts that produce NULL directly, not NaN).
     """
     output: "pl.DataFrame"
     artifacts: list[dict[str, Any]] = field(default_factory=list)
+    nan_origins: list[NanOrigin] = field(default_factory=list)
 
 
 class Step(ABC):
@@ -190,6 +221,28 @@ class Step(ABC):
             )
             for c in cols
         }
+
+    def nan_origin_sql(
+        self,
+        params: dict[str, Any],
+        inputs: dict[str, str],
+    ) -> tuple[str, str] | None:
+        """Optional. For SQL-engine steps that turn non-null source values
+        into NULL outputs (the classic cast-failure case): return
+        ``(column_name, sql_query)`` where the query selects the
+        zero-based row indices of failing rows in the step's input frame.
+
+        The executor compiles the upstream CTE chain, appends this query,
+        and converts the resulting row indices into a `NanOrigin` with
+        `cause="cast_failure"` and the appropriate `source_column`.
+
+        Returns None to skip — most steps don't change types and don't
+        need this. Polars-engine steps don't need it either (the
+        executor's post-step scanner catches NaN/±Inf directly).
+
+        See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+        """
+        return None
 
     def validation_sql(
         self,
