@@ -2207,6 +2207,17 @@ export interface components {
                     error?: string;
                 };
             } | null;
+            /** Nanorigins — per-node NaN/cast-failure sidecar (see internal/proposals/NULL_AND_NAN_DISPLAY.md) */
+            nanOrigins?: {
+                [nodeId: string]: Array<{
+                    column: string;
+                    cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
+                    count: number;
+                    row_indices: number[];
+                    truncated: boolean;
+                    source_column?: string;
+                }>;
+            } | null;
             /** Startedat */
             startedAt?: string | null;
             /** Finishedat */

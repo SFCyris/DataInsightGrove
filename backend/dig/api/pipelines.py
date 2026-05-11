@@ -112,6 +112,12 @@ class RunOut(BaseModel):
     # Per-node execution metrics — drives the canvas Layer 1 run-state
     # overlay. Shape: { node_id: { status, rows_out?, elapsed_ms? } }.
     nodeMetrics: dict[str, dict[str, Any]] | None = None
+    # Per-node NaN-origin sidecars — drives the orange-⚠ NULL cell
+    # rendering + column-header ⚠ N badge for cells that became NULL via
+    # a conversion / computation failure on the producing step. Shape:
+    # { node_id: [ {column, row_indices, cause, source_column?, count, truncated}, … ] }.
+    # See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    nanOrigins: dict[str, list[dict[str, Any]]] | None = None
     startedAt: datetime | None = None
     finishedAt: datetime | None = None
     createdAt: datetime
@@ -227,6 +233,7 @@ def _run_out(r: Run) -> RunOut:
         outputPaths=r.output_paths,
         artifacts=r.artifacts,
         nodeMetrics=r.node_metrics,
+        nanOrigins=r.nan_origins,
         startedAt=r.started_at,
         finishedAt=r.finished_at,
         createdAt=r.created_at,

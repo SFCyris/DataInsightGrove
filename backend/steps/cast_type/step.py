@@ -112,6 +112,32 @@ class CastTypeStep(Step):
                 )
         return out
 
+    def nan_origin_sql(
+        self, params: dict[str, Any], inputs: dict[str, str],
+    ) -> tuple[str, str] | None:
+        """Row-index enumerator for cells that became NULL via TRY_CAST.
+
+        Returns (column_name, sql) where the SQL produces a single column
+        `row_index` of zero-based positions. The executor calls this on
+        the upstream CTE chain, converts the rows into a `NanOrigin` with
+        `cause="cast_failure"`, and attaches it to the producing node.
+        """
+        col = params.get("column")
+        target = params.get("targetType")
+        if not col or not target or target not in _TYPE_TO_SQL:
+            return None
+        src = inputs.get("in")
+        if not src:
+            return None
+        col_q = quote_ident(col)
+        sql_type = _TYPE_TO_SQL[target]
+        sql = (
+            f"SELECT (row_number() OVER () - 1) AS row_index FROM {src} "
+            f"WHERE {col_q} IS NOT NULL "
+            f"AND TRY_CAST({col_q} AS {sql_type}) IS NULL"
+        )
+        return (col, sql)
+
     def validation_sql(self, params: dict[str, Any], inputs: dict[str, str]) -> str | None:
         """Count cast outcomes by comparing pre-cast input to a re-applied
         TRY_CAST. The executor runs this against the upstream CTE chain

@@ -102,6 +102,7 @@ class JobManager:
                 output_paths=list(result.outputs.values()),
                 artifacts=result.artifacts or None,
                 node_metrics=result.nodeMetrics or None,
+                nan_origins=result.nanOrigins or None,
             )
             await hub.publish(f"run:{run_id}", {
                 "status": "succeeded",
@@ -111,6 +112,7 @@ class JobManager:
                 "elapsedMs": result.elapsedMs,
                 "artifacts": result.artifacts,
                 "nodeMetrics": result.nodeMetrics,
+                "nanOrigins": result.nanOrigins,
             })
             await self._fire_webhooks(pipeline, {
                 "runId": run_id,
