@@ -22,7 +22,7 @@ from dig.engine.pipeline import (
     Pipeline,
     Reference,
 )
-from dig.storage.db import SessionLocal, init_db
+from dig.storage import db as db_mod  # noqa: F401  (used inside async fns via db_mod.SessionLocal)
 from dig.storage.models import Pipeline as PipelineRow
 
 
@@ -60,7 +60,7 @@ def fresh_db(tmp_path, monkeypatch):
 def _save_pipeline(p: Pipeline) -> str:
     """Persist a pipeline doc to the DB; returns id."""
     async def _go():
-        async with SessionLocal() as session:
+        async with db_mod.SessionLocal() as session:
             row = PipelineRow(
                 id=p.id, name=p.name, document=p.model_dump(by_alias=True), etag=1,
             )
@@ -93,7 +93,7 @@ def test_subpipeline_cycle_self_reference(csv_path, monkeypatch, tmp_path):
 
     # Now patch the saved doc to ADD a subpipeline node referencing itself.
     async def _patch():
-        async with SessionLocal() as session:
+        async with db_mod.SessionLocal() as session:
             row = await session.get(PipelineRow, pid)
             doc = dict(row.document)
             doc["nodes"] = doc.get("nodes", []) + [{
@@ -111,7 +111,7 @@ def test_subpipeline_cycle_self_reference(csv_path, monkeypatch, tmp_path):
 
     # Re-load + execute. Should raise (or fail run) cleanly, not recurse.
     async def _load_and_run():
-        async with SessionLocal() as session:
+        async with db_mod.SessionLocal() as session:
             row = await session.get(PipelineRow, pid)
             return Pipeline.model_validate(row.document)
 

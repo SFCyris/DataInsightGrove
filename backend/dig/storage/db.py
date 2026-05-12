@@ -65,24 +65,64 @@ async def init_db() -> None:
     # Additive patches — safe to re-run.
     patches: list[tuple[str, str, str]] = [
         # (table, column, "<col_name> <type>")
-        ("datasets",         "annotations",  "annotations JSON"),
-        ("runs",             "artifacts",    "artifacts JSON"),
-        ("runs",             "node_metrics", "node_metrics JSON"),
-        ("pipeline_history", "run_id",       "run_id VARCHAR(26)"),
+        ("datasets",         "annotations",     "annotations JSON"),
+        ("runs",             "artifacts",       "artifacts JSON"),
+        ("runs",             "node_metrics",    "node_metrics JSON"),
+        ("runs",             "nan_origins",     "nan_origins JSON"),
+        ("pipeline_history", "run_id",          "run_id VARCHAR(26)"),
+        # Pre-1.0 enterprise-anticipatory columns — always NULL in OSS / single-user.
+        # Lockdown of the OSS<->Enterprise migration story; see
+        # internal/TIER_ARCHITECTURE.md § 4.2 and
+        # internal/PLG_AND_ENTERPRISE_STRATEGY.md.
+        ("datasets",         "owner_id",        "owner_id VARCHAR(64)"),
+        ("datasets",         "org_id",          "org_id VARCHAR(64)"),
+        ("datasets",         "tenant_id",       "tenant_id VARCHAR(64)"),
+        ("datasets",         "created_by",      "created_by VARCHAR(64)"),
+        ("datasets",         "updated_by",      "updated_by VARCHAR(64)"),
+        ("datasets",         "metadata",        "metadata JSON"),
+        ("datasets",         "extensions",      "extensions JSON"),
+        ("pipelines",        "owner_id",        "owner_id VARCHAR(64)"),
+        ("pipelines",        "org_id",          "org_id VARCHAR(64)"),
+        ("pipelines",        "tenant_id",       "tenant_id VARCHAR(64)"),
+        ("pipelines",        "created_by",      "created_by VARCHAR(64)"),
+        ("pipelines",        "updated_by",      "updated_by VARCHAR(64)"),
+        ("pipelines",        "metadata",        "metadata JSON"),
+        ("pipelines",        "extensions",      "extensions JSON"),
+        ("runs",             "owner_id",        "owner_id VARCHAR(64)"),
+        ("runs",             "org_id",          "org_id VARCHAR(64)"),
+        ("runs",             "tenant_id",       "tenant_id VARCHAR(64)"),
+        ("runs",             "triggered_by",    "triggered_by VARCHAR(64)"),
+        ("runs",             "bytes_scanned",   "bytes_scanned INTEGER"),
+        ("runs",             "compute_seconds", "compute_seconds FLOAT"),
+        ("runs",             "cost_usd",        "cost_usd FLOAT"),
+        ("runs",             "metadata",        "metadata JSON"),
+        ("runs",             "extensions",      "extensions JSON"),
     ]
+    import logging as _logging
+    _patch_log = _logging.getLogger(__name__)
     async with engine.begin() as conn:
         for table, column, decl in patches:
             res = await conn.exec_driver_sql(f"PRAGMA table_info({table})")
             existing = {row[1] for row in res.fetchall()}
-            if column not in existing:
-                try:
-                    await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {decl}")
-                except Exception:
-                    # Best-effort: log but don't crash on startup.
-                    import logging
-                    logging.getLogger(__name__).exception(
-                        "could not patch %s.%s — please reset data/ if errors persist", table, column
+            if column in existing:
+                continue
+            try:
+                await conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {decl}")
+            except Exception as e:
+                # Concurrent-boot race: two uvicorn workers may both pass
+                # the existence check then both ALTER. SQLite raises
+                # "duplicate column name" on the loser. Treat that one
+                # specific error as benign (the column exists now); other
+                # errors still log + continue per the additive contract.
+                msg = str(e).lower()
+                if "duplicate column" in msg or "already exists" in msg:
+                    _patch_log.debug(
+                        "patch %s.%s: lost race to another boot, column already added", table, column,
                     )
+                    continue
+                _patch_log.exception(
+                    "could not patch %s.%s — please reset data/ if errors persist", table, column,
+                )
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:

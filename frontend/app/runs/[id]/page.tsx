@@ -412,13 +412,15 @@ function OutputCard({
   );
 }
 
-// Tiny useState wrapper named differently to avoid conflicting with the
-// hook we already imported.
+// Tiny useState wrapper. Originally there was a second `import { useState
+// as useStateImpl } from "react"` floating below this function that both
+// duplicated the top-of-file React import AND violated tsc's "imports
+// must precede declarations" rule. Use the already-imported `useState`
+// directly — the renaming was vestigial.
 function useMemoState<T>(initial: T): [T, (v: T | ((p: T) => T)) => void] {
-  const [v, setV] = useStateImpl<T>(initial);
+  const [v, setV] = useState<T>(initial);
   return [v, setV];
 }
-import { useState as useStateImpl } from "react";
 
 function PreviewRows({ runId, outputId }: { runId: string; outputId: string }) {
   const q = useQuery({

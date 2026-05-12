@@ -1146,14 +1146,15 @@ async def seed_demo_bundle(
     overwrite: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Seed the three demo pipelines used by the home page's "🌱 Try with
+    """Seed the four demo pipelines used by the home page's "🌱 Try with
     sample data" button: a one-click overview, a 30-step healthcare
-    clinical-analysis pipeline, and a housing pipeline that ends in an
-    interactive ``export_to_map`` output.
+    clinical-analysis pipeline, a housing pipeline that ends in an
+    interactive ``export_to_map`` output, and a timestamped-report
+    pipeline showcasing the variable-templating surface.
 
     Idempotent on datasets (looked up by name) but pipelines are recreated
     each time. The ``overwrite`` flag controls what happens when any of the
-    three demo pipelines already exists:
+    four demo pipelines already exists:
 
       - ``overwrite=false`` (default) → 409 with ``{ existing: [name, ...] }``
         so the frontend can show a confirm dialog.
@@ -2839,10 +2840,12 @@ async def _ws_check_auth(ws: WebSocket) -> bool:
     accepts. Returns True if the connection is allowed to proceed.
     """
     import secrets as _secrets
-    expected = os.environ.get("DIG_AUTH_TOKEN") or None
+    from dig.api.main import _resolve_auth_token
+    expected = _resolve_auth_token()
     if expected is None:
-        # No token configured → allow (matches HTTP-side behavior on
-        # loopback-bound dev installs).
+        # No token configured (or blank-string, which logs a warning at
+        # startup) → allow. Matches HTTP-side behavior on loopback-bound
+        # dev installs.
         return True
     supplied = ws.query_params.get("token") or ""
     if not _secrets.compare_digest(supplied, expected):

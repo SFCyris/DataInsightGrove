@@ -55,6 +55,55 @@ _WKT_POINT_RE = re.compile(
 )
 
 
+# Pen-tester round-2: marker_color / line_color reach the HTML artifact through
+# raw f-string interpolation (`{line_color}` inside `'…'`) AND through
+# matplotlib's `color=` kwarg. Both surfaces accept any string the user
+# supplies — including `'+fetch('/api/datasets',{headers:...}).then(...)+'`
+# which slips out of the JS string literal and runs in the iframe origin.
+# Lock down to a strict CSS-color allow-list before either render path
+# sees the value. Hex / rgb() / rgba() / hsl() / hsla() + the small set of
+# CSS named colours we'd actually ship as a default.
+_COLOR_HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+_COLOR_RGB_RE = re.compile(
+    r"^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*"
+    r"(?:,\s*(?:1(?:\.0+)?|0?\.\d+|0)\s*)?\)$"
+)
+_COLOR_HSL_RE = re.compile(
+    r"^hsla?\(\s*\d{1,3}(?:\.\d+)?\s*,\s*\d{1,3}(?:\.\d+)?%\s*,\s*\d{1,3}(?:\.\d+)?%\s*"
+    r"(?:,\s*(?:1(?:\.0+)?|0?\.\d+|0)\s*)?\)$"
+)
+_COLOR_NAMED = frozenset({
+    # Limited to the common safe set + a handful DIG's defaults touch.
+    "black", "white", "red", "green", "blue", "yellow", "orange", "purple",
+    "pink", "brown", "gray", "grey", "cyan", "magenta", "lime", "navy",
+    "teal", "olive", "maroon", "silver", "gold", "violet", "indigo",
+    "transparent", "currentcolor",
+})
+
+
+def _validate_css_color(value: Any, *, fallback: str) -> str:
+    """Return value if it parses as a safe CSS color, otherwise fallback.
+
+    Defence-in-depth: even a value that *parses* is then JS-string-escaped
+    by `_js_safe_json` — but the escape can't help if a future renderer
+    interpolates the value bare. Validation is the structural fix.
+    """
+    if not isinstance(value, str):
+        return fallback
+    s = value.strip()
+    if not s:
+        return fallback
+    if _COLOR_HEX_RE.match(s):
+        return s
+    if _COLOR_RGB_RE.match(s):
+        return s
+    if _COLOR_HSL_RE.match(s):
+        return s
+    if s.lower() in _COLOR_NAMED:
+        return s.lower()
+    return fallback
+
+
 def _parse_pair(raw: Any, fmt: str) -> tuple[float, float] | None:
     """Parse a location string into (lat, lon).
 
@@ -201,6 +250,7 @@ def _emit_html(
     marker_color: str,
     marker_radius: int,
     tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
 ) -> str:
     """Return a self-contained HTML document with a Leaflet map.
 
@@ -684,6 +734,7 @@ def _emit_png(
     marker_color: str,
     marker_radius: int,
     tile_provider: str = "carto-light",
+    overlay_polygons: list[bytes] | None = None,
 ) -> None:
     """Render a static PNG with a real basemap behind the points.
 
@@ -746,6 +797,426 @@ def _emit_png(
     plt.close(fig)
 
 
+# ---- Mode-specific extractors --------------------------------------------
+
+def _extract_polygons(df: pl.DataFrame, geom_col: str) -> list[bytes]:
+    """Pull WKB-bytes geometry blobs out of a polygon column. Skips
+    None entries silently."""
+    if geom_col not in df.columns:
+        return []
+    return [b for b in df.get_column(geom_col).to_list() if b is not None]
+
+
+def _extract_polygons_with_values(
+    df: pl.DataFrame, geom_col: str | None, value_col: str | None,
+) -> list[tuple[bytes, float | None]]:
+    """For choropleth: paired (polygon WKB, numeric value)."""
+    if not geom_col or geom_col not in df.columns:
+        raise ValueError(
+            "export_to_map (choropleth): geometry_col is required",
+        )
+    geoms = df.get_column(geom_col).to_list()
+    if value_col and value_col in df.columns:
+        vals = df.get_column(value_col).to_list()
+    else:
+        vals = [None] * len(geoms)
+    out: list[tuple[bytes, float | None]] = []
+    for g, v in zip(geoms, vals):
+        if g is None:
+            continue
+        try:
+            out.append((g, float(v) if v is not None else None))
+        except (TypeError, ValueError):
+            out.append((g, None))
+    return out
+
+
+def _extract_arcs(
+    df: pl.DataFrame,
+    o_lat: str | None, o_lon: str | None,
+    d_lat: str | None, d_lon: str | None,
+) -> list[tuple[float, float, float, float]]:
+    """For arc mode: (origin_lat, origin_lon, dest_lat, dest_lon) tuples,
+    skipping rows with missing coords."""
+    for name, col in (("origin_lat_col", o_lat), ("origin_lon_col", o_lon),
+                       ("dest_lat_col", d_lat), ("dest_lon_col", d_lon)):
+        if not col:
+            raise ValueError(f"export_to_map (arc): {name} is required")
+        if col not in df.columns:
+            raise ValueError(f"export_to_map (arc): column {col!r} not found")
+    olats = df.get_column(o_lat).to_list()
+    olons = df.get_column(o_lon).to_list()
+    dlats = df.get_column(d_lat).to_list()
+    dlons = df.get_column(d_lon).to_list()
+    out: list[tuple[float, float, float, float]] = []
+    for ola, olo, dla, dlo in zip(olats, olons, dlats, dlons):
+        if None in (ola, olo, dla, dlo):
+            continue
+        try:
+            out.append((float(ola), float(olo), float(dla), float(dlo)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+# ---- Overlay helpers (used by both base modes + new modes) --------------
+
+def _polygons_to_geojson(polys: list[bytes]) -> str:
+    """Convert a list of WKB-bytes polygons to a GeoJSON FeatureCollection
+    string. Used as the data payload for L.geoJSON in the HTML output."""
+    from shapely import from_wkb
+    features = []
+    for blob in polys:
+        try:
+            geom = from_wkb(blob)
+        except Exception:
+            continue
+        features.append({
+            "type": "Feature",
+            "properties": {},
+            "geometry": json.loads(_geom_to_geojson_str(geom)),
+        })
+    return json.dumps({"type": "FeatureCollection", "features": features})
+
+
+def _geom_to_geojson_str(geom) -> str:
+    from shapely import to_geojson
+    return to_geojson(geom)
+
+
+def _draw_polygons_on_axes(ax, polys: list[bytes], color: str = "#374151") -> None:
+    """Draw outlined polygons on a matplotlib axes (for PNG output).
+    color defaults to slate-700 so overlays read on light + dark basemaps."""
+    if not polys:
+        return
+    from shapely import from_wkb
+    from matplotlib.patches import Polygon as MplPolygon
+    from matplotlib.collections import PatchCollection
+    patches = []
+    for blob in polys:
+        try:
+            geom = from_wkb(blob)
+        except Exception:
+            continue
+        # Handle both Polygon and MultiPolygon.
+        geoms = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+        for g in geoms:
+            if g.exterior is None:
+                continue
+            xy = list(g.exterior.coords)
+            patches.append(MplPolygon(xy, closed=True))
+    if patches:
+        coll = PatchCollection(
+            patches, facecolor="none", edgecolor=color, linewidth=1.2,
+        )
+        ax.add_collection(coll)
+
+
+def _color_scale_to_leaflet(scale: str) -> list[str]:
+    """5-stop hex ramp for HTML choropleth / heat. Mirrors matplotlib
+    sequential colormaps without requiring matplotlib to be loaded just
+    to render HTML."""
+    ramps = {
+        "viridis": ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
+        "magma":   ["#000004", "#3b0f70", "#8c2981", "#de4968", "#fcfdbf"],
+        "cividis": ["#00224e", "#395d9c", "#7c7b78", "#bcaa7e", "#fee838"],
+        "plasma":  ["#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"],
+        "Greens":  ["#f7fcf5", "#c7e9c0", "#74c476", "#238b45", "#00441b"],
+        "Blues":   ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"],
+        "Reds":    ["#fff5f0", "#fcbba1", "#fb6a4a", "#cb181d", "#67000d"],
+        "OrRd":    ["#fff7ec", "#fdd49e", "#fc8d59", "#d7301f", "#7f0000"],
+        "YlGnBu":  ["#ffffd9", "#c7e9b4", "#41b6c4", "#225ea8", "#081d58"],
+    }
+    return ramps.get(scale, ramps["viridis"])
+
+
+# ---- Choropleth ---------------------------------------------------------
+
+def _emit_html_choropleth(
+    polygons_with_values: list[tuple[bytes, float | None]],
+    title: str, width: int, height: int, color_scale: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> str:
+    """Color-coded polygon map. The polygon's value column drives the
+    fill color via a 5-stop sequential ramp; missing values render
+    grey. All data embedded inline."""
+    from shapely import from_wkb, to_geojson
+    features = []
+    values = [v for _, v in polygons_with_values if v is not None]
+    vmin = min(values) if values else 0.0
+    vmax = max(values) if values else 1.0
+    for blob, v in polygons_with_values:
+        try:
+            geom = from_wkb(blob)
+            geo = json.loads(to_geojson(geom))
+        except Exception:
+            continue
+        features.append({
+            "type": "Feature",
+            "properties": {"value": v},
+            "geometry": geo,
+        })
+    payload = {
+        "type": "FeatureCollection",
+        "features": features,
+        "vmin": vmin, "vmax": vmax,
+        "ramp": _color_scale_to_leaflet(color_scale),
+    }
+    safe = json.dumps(payload).replace("</", "<\\/")
+    overlay_geojson = (
+        _polygons_to_geojson(overlay_polygons or [])
+        .replace("</", "<\\/")
+    )
+    tile_url = _TILE_BASEMAPS.get(tile_provider, _TILE_BASEMAPS["carto-light"])
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{_escape(title)}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>html,body,#m{{height:100%;width:100%;margin:0;padding:0}}.legend{{background:white;padding:6px 10px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.2);font:12px system-ui}}</style>
+</head><body><div id="m"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const data = {safe};
+const overlayData = {overlay_geojson};
+const map = L.map('m');
+L.tileLayer('{tile_url}', {{maxZoom:18, attribution:'© OpenStreetMap contributors'}}).addTo(map);
+function colorFor(v) {{
+  if (v === null || v === undefined) return '#cccccc';
+  const t = Math.max(0, Math.min(1, (v - data.vmin) / Math.max(1e-9, data.vmax - data.vmin)));
+  const idx = Math.min(data.ramp.length - 1, Math.floor(t * data.ramp.length));
+  return data.ramp[idx];
+}}
+const layer = L.geoJSON(data, {{
+  style: f => ({{ fillColor: colorFor(f.properties.value), weight: 1, color: '#374151', fillOpacity: 0.7 }}),
+  onEachFeature: (f, l) => l.bindTooltip(`value: ${{f.properties.value}}`)
+}}).addTo(map);
+if (overlayData.features && overlayData.features.length) {{
+  L.geoJSON(overlayData, {{ style: {{ fillOpacity: 0, color: '#374151', weight: 1.2 }} }}).addTo(map);
+}}
+const b = layer.getBounds();
+if (b.isValid()) map.fitBounds(b, {{padding:[20,20]}});
+else map.setView([20, 0], 2);
+const lg = L.control({{position:'bottomright'}});
+lg.onAdd = () => {{ const d = L.DomUtil.create('div','legend'); d.innerHTML = '<b>{_escape(title)}</b><br/>min: ' + data.vmin.toFixed(2) + ' &nbsp; max: ' + data.vmax.toFixed(2); return d; }};
+lg.addTo(map);
+</script></body></html>"""
+
+
+def _emit_png_choropleth(
+    polygons_with_values: list[tuple[bytes, float | None]],
+    out_path: Path, title: str, width: int, height: int,
+    color_scale: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> None:
+    """Static PNG choropleth via matplotlib. Polygons are filled with
+    the chosen sequential colormap; bbox auto-fits."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cm
+    from matplotlib.patches import Polygon as MplPolygon
+    from matplotlib.collections import PatchCollection
+    import numpy as np
+    from shapely import from_wkb
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    if not polygons_with_values:
+        ax.text(0.5, 0.5, "(no polygons)", ha="center", va="center")
+        fig.savefig(out_path, bbox_inches="tight")
+        plt.close(fig)
+        return
+    patches: list[MplPolygon] = []
+    fill_values: list[float] = []
+    bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
+    for blob, v in polygons_with_values:
+        try:
+            geom = from_wkb(blob)
+        except Exception:
+            continue
+        geoms = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+        for g in geoms:
+            if g.exterior is None:
+                continue
+            xy = list(g.exterior.coords)
+            patches.append(MplPolygon(xy, closed=True))
+            fill_values.append(v if v is not None else float("nan"))
+            minx, miny, maxx, maxy = g.bounds
+            bbox[0] = min(bbox[0], minx); bbox[1] = min(bbox[1], miny)
+            bbox[2] = max(bbox[2], maxx); bbox[3] = max(bbox[3], maxy)
+    cmap = cm.get_cmap(color_scale)
+    arr = np.array(fill_values, dtype=float)
+    valid = ~np.isnan(arr)
+    if valid.any():
+        vmin, vmax = float(np.nanmin(arr)), float(np.nanmax(arr))
+        norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
+    else:
+        norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
+    coll = PatchCollection(patches, cmap=cmap, edgecolor="#374151", linewidth=0.5)
+    coll.set_array(arr)
+    coll.set_norm(norm)
+    ax.add_collection(coll)
+    _draw_polygons_on_axes(ax, overlay_polygons or [])
+    if bbox[0] != float("inf"):
+        pad_x = max(0.5, (bbox[2] - bbox[0]) * 0.05)
+        pad_y = max(0.5, (bbox[3] - bbox[1]) * 0.05)
+        ax.set_xlim(bbox[0] - pad_x, bbox[2] + pad_x)
+        ax.set_ylim(bbox[1] - pad_y, bbox[3] + pad_y)
+    ax.set_aspect("equal")
+    ax.set_title(title)
+    ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
+    if valid.any():
+        fig.colorbar(coll, ax=ax, shrink=0.7)
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ---- Heat-on-map --------------------------------------------------------
+
+def _emit_html_heat(
+    points: list[dict[str, Any]],
+    title: str, width: int, height: int, color_scale: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> str:
+    """Kernel-density heat overlay via leaflet.heat plugin (CDN-loaded)."""
+    pts_payload = [[p["lat"], p["lon"], 1] for p in points if "lat" in p and "lon" in p]
+    safe = json.dumps(pts_payload).replace("</", "<\\/")
+    overlay_geojson = (
+        _polygons_to_geojson(overlay_polygons or [])
+        .replace("</", "<\\/")
+    )
+    tile_url = _TILE_BASEMAPS.get(tile_provider, _TILE_BASEMAPS["carto-light"])
+    ramp = _color_scale_to_leaflet(color_scale)
+    grad_obj = {f"{i / (len(ramp) - 1):.2f}": c for i, c in enumerate(ramp)}
+    grad_json = json.dumps(grad_obj)
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{_escape(title)}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>html,body,#m{{height:100%;width:100%;margin:0;padding:0}}</style>
+</head><body><div id="m"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script>
+const pts = {safe};
+const overlayData = {overlay_geojson};
+const map = L.map('m');
+L.tileLayer('{tile_url}', {{maxZoom:18, attribution:'© OpenStreetMap contributors'}}).addTo(map);
+const heat = L.heatLayer(pts, {{ radius: 25, blur: 15, gradient: {grad_json} }}).addTo(map);
+if (overlayData.features && overlayData.features.length) {{
+  L.geoJSON(overlayData, {{ style: {{ fillOpacity: 0, color: '#374151', weight: 1.2 }} }}).addTo(map);
+}}
+if (pts.length) {{
+  const lats = pts.map(p => p[0]); const lons = pts.map(p => p[1]);
+  map.fitBounds([[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]], {{padding:[20,20]}});
+}} else {{ map.setView([20, 0], 2); }}
+</script></body></html>"""
+
+
+def _emit_png_heat(
+    points: list[dict[str, Any]],
+    out_path: Path, title: str, width: int, height: int,
+    color_scale: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> None:
+    """Static PNG heatmap via 2D histogram."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    lats = [p["lat"] for p in points if "lat" in p and "lon" in p]
+    lons = [p["lon"] for p in points if "lon" in p and "lat" in p]
+    if not lats:
+        ax.text(0.5, 0.5, "(no points)", ha="center", va="center")
+        fig.savefig(out_path, bbox_inches="tight")
+        plt.close(fig)
+        return
+    h, xe, ye = np.histogram2d(lons, lats, bins=80)
+    img = ax.imshow(h.T, origin="lower", extent=(xe[0], xe[-1], ye[0], ye[-1]),
+                    cmap=color_scale, aspect="equal", alpha=0.85)
+    _draw_polygons_on_axes(ax, overlay_polygons or [])
+    fig.colorbar(img, ax=ax, shrink=0.7, label="density")
+    ax.set_title(title); ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ---- Arc / origin-destination -------------------------------------------
+
+def _emit_html_arc(
+    arcs: list[tuple[float, float, float, float]],
+    title: str, width: int, height: int, line_color: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> str:
+    """Origin → destination polylines via Leaflet."""
+    safe = json.dumps(arcs).replace("</", "<\\/")
+    overlay_geojson = (
+        _polygons_to_geojson(overlay_polygons or [])
+        .replace("</", "<\\/")
+    )
+    tile_url = _TILE_BASEMAPS.get(tile_provider, _TILE_BASEMAPS["carto-light"])
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{_escape(title)}</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>html,body,#m{{height:100%;width:100%;margin:0;padding:0}}</style>
+</head><body><div id="m"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const arcs = {safe};
+const overlayData = {overlay_geojson};
+const map = L.map('m');
+L.tileLayer('{tile_url}', {{maxZoom:18, attribution:'© OpenStreetMap contributors'}}).addTo(map);
+const allLats = []; const allLons = [];
+arcs.forEach(([oLa, oLo, dLa, dLo]) => {{
+  L.polyline([[oLa, oLo], [dLa, dLo]], {{color: '{line_color}', weight: 1.5, opacity: 0.6}}).addTo(map);
+  L.circleMarker([oLa, oLo], {{radius: 3, color: '{line_color}', fillOpacity: 0.8}}).addTo(map);
+  L.circleMarker([dLa, dLo], {{radius: 4, color: '#374151', fillOpacity: 0.8}}).addTo(map);
+  allLats.push(oLa, dLa); allLons.push(oLo, dLo);
+}});
+if (overlayData.features && overlayData.features.length) {{
+  L.geoJSON(overlayData, {{ style: {{ fillOpacity: 0, color: '#374151', weight: 1.2 }} }}).addTo(map);
+}}
+if (allLats.length) {{
+  map.fitBounds([[Math.min(...allLats), Math.min(...allLons)], [Math.max(...allLats), Math.max(...allLons)]], {{padding:[20,20]}});
+}} else {{ map.setView([20, 0], 2); }}
+</script></body></html>"""
+
+
+def _emit_png_arc(
+    arcs: list[tuple[float, float, float, float]],
+    out_path: Path, title: str, width: int, height: int,
+    line_color: str, tile_provider: str,
+    overlay_polygons: list[bytes] | None = None,
+) -> None:
+    """Static PNG arcs — straight lines (great-circle interpolation
+    would need geographiclib; straight-line is the conventional
+    map-projection compromise for static images)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    if not arcs:
+        ax.text(0.5, 0.5, "(no arcs)", ha="center", va="center")
+        fig.savefig(out_path, bbox_inches="tight")
+        plt.close(fig)
+        return
+    lats: list[float] = []; lons: list[float] = []
+    for ola, olo, dla, dlo in arcs:
+        ax.plot([olo, dlo], [ola, dla], color=line_color, alpha=0.5, linewidth=0.8)
+        ax.scatter([olo], [ola], c=line_color, s=8, alpha=0.8)
+        ax.scatter([dlo], [dla], c="#374151", s=12, alpha=0.8)
+        lats.extend([ola, dla]); lons.extend([olo, dlo])
+    _draw_polygons_on_axes(ax, overlay_polygons or [])
+    pad_x = max(0.5, (max(lons) - min(lons)) * 0.05)
+    pad_y = max(0.5, (max(lats) - min(lats)) * 0.05)
+    ax.set_xlim(min(lons) - pad_x, max(lons) + pad_x)
+    ax.set_ylim(min(lats) - pad_y, max(lats) + pad_y)
+    ax.set_aspect("equal")
+    ax.set_title(title); ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
 # ---- Step ---------------------------------------------------------------
 
 class ExportToMapStep(Step):
@@ -757,6 +1228,10 @@ class ExportToMapStep(Step):
     ) -> PolarsResult:
         df = inputs["in"]
 
+        mode = (params.get("mode") or "points").lower()
+        if mode not in ("points", "choropleth", "heat", "arc"):
+            raise ValueError(f"export_to_map: unknown mode '{mode}'")
+
         fmt = (params.get("format") or "lat_lon").lower()
         if fmt not in ("lat_lon", "lon_lat", "wkt_point", "separate_columns"):
             raise ValueError(f"export_to_map: unknown format '{fmt}'")
@@ -766,14 +1241,33 @@ class ExportToMapStep(Step):
         lon_col = (params.get("lon_col") or "").strip() or None
         name_col = (params.get("name_col") or "").strip() or None
         comment_col = (params.get("comment_col") or "").strip() or None
+        # New mode-specific column refs.
+        geometry_col = (params.get("geometry_col") or "").strip() or None
+        value_col = (params.get("value_col") or "").strip() or None
+        origin_lat_col = (params.get("origin_lat_col") or "").strip() or None
+        origin_lon_col = (params.get("origin_lon_col") or "").strip() or None
+        dest_lat_col = (params.get("dest_lat_col") or "").strip() or None
+        dest_lon_col = (params.get("dest_lon_col") or "").strip() or None
+        color_scale = (params.get("color_scale") or "viridis").strip()
+        overlay_polygon_col = (params.get("overlay_polygon_col") or "").strip() or None
 
         max_points = int(params.get("max_points") or 20_000)
         sample_df = df
         if df.height > max_points:
             sample_df = df.sample(n=max_points, seed=42)
 
+        # Per-mode data extraction. Points mode reuses the original
+        # _extract_points helper. Other modes build their own payloads
+        # below before rendering.
         points = _extract_points(
             sample_df, fmt, location, lat_col, lon_col, name_col, comment_col,
+        ) if mode in ("points", "heat") else []
+
+        # Polygon-overlay layer — shared across every base mode. Built
+        # once so each renderer can draw it on top.
+        overlay_polygons = (
+            _extract_polygons(sample_df, overlay_polygon_col)
+            if overlay_polygon_col else []
         )
 
         title = params.get("title") or self.id
@@ -783,7 +1277,14 @@ class ExportToMapStep(Step):
 
         width = int(params.get("width") or 1200)
         height = int(params.get("height") or 800)
-        marker_color = (params.get("marker_color") or "#10b981").strip()
+        # Round-2 SEC: validate against the CSS-color allow-list — anything
+        # else falls back to the DIG default rather than reaching the
+        # raw-f-string interpolation in the HTML emit functions. Both the
+        # marker (points/heat) AND line (arc) emit paths call this same
+        # variable, so one gate locks both.
+        marker_color = _validate_css_color(
+            params.get("marker_color"), fallback="#10b981",
+        )
         marker_radius = int(params.get("marker_radius") or 6)
         tile_provider = (params.get("tile_provider") or "carto-light").lower()
 
@@ -830,24 +1331,61 @@ class ExportToMapStep(Step):
         secondary_format = "png" if format_out == "html" else "html"
         secondary_path = primary_path.with_suffix(f".{secondary_format}")
 
-        # Render both. HTML first because it's cheap; PNG triggers
-        # matplotlib import which is heavier but unavoidable for the
-        # static fallback.
-        html_content = _emit_html(
-            points, title, width, height, marker_color, marker_radius, tile_provider,
-        )
-        if format_out == "html":
-            primary_path.write_text(html_content, encoding="utf-8")
-            _emit_png(
-                points, secondary_path, title, width, height,
+        # Per-mode HTML + PNG rendering. Each renderer accepts the
+        # extracted-once overlay_polygons list so the multi-layer case
+        # (e.g. markers over named zones) works uniformly across modes.
+        if mode == "points":
+            html_content = _emit_html(
+                points, title, width, height, marker_color, marker_radius, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+            png_render = lambda path: _emit_png(
+                points, path, title, width, height,
                 marker_color, marker_radius, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+        elif mode == "choropleth":
+            polygons_with_values = _extract_polygons_with_values(
+                sample_df, geometry_col, value_col,
+            )
+            html_content = _emit_html_choropleth(
+                polygons_with_values, title, width, height, color_scale, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+            png_render = lambda path: _emit_png_choropleth(
+                polygons_with_values, path, title, width, height, color_scale, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+        elif mode == "heat":
+            html_content = _emit_html_heat(
+                points, title, width, height, color_scale, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+            png_render = lambda path: _emit_png_heat(
+                points, path, title, width, height, color_scale, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+        elif mode == "arc":
+            arcs = _extract_arcs(
+                sample_df, origin_lat_col, origin_lon_col, dest_lat_col, dest_lon_col,
+            )
+            html_content = _emit_html_arc(
+                arcs, title, width, height, marker_color, tile_provider,
+                overlay_polygons=overlay_polygons,
+            )
+            png_render = lambda path: _emit_png_arc(
+                arcs, path, title, width, height, marker_color, tile_provider,
+                overlay_polygons=overlay_polygons,
             )
         else:
+            raise ValueError(f"export_to_map: unknown mode '{mode}'")
+
+        if format_out == "html":
+            primary_path.write_text(html_content, encoding="utf-8")
+            png_render(secondary_path)
+        else:
             secondary_path.write_text(html_content, encoding="utf-8")
-            _emit_png(
-                points, primary_path, title, width, height,
-                marker_color, marker_radius, tile_provider,
-            )
+            png_render(primary_path)
 
         # Artifact list — primary first so preview-step (which serves the
         # first 'image' artifact) returns the requested format. The

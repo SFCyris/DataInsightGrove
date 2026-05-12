@@ -823,6 +823,13 @@ export function LiveGrid({
                             <span className="inline-flex items-center gap-1">
                               <span aria-hidden="true">{isNanOrigin ? "⚠" : "◌"}</span>
                               <span>NULL</span>
+                              {/* sr-only carries the state distinction the icon makes
+                                  visually — screen readers would otherwise hear the
+                                  same "NULL" for plain-missing and conversion-failure
+                                  cells, defeating the whole point of two visual variants. */}
+                              <span className="sr-only">
+                                {isNanOrigin ? "(conversion failed in this step)" : "(value not present)"}
+                              </span>
                             </span>
                           ) : (
                             fmt(v, colLogicalType)

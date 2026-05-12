@@ -51,6 +51,16 @@
     "tags": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form connector/author metadata not interpreted by DIG core."
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Namespaced extension fields. Vendors / enterprise / forks attach their own data under a top-level namespace key so future first-party fields never collide."
     }
   }
 }

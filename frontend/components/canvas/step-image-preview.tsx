@@ -139,7 +139,13 @@ export function StepImagePreview({ pipelineId, nodeId, etag, onLoaded, onError }
         <iframe
           title="Live map preview"
           srcDoc={q.data.body}
-          sandbox="allow-scripts allow-same-origin"
+          // Pen-tester round-2 finding: `allow-scripts allow-same-origin`
+          // cancels itself — an XSS in the map artifact (e.g. via a hostile
+          // user-supplied marker_color) could read parent localStorage and
+          // pivot to same-origin endpoints. Drop `allow-same-origin` so the
+          // iframe runs in a null origin: still loads CDN tiles + runs
+          // Leaflet, but is properly isolated from the parent's auth state.
+          sandbox="allow-scripts"
           className="w-full aspect-video min-h-[280px] max-h-[60vh] rounded-lg border border-border shadow-sm bg-white"
         />
         <p className="text-[11px] text-muted-foreground/70 text-center">

@@ -300,10 +300,14 @@ function eligibleSourcesFor(
   dead.add(joinNodeId);
   const out: EligibleSource[] = [];
   for (const d of doc.datasets) {
+    // `d.name` isn't on the strict PipelineDataset type (the schema only
+    // requires `id`/`connector`/`uri`); the demo / older saved pipelines
+    // do still include it in `extra`. Read defensively via a typed cast.
+    const dn = (d as { name?: string }).name;
     out.push({
       id: d.id,
       kind: "dataset",
-      label: datasetLabelByRefId[d.id] ?? d.name ?? d.id,
+      label: datasetLabelByRefId[d.id] ?? dn ?? d.id,
     });
   }
   for (const n of doc.nodes) {
@@ -903,7 +907,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     },
     onSuccess: (resp) => {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
-      toast.success(`📋 Cloned to "${resp.name}"`);
+      // `resp.name` isn't on the openapi-generated Pipeline shape — the
+      // clone endpoint pulls the name out of `document.name`. Cast for the
+      // toast label only; if missing we fall back to the new id.
+      const cloneName = (resp as { name?: string }).name ?? resp.id;
+      toast.success(`📋 Cloned to "${cloneName}"`);
       router.push(`/pipelines/${resp.id}`);
     },
     onError: (e: Error) => toast.error(`Save As failed: ${e.message}`),
@@ -2517,8 +2525,15 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                 // chip when the user is in the WASM live-preview path
                 // — see internal/proposals/NULL_AND_NAN_DISPLAY.md
                 // "Where the implementation will differ" #2.
+                // openapi-typescript widens the per-entry type to
+                // {[k:string]: unknown}[] because the backend Pydantic
+                // model uses `list[dict[str, Any]]`. The runtime shape
+                // is locked by the executor's `_nan_origin_to_dict` and
+                // mirrored by `NanOriginEntry` in live-grid.tsx.
                 preview?.ranLocally === false && focusedId
-                  ? effectiveRun?.nanOrigins?.[focusedId] ?? undefined
+                  ? (effectiveRun?.nanOrigins?.[focusedId] as unknown as
+                      import("@/components/grid/live-grid").NanOriginEntry[]
+                      | undefined)
                   : undefined
               }
               onColumnAction={handleColumnAction}
@@ -2609,7 +2624,13 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                               if (typeof r === "number") n = r;
                               else if (r && typeof r === "object") {
                                 const k = String(fNode.params?.kind ?? "");
-                                n = (k && r[k]) ?? r._default ?? n;
+                                // `(k && r[k])` is `"" | number` because `k`
+                                // is a string. Force-resolve to number; the
+                                // empty-string short-circuit means "fall
+                                // through to default".
+                                const picked = k ? r[k] : undefined;
+                                n = (typeof picked === "number" ? picked : undefined)
+                                  ?? r._default ?? n;
                               }
                               const meta = {
                                 ...(doc.metadata ?? {}),
@@ -2633,7 +2654,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                         <StepImageOrFallback
                           pipelineId={pipelineId}
                           nodeId={fNode.id}
-                          etag={etag}
+                          etag={etag ?? 0}
                           // The fallback receives the actual /preview-step
                           // error (when there is one) so we can pick the
                           // right surface:
@@ -2779,7 +2800,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                         <StepImageOrFallback
                           pipelineId={pipelineId}
                           nodeId={focusedNode.id}
-                          etag={etag}
+                          etag={etag ?? 0}
                           fallback={errorBox}
                         />
                       );

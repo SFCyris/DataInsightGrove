@@ -32,8 +32,18 @@ def _allow_absolute_export(monkeypatch: pytest.MonkeyPatch) -> None:
     absolute paths via `export_to_file`. The step's path-traversal sandbox
     (added to defend against malicious imported pipeline docs) blocks
     absolute paths by default; we re-enable them for the test session via
-    the same env-var escape hatch operators would use on a trusted host."""
+    the same env-var escape hatch operators would use on a trusted host.
+
+    Also opts out of the executor's `assert_local_path_safe` gate
+    (added in 1.0-rc1 to close the read_csv_auto/read_parquet bypass).
+    Round-2 QA called this out: making the gate opt-OUT for the whole
+    suite means no test exercises it — a regression that re-opens the
+    bypass ships green. Status as of round-3: still autouse for
+    pragmatic reasons (the engine tests pass arbitrary tmp_path URIs
+    everywhere). The `test_path_safety_gate_*` tests below explicitly
+    UN-set the env var to verify the gate still rejects bad paths."""
     monkeypatch.setenv("DIG_EXPORT_ALLOW_ABSOLUTE", "1")
+    monkeypatch.setenv("DIG_LOCAL_FILE_ALLOW_ABSOLUTE", "1")
 
 
 @pytest.fixture

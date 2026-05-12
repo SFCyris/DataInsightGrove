@@ -204,20 +204,27 @@ export function setNodeExposedParam(
     ...doc,
     nodes: doc.nodes.map((n) => {
       if (n.id !== nodeId) return n;
-      const ui = (n.ui ?? {}) as { exposedParams?: Record<string, unknown> };
+      // PipelineNode.ui only declares the canvas-render fields (x/y/label/
+      // note) but the saved doc carries `exposedParams` as a free-form
+      // extension. Cast through `unknown` so TS doesn't try to reconcile
+      // the two shapes; the runtime layout is one merged object either way.
+      const ui = (n.ui ?? {}) as unknown as {
+        x?: number; y?: number; label?: string; note?: string;
+        exposedParams?: Record<string, unknown>;
+      };
       const exposed = { ...(ui.exposedParams ?? {}) };
       if (next === null) {
         delete exposed[paramKey];
       } else {
         exposed[paramKey] = next;
       }
-      const nextUi = { ...ui };
+      const nextUi: typeof ui = { ...ui };
       if (Object.keys(exposed).length === 0) {
-        delete (nextUi as { exposedParams?: unknown }).exposedParams;
+        delete nextUi.exposedParams;
       } else {
-        (nextUi as { exposedParams?: unknown }).exposedParams = exposed;
+        nextUi.exposedParams = exposed;
       }
-      return { ...n, ui: nextUi };
+      return { ...n, ui: nextUi as typeof n.ui };
     }),
   };
 }

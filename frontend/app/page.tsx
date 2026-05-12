@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { api, API_BASE, API_TOKEN } from "@/lib/api/client";
 import { useApiBase } from "@/lib/use-api-base";
+import { fmtVersion } from "@/lib/format-version";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { MatrixTreeBackground } from "@/components/matrix-tree-background";
 import { NumberTree3D } from "@/components/number-tree-3d";
@@ -107,7 +108,7 @@ export default function Home() {
   // is steepest at the moment between "I installed it" and "I made
   // something" — collapse that to one click.
   //
-  // The button now seeds three demo pipelines side-by-side via the
+  // The button now seeds four demo pipelines side-by-side via the
   // backend's /pipelines/seed-demo endpoint:
   //   1. customers overview — 1-3 chart pipeline (the original first-run UX)
   //   2. healthcare clinical analysis — 5 datasets, 30+ steps, 5 charts
@@ -325,7 +326,7 @@ export default function Home() {
                 {/* Pulled from the live /health endpoint via the same query
                     the footer uses, so the version always tracks the running
                     backend instead of a hand-typed string drifting over time. */}
-                v{health.data?.version ?? "—"}
+                v{fmtVersion(health.data?.version)}
               </p>
             </div>
             {/* h1 is the product name only; the tagline is a separate
@@ -356,10 +357,10 @@ export default function Home() {
               <div className="text-4xl sm:text-5xl select-none shrink-0" aria-hidden>👋</div>
               <div className="flex-1 min-w-0">
                 <p className="text-base sm:text-lg font-semibold text-emerald-100">
-                  Welcome — your first three demos, one click away.
+                  Welcome — your first four demos, one click away.
                 </p>
                 <p className="text-xs sm:text-sm text-emerald-200/80 leading-relaxed mt-1">
-                  DIG will seed three demos: a one-click 📊 customers overview, a 🏥 healthcare clinical pipeline (5 datasets, 30+ steps), and a 🏘 housing pipeline ending in an interactive 🗺 map. Your first stop is a chart — not a blank canvas.
+                  DIG will seed four demos: a one-click 📊 customers overview, a 🏥 healthcare clinical pipeline (5 datasets, 30+ steps), a 🏘 housing pipeline ending in an interactive 🗺 map, and a 📅 timestamped-report pipeline showcasing the new variable-templating surface. Your first stop is a chart — not a blank canvas.
                 </p>
               </div>
               <Button
@@ -499,7 +500,7 @@ export default function Home() {
             transition={{ ...("transition" in fadeUp ? fadeUp.transition : {}), delay: 0.4 }}
             className="text-xs text-zinc-400/70 pt-6 border-t border-emerald-300/10 flex flex-wrap items-center gap-x-4 gap-y-1"
           >
-            <span>v{health.data?.version ?? "—"}</span>
+            <span>v{fmtVersion(health.data?.version)}</span>
             <span>·</span>
             <span>backend on :{apiPort}</span>
             <span>·</span>

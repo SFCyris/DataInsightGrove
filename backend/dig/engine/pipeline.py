@@ -151,7 +151,11 @@ class Webhook(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
     url: str
-    on: Literal["always", "succeeded", "failed", "triggered"] = "always"
+    # Free-form string (not enum) so vendors / enterprise builds can introduce
+    # new triggers (e.g. "partial_success", "data_quality_failed") without a
+    # schemaVersion bump. Known values: always, succeeded, failed, triggered.
+    # Unknown values are treated as "never" by the OSS reader.
+    on: str = "always"
     secret: str | None = None
     headers: dict[str, str] = Field(default_factory=dict)
     label: str | None = None
@@ -203,6 +207,11 @@ class Pipeline(BaseModel):
     nodes: list[Node] = Field(default_factory=list)
     outputs: list[OutputSpec] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Namespaced extension fields — vendors / enterprise builds attach
+    # their own data under top-level namespace keys (e.g. extensions.acme
+    # .customField) so future first-party fields never collide. The OSS
+    # core treats every namespace except its own as opaque pass-through.
+    extensions: dict[str, Any] = Field(default_factory=dict)
     webhooks: list[Webhook] = Field(default_factory=list)
     # Optional visual node groupings for canvas organization. See
     # NodeGroup. Empty list = no groups (canvas renders flat).

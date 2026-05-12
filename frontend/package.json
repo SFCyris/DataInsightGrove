@@ -1,6 +1,6 @@
 {
   "name": "datainsightgrove-frontend",
-  "version": "0.10.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "description": "DataInsightGrove™ — self-hosted, plugin-first data preparation. Frontend (Next.js 16, React 19, AG Grid, React Flow, DuckDB-WASM).",
   "homepage": "https://github.com/SFCyris/DataInsightGrove",
@@ -18,7 +18,10 @@
     "start": "next start",
     "postinstall": "node scripts/copy-duckdb-wasm.mjs || true",
     "typecheck": "tsc --noEmit",
-    "gen:api": "openapi-typescript http://127.0.0.1:8090/openapi.json -o lib/api/types.ts"
+    "gen:api": "openapi-typescript http://127.0.0.1:8090/openapi.json -o lib/api/types.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
@@ -50,13 +53,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/d3-selection": "^3.0.11",
     "@types/d3-zoom": "^3.0.8",
+    "@types/jsdom": "^28.0.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.6",
+    "jsdom": "^29.1.1",
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.6"
   }
 }

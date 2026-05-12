@@ -118,7 +118,11 @@ async def dispatch(pipeline: Pipeline, payload: dict[str, Any]) -> None:
     if not receivers:
         return
     body = json.dumps(payload, default=str, separators=(",", ":")).encode("utf-8")
-    async with httpx.AsyncClient() as client:
+    # follow_redirects=False is critical defence-in-depth: _assert_url_safe()
+    # is a TOCTOU pre-check on the original URL; a 302 to an internal address
+    # would silently bypass it. Pin explicitly so an httpx default change
+    # doesn't quietly open the SSRF gate.
+    async with httpx.AsyncClient(follow_redirects=False) as client:
         await asyncio.gather(
             *(_post_one(client, h, body) for h in receivers),
             return_exceptions=False,
@@ -134,5 +138,9 @@ async def dispatch_one(hook: Webhook, payload: dict[str, Any]) -> None:
     matches the auto-dispatch case exactly.
     """
     body = json.dumps(payload, default=str, separators=(",", ":")).encode("utf-8")
-    async with httpx.AsyncClient() as client:
+    # Pen-tester round-2: this single-fire path missed the
+    # `follow_redirects=False` pin that the multi-fire `dispatch` got in
+    # round 1. Same SSRF defence-in-depth — without it, a 302 to an
+    # internal address would silently bypass `_assert_url_safe`.
+    async with httpx.AsyncClient(follow_redirects=False) as client:
         await _post_one(client, hook, body)

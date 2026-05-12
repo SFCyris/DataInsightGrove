@@ -451,7 +451,18 @@ def _install_python_deps(requirements: list[str], timeout: int = 300) -> DepInst
     # the install. `--isolated` strips pip's own config files / env vars
     # for the same reason; `--no-input` makes the call non-interactive
     # so a "do you trust this URL?" prompt can't hang the request.
+    # Pen-tester defence-in-depth: validate the index-url scheme so a hostile
+    # operator-set value like `file:///etc/shadow` or `http://internal/...`
+    # can't redirect pip into reading local files / pivoting through the LAN.
+    # Only http(s) accepted.
     index_url = os.environ.get("DIG_PIP_INDEX_URL", "https://pypi.org/simple/")
+    from urllib.parse import urlparse as _urlparse
+    _parsed_index = _urlparse(index_url)
+    if _parsed_index.scheme not in ("http", "https") or not _parsed_index.netloc:
+        raise RuntimeError(
+            f"DIG_PIP_INDEX_URL must be an http(s) URL with a host; "
+            f"got {index_url!r}",
+        )
     cmd = [
         sys.executable, "-m", "pip", "install",
         "--upgrade",
