@@ -49,7 +49,12 @@
     "metadata": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Free-form metadata. Common keys: engineHints, annotations."
+      "description": "Free-form metadata. Common keys: engineHints, annotations, variables."
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Namespaced extension fields. Vendors / enterprise / forks attach their own data under a top-level namespace key (e.g. extensions.acme.customField) so future first-party fields never collide. Treat unknown namespaces as opaque pass-through."
     },
     "webhooks": {
       "type": "array",
@@ -81,8 +86,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_]*$",
-          "description": "Stable identifier within this pipeline. Referenced by node inputs."
+          "pattern": "^[a-z0-9][a-z0-9_:-]*$",
+          "description": "Stable identifier within this pipeline. Referenced by node inputs. Allows lowercase alphanumerics, underscore, hyphen, and colon (for enterprise namespacing like 'org_42:orders')."
         },
         "connector": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
         "connectorVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
@@ -102,8 +107,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9_]*$",
-          "description": "Stable identifier within the pipeline. Referenced by downstream nodes and outputs."
+          "pattern": "^[a-z0-9][a-z0-9_:-]*$",
+          "description": "Stable identifier within the pipeline. Referenced by downstream nodes and outputs. Allows lowercase alphanumerics, underscore, hyphen, and colon (for enterprise namespacing)."
         },
         "step": {
           "type": "string",
@@ -203,9 +208,9 @@
         },
         "on": {
           "type": "string",
-          "enum": ["always", "succeeded", "failed", "triggered"],
-          "default": "always",
-          "description": "When this webhook fires. 'always' covers both succeeded and failed terminal status; 'triggered' never auto-fires — it only fires when an in-pipeline `webhook_trigger` step invokes it explicitly."
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "When this webhook fires. Known values: 'always' (succeeded + failed), 'succeeded', 'failed', 'triggered' (manual fire from a webhook_trigger step). Free-form string so vendors / enterprise builds can introduce new triggers (e.g. 'partial_success', 'data_quality_failed') without a schemaVersion bump; unknown values are treated as 'never' by the OSS reader.",
+          "default": "always"
         },
         "secret": {
           "type": "string",

@@ -1,0 +1,88 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel an in-flight run when a new commit lands on the same ref.
+# Avoids piling up redundant runs during a fast-merge cycle.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend (editable + every extra needed for tests)
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          # Every extras-group the test suite imports from. Earlier this
+          # was only `[dev]`, which left polars/duckdb/sqlalchemy unimported
+          # — every test that touched the engine then failed with ModuleNotFoundError.
+          pip install -e ".[dev,engine,storage,connectors,visualize,ml,science]" \
+            || pip install -e ".[dev,engine,storage,connectors]" \
+            || pip install -e .
+          pip install pytest pytest-asyncio jsonschema
+
+      - name: Run pytest
+        working-directory: backend
+        run: pytest -v --tb=short
+
+  frontend:
+    name: frontend vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store dir
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      - name: Install frontend deps
+        # pnpm-lock.yaml lives at the repo root (workspace setup) — install
+        # from there with `--frozen-lockfile` so the resolution exactly
+        # matches what was committed.
+        run: pnpm install --frozen-lockfile
+
+      - name: Vitest
+        working-directory: frontend
+        run: pnpm test
+
+      - name: Next.js build
+        working-directory: frontend
+        run: pnpm build

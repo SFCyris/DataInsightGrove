@@ -29,8 +29,9 @@
       "description": "One-paragraph description. Surfaced as tooltip and step-library detail."
     },
     "category": {
-      "enum": ["ingest", "shape", "clean", "derive", "combine", "aggregate", "analyze", "model", "validate", "visualize", "output", "custom"],
-      "description": "Coarse grouping for the step library. `analyze` covers descriptive + inferential statistics. `model` covers predictive ML / forecasting. `validate` covers data-quality assertions. `visualize` covers chart-rendering steps (export_to_image and pack-shipped chart kinds). `output` is for sinks (DB / file / JDBC / webhook)."
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Coarse grouping for the step library. Known values: ingest, shape, clean, derive, combine, aggregate, analyze, model, validate, visualize, output, custom. Free-form string so vendors / packs can add new categories (e.g. 'observability', 'cost_optimization') without a schemaVersion bump; the frontend renders unknown categories under a generic group."
     },
     "engine": {
       "type": "object",
@@ -38,8 +39,9 @@
       "additionalProperties": false,
       "properties": {
         "primary": {
-          "enum": ["sql", "polars", "python"],
-          "description": "Backend execution mode. 'sql' compiles to a DuckDB SQL fragment; 'polars' calls a Polars Python implementation; 'python' is a generic Python implementation."
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Backend execution mode. Known values: 'sql' (compiles to a DuckDB SQL fragment), 'polars' (calls a Polars Python implementation), 'python' (generic Python implementation). Free-form string so enterprise builds can add backends (spark, dask, snowflake_pushdown, bigquery_pushdown, etc.) without a schemaVersion bump; unknown engines are unrunnable in OSS and surface as a clear error."
         },
         "browser": {
           "enum": ["sql", "js", "none"],
@@ -113,6 +115,16 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Free-form tags for search."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form pack/author metadata not interpreted by DIG core."
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Namespaced extension fields. Vendors / enterprise / forks attach their own data under a top-level namespace key (e.g. extensions.acme.benchmarkId) so future first-party fields never collide."
     },
     "aliases": {
       "type": "array",

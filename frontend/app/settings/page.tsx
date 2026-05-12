@@ -24,6 +24,7 @@ import { PacksSection } from "@/components/settings/packs-section";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { NotificationRulesSection } from "@/components/settings/notification-rules-section";
 import { fmtInt } from "@/lib/format-number";
+import { fmtVersion } from "@/lib/format-version";
 
 const THEMES: { id: Theme; emoji: string; label: string }[] = [
   { id: "system", emoji: "🖥️", label: "System" },
@@ -1153,7 +1154,7 @@ function AboutSection() {
       <Card>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <Stat label="Product" value="DataInsightGrove™ · DIG™" />
-          <Stat label="Backend" value={health.data ? `${health.data.name} v${health.data.version} ✅` : "…"} />
+          <Stat label="Backend" value={health.data ? `${health.data.name} v${fmtVersion(health.data.version)} ✅` : "…"} />
           <Stat label="API endpoint" value={apiBaseRendered} mono />
           <Stat label="License" value="AGPL-3.0-or-later" />
           <Stat label="Connectors" value={`${conns.data?.length ?? 0} loaded`} />

@@ -1,0 +1,42 @@
+{
+  "id": "add_runtime_column",
+  "version": "1.0.0",
+  "label": "⏱ Add runtime column",
+  "description": "Add a new column whose value is rendered once per run from a `{{ template }}`. Use for timestamps, run identifiers, derived report labels, etc. The template is evaluated against the run's variable namespace (today, now, run_id, pipeline_name, vars.*, …). See docs/VARIABLES.md for the full namespace and filter list.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "name": {
+      "type": "string",
+      "label": "New column name",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "template": {
+      "type": "string",
+      "label": "Value template",
+      "required": true,
+      "help": "Examples: `{{ today }}`, `Report run at {{ utime }} UTC`, `{{ today | strftime('%Y/%m/%d') }}`, `{{ vars.region }}`."
+    },
+    "columnType": {
+      "type": "enum",
+      "label": "Type",
+      "enumValues": ["string", "integer", "double", "boolean", "date", "datetime"],
+      "default": "string",
+      "required": true
+    },
+    "position": {
+      "type": "enum",
+      "label": "Position",
+      "enumValues": ["end", "start"],
+      "default": "end"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["template", "timestamp", "runtime", "derive"],
+  "aliases": ["add timestamp", "add date column", "add report time"]
+}

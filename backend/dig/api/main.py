@@ -33,10 +33,60 @@ from dig.storage.db import init_db
 log = logging.getLogger(__name__)
 
 
+def _resolve_auth_token() -> str | None:
+    """Read ``DIG_AUTH_TOKEN`` and treat blank-string-after-strip as
+    "explicitly cleared" — but ALSO emit a startup warning since a blank
+    value in a `.env` file usually indicates a misconfigured operator
+    who *thought* they were enforcing auth. Returns None when no token
+    is enforced; returns the token string otherwise.
+
+    Pen-tester finding: previously `os.environ.get("DIG_AUTH_TOKEN") or None`
+    silently turned `DIG_AUTH_TOKEN=""` (set-but-blank) into None, so an
+    operator who put `DIG_AUTH_TOKEN=` in a `.env` file got a wide-open
+    server while believing they had locked it down.
+    """
+    raw = os.environ.get("DIG_AUTH_TOKEN")
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        log.warning(
+            "DIG_AUTH_TOKEN is set but blank — auth IS DISABLED. "
+            "This is almost always a misconfiguration; either unset the "
+            "variable explicitly or set it to a strong random string.",
+        )
+        return None
+    return stripped
+
+
+class HealthExtension(BaseModel):
+    """One discovered extension — entry-point or filesystem.
+
+    Surfaced by /health.extensions[*]. Frontend reads `loaded` to gate UI;
+    `load_error` (when set) tells the operator why an extension is silent.
+    """
+    kind: str  # "entry_point" | "fs"
+    name: str
+    package: str | None = None         # entry-point only
+    package_version: str | None = None  # entry-point only
+    group: str | None = None            # entry-point only
+    url_prefix: str | None = None       # fs only
+    loaded: bool = True
+    load_error: str | None = None
+
+
 class Health(BaseModel):
     status: str
     version: str
     name: str
+    # Out-of-tree extensions discovered at startup. Empty in OSS without
+    # any plugins; populated when dig-enterprise (or any other plugin)
+    # is installed via pip / dropped into data/extensions/.
+    # See `internal/EXTENSION_ARCHITECTURE.md`.
+    extensions: list[HealthExtension] = []
+    # Surface-version stamp for the dig.protocols module — extension
+    # builds compare their pinned target against this value.
+    protocol_version: tuple[int, int] = (1, 0)
 
 
 # ---- Auth middleware ------------------------------------------------------
@@ -201,9 +251,38 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+_DISCOVERED_EXTENSIONS: dict[str, Any] = {"entry_points": [], "fs": [], "loaded_objects": []}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Configure structured-or-text logging based on DIG_LOG_FORMAT.
+    # Idempotent — safe to call from tests / reloads.
+    from dig.observability import configure_logging, set_gauge
+    configure_logging()
+    set_gauge("dig_dig_version", 1.0, labels={"version": __version__})
+
+    # Discover out-of-tree extensions BEFORE init_db so a future
+    # extension can hook into init_db (e.g. an enterprise auth plugin
+    # that wants to add its own ALTER TABLE patches). Best-effort —
+    # broken extensions are logged + skipped, never block startup.
+    from dig.extensions import discover_all
+    global _DISCOVERED_EXTENSIONS
+    _DISCOVERED_EXTENSIONS = discover_all()
+    log.info(
+        "discovered %d entry-point extension(s), %d filesystem extension(s)",
+        len(_DISCOVERED_EXTENSIONS["entry_points"]),
+        len(_DISCOVERED_EXTENSIONS["fs"]),
+    )
+
     await init_db()
+    # Detect a version transition since the prior boot (e.g. after a
+    # `./upgrade.sh` run). Updates the marker file + emits an event
+    # when the version changed. init_db has already run the additive
+    # schema patches that any upgrade might require — this hook is the
+    # *signal* that a transition happened, not the migration engine.
+    from dig.storage.version_state import detect_and_record_version_transition
+    await detect_and_record_version_transition()
     # Seed built-in notification rules. Idempotent — only adds missing
     # rows, never touches user customisations.
     from dig.api.notification_rules import seed_default_rules
@@ -217,7 +296,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # don't (would be too noisy on dev with frequent restarts) but a
     # user can add one.
     from dig.api.events import EventKinds, emit_event
-    from dig import __version__
+    # __version__ is already imported at module top — re-importing here
+    # was making Python treat it as a local for the whole function scope
+    # (which broke the earlier set_gauge call referencing it).
     await emit_event(
         EventKinds.SYSTEM_STARTUP,
         version=__version__,
@@ -271,7 +352,7 @@ def create_app() -> FastAPI:
 
     # Bearer-token gate. Token is optional for loopback bind (default), required
     # for non-loopback (enforced in run()).
-    app.add_middleware(BearerAuthMiddleware, token=os.environ.get("DIG_AUTH_TOKEN") or None)
+    app.add_middleware(BearerAuthMiddleware, token=_resolve_auth_token())
 
     # Body-size guard. Added *after* (so executed *before* — Starlette
     # runs middleware in reverse-add order) the auth gate so we don't
@@ -283,7 +364,50 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=Health, tags=["meta"])
     async def health() -> Health:
-        return Health(status="ok", version=__version__, name="dig")
+        from dig.protocols import PROTOCOL_VERSION
+
+        ext_records: list[HealthExtension] = []
+        for ep in _DISCOVERED_EXTENSIONS.get("entry_points", []):
+            ext_records.append(HealthExtension(
+                kind="entry_point",
+                name=ep["name"],
+                package=ep["package"],
+                package_version=ep["package_version"],
+                group=ep["group"],
+                loaded=ep["loaded"],
+                load_error=ep["load_error"],
+            ))
+        for fs in _DISCOVERED_EXTENSIONS.get("fs", []):
+            ext_records.append(HealthExtension(
+                kind="fs",
+                name=fs["name"],
+                url_prefix=fs["url_prefix"],
+                loaded=fs["load_error"] is None,
+                load_error=fs["load_error"],
+            ))
+        return Health(
+            status="ok", version=__version__, name="dig",
+            extensions=ext_records,
+            protocol_version=PROTOCOL_VERSION,
+        )
+
+    @app.get("/metrics", tags=["meta"], include_in_schema=False)
+    async def metrics():
+        """Prometheus text-format metrics scrape endpoint.
+
+        Exposes counters / gauges / histograms registered in
+        ``dig.observability.metrics``. The OSS install pre-declares a
+        handful of pipeline-run + NaN-production counters; emit sites
+        elsewhere in the codebase contribute observations. No external
+        Prometheus SDK required — minimal text format.
+        """
+        from fastapi.responses import PlainTextResponse
+
+        from dig.observability import render_prometheus
+
+        return PlainTextResponse(
+            render_prometheus(), media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
 
     @app.get("/connectors", tags=["meta"])
     async def list_connectors() -> list[dict]:
@@ -356,6 +480,81 @@ def create_app() -> FastAPI:
     if docs_dir.is_dir():
         app.mount("/docs-files", StaticFiles(directory=str(docs_dir)), name="docs-files")
 
+    # ── Out-of-tree extension wiring ────────────────────────────────────
+    #
+    # Two channels (see dig/extensions/loader.py + internal/
+    # EXTENSION_ARCHITECTURE.md):
+    #
+    #  1. `dig.routers` entry points → FastAPI routers contributed by
+    #     out-of-tree packages (e.g. dig-enterprise's audit-log router,
+    #     /users, /orgs, /billing routes).
+    #  2. `data/extensions/<name>/static/` directories → static-file
+    #     overlays mounted at `/ext/<name>/static/*`. Used by enterprise
+    #     to inject extra JS/CSS without touching the OSS repo.
+    #
+    # The discovery already happened in lifespan(); we just attach what
+    # was found. Routers from failed-to-load packages are simply absent
+    # — surfaced in /health.extensions[*].load_error for the operator.
+    from dig.extensions import discover_all
+    _ext = discover_all()
+    for ep in _ext["loaded_objects"]:
+        if ep.group != "dig.routers" or ep.loaded_object is None:
+            continue
+        try:
+            app.include_router(ep.loaded_object)
+            log.info("mounted router from extension %s (%s)", ep.name, ep.package)
+        except Exception:
+            log.exception(
+                "failed to mount router from extension %s — skipping", ep.name,
+            )
+    for fs in _ext["fs"]:
+        if not fs["has_static"] or fs["load_error"] is not None:
+            continue
+        static_path = Path(fs["path"]) / "static"
+        # Symlink-rejection at mount time. Pen-tester finding: Starlette's
+        # StaticFiles follows symlinks by default, so `data/extensions/foo/
+        # static/secrets -> /etc/secrets` would be served at /ext/foo/static
+        # /secrets. Resolve the static dir + every immediate child; bail if
+        # anything points outside the extension's own root.
+        try:
+            ext_root = Path(fs["path"]).resolve()
+            resolved_static = static_path.resolve()
+            resolved_static.relative_to(ext_root)
+            for child in resolved_static.iterdir():
+                child_resolved = child.resolve()
+                child_resolved.relative_to(ext_root)
+        except (ValueError, OSError):
+            log.warning(
+                "extension %s: static/ contains symlink escaping its own root; "
+                "refusing to mount", fs["name"],
+            )
+            continue
+        try:
+            app.mount(
+                f"{fs['url_prefix']}/static",
+                StaticFiles(directory=str(static_path), follow_symlink=False),
+                name=f"ext-{fs['name']}",
+            )
+            log.info("mounted /ext/%s/static -> %s", fs["name"], static_path)
+        except TypeError:
+            # `follow_symlink` may not exist on older Starlette versions;
+            # fall back to the symlink-scan above as our only defence.
+            try:
+                app.mount(
+                    f"{fs['url_prefix']}/static",
+                    StaticFiles(directory=str(static_path)),
+                    name=f"ext-{fs['name']}",
+                )
+                log.info("mounted /ext/%s/static -> %s (no follow_symlink kwarg)", fs["name"], static_path)
+            except Exception:
+                log.exception(
+                    "failed to mount static dir for extension %s — skipping", fs["name"],
+                )
+        except Exception:
+            log.exception(
+                "failed to mount static dir for extension %s — skipping", fs["name"],
+            )
+
     return app
 
 
@@ -373,7 +572,7 @@ def run() -> None:
     host = _settings.api_host()
     port = _settings.api_port()
     reload = os.environ.get("DIG_RELOAD", "0") == "1"
-    token = os.environ.get("DIG_AUTH_TOKEN") or None
+    token = _resolve_auth_token()
 
     # Refuse to start non-loopback without an auth token. The whole-app threat
     # model assumes either (a) loopback only or (b) a shared secret. Anything

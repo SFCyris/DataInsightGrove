@@ -48,10 +48,16 @@ fi
 api_alive=0
 web_alive=0
 curl -sf "http://$API_HOST:$API_PORT/health" >/dev/null 2>&1 && api_alive=1
-curl -sf -o /dev/null "http://$WEB_HOST:$WEB_PORT/" 2>&1 && web_alive=1
+# Note the redirect of stderr — round-2 finding flagged that this line
+# previously used `2>&1` (merge to stdout) instead of `>/dev/null 2>&1`,
+# leaking libcurl chatter into the user-visible status output.
+curl -sf -o /dev/null "http://$WEB_HOST:$WEB_PORT/" >/dev/null 2>&1 && web_alive=1
 
-api_status="❌ down"; [[ "$api_alive" -eq 1 ]] && api_status="✅ up"
-web_status="❌ down"; [[ "$web_alive" -eq 1 ]] && web_status="✅ up"
+# Plain-text first ("up"/"down"), emoji as decoration. Cron / monit setups
+# grep the human-readable line; in `LANG=C` shells the emoji become `?`,
+# which made `grep -q '\bup\b'` fail. Always-grepable wording first.
+api_status="down ❌"; [[ "$api_alive" -eq 1 ]] && api_status="up ✅"
+web_status="down ❌"; [[ "$web_alive" -eq 1 ]] && web_status="up ✅"
 
 cat <<EOF
 DIG status
@@ -66,5 +72,12 @@ if [[ -n "${api_pid:-}" || -n "${web_pid:-}" ]]; then
   [[ -n "${web_pid:-}" ]] && echo "     web  pid=$web_pid  port=${web_p:-?}  log=${web_log:-?}"
 fi
 
-[[ "$api_alive" -eq 1 && "$web_alive" -eq 1 ]] && exit 0
-exit 1
+# Exit-code taxonomy (so monitoring scripts can tell partial-up from all-down):
+#   0 — both api + web are up
+#   1 — both api + web are down
+#   2 — api up, web down (web restart needed)
+#   3 — api down, web up (api restart needed)
+if [[ "$api_alive" -eq 1 && "$web_alive" -eq 1 ]]; then exit 0; fi
+if [[ "$api_alive" -eq 0 && "$web_alive" -eq 0 ]]; then exit 1; fi
+if [[ "$api_alive" -eq 1 && "$web_alive" -eq 0 ]]; then exit 2; fi
+exit 3

@@ -195,7 +195,7 @@ export default function PipelinesPage() {
             <div className="text-5xl mb-3 select-none" aria-hidden>🛤</div>
             <p className="max-w-md mx-auto mb-3">
               No pipelines yet. Name one above and start shaping data,
-              or seed the workspace with three demo pipelines you can
+              or seed the workspace with four demo pipelines you can
               poke at.
             </p>
             <a

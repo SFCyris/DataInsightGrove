@@ -4,16 +4,16 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 0.10.0 beta](https://img.shields.io/badge/version-0.10.0_beta-yellow)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 1.0.0-rc1](https://img.shields.io/badge/version-1.0.0--rc1-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 
-> 🧪 **Beta software.** DIG works end-to-end and the architecture is stable, but the API surface, plugin contracts, and on-disk format may still shift before the 1.0 release. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🧪 **Release candidate (v1.0.0-rc1).** The architecture, schemas, protocols, and IP posture are locked. This release-candidate cycle is for final polish, soak-testing, and community feedback before the 1.0.0 tag — the API contract that goes live then is described in [`docs/API_STABILITY.md`](docs/API_STABILITY.md). **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
 Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
 
-![DIG running as a native Mac app — “Self-hosted. Plugin-first. Yours. / Data preparation for the rest of us.”](docs/images/01-mac-app-hero.png)
+![DIG home — DataInsight Grove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0-rc1 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
 
 
 <table>
@@ -53,7 +53,7 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## What's in DIG
 
-- **51 steps** across 6 categories: shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
+- **51 built-in steps** + **160+ optional pack steps** across 11 categories — the built-ins live under `backend/steps/` (always available); pack steps land under `plugins/packs/<pack>/steps/` and are installable via `.dpack` archives. The full auto-generated catalog (200+ steps total — see [`docs/STEPS.md`](docs/STEPS.md)) covers shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
 - **16 connectors**:
   - *Text*: csv (with delimiter sniffing for `.dat` / `.data` / `.tab` / `.psv`) · excel (multi-sheet + multi-data-island detection) · json · parquet · feather.
   - *Scientific binary* (under the optional `[science]` extra): NumPy (`.npy` / `.npz`) · HDF5 · MATLAB · NetCDF · FITS.
@@ -161,6 +161,14 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - ✨ [AI features](docs/AI_FEATURES.md) — five LLM-driven editor surfaces + provider configuration
 - 🧪 [Sampling](docs/SAMPLING.md) — per-pipeline preview sampling (head / tail / random / systematic)
 - 🧪 [E2E validation](docs/E2E_VALIDATION.md) — every step exercised against real data
+- 🔤 [Variables](docs/VARIABLES.md) — `{{ today }}` / `{{ now }}` / `{{ vars.region }}` substitution in dataset URIs, output paths, and cell content
+- ⬆️ [Upgrading](docs/UPGRADING.md) — `./upgrade.sh` flow + auto-migration on boot
+- 🧩 [Extensibility](docs/EXTENSIBILITY.md) — `metadata` + `extensions` slots for vendor / fork / enterprise fields
+- 🔒 [Security policy](SECURITY.md) — threat model + disclosure process + supported versions
+- 📋 [API stability](docs/API_STABILITY.md) — pre-1.0 contract + post-1.0 SemVer + deprecation policy
+- ⚙️ [Configuration reference](docs/CONFIG.md) — every `DIG_*` env var, what it does, what's safe to leave default
+- ⚠️ [Error codes](docs/ERROR_CODES.md) — the `DIG_E_NNNN` taxonomy that surfaces in logs + API errors (auto-generated)
+- 📰 [Changelog](CHANGELOG.md) — what changed between releases
 - ♻️ [Lifecycle reference](docs/lifecycle.md) — start/stop/status/config + Mac app + Linux desktop
 - 🏗 [Architecture](docs/ARCHITECTURE.md) — what's where and why
 - 🛠 [Authoring guide (deep, with diagrams)](docs/AUTHORING_GUIDE.md) — build steps + connectors from scratch
@@ -184,7 +192,7 @@ DIG additionally publishes a **[Patent Non-Aggression Pledge](docs/PATENT_PLEDGE
 
 ## Contributing
 
-**Issues, feature requests, and discussions are very welcome** — this is the most useful way to shape DIG right now. **External code contributions (pull requests) aren't being accepted yet** while the project is in beta and the architecture is still settling. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full picture (bug-report template, security disclosure, fork guidance) — that policy will be revisited as the project moves toward v1.0.
+**Issues, feature requests, and discussions are very welcome** — this is the most useful way to shape DIG right now. **External code contributions (pull requests) aren't being accepted yet** during the 1.0-rc cycle while CLA / DCO + contribution-review process is finalised. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full picture (bug-report template, security disclosure, fork guidance) — that policy will be revisited at the 1.0.0 GA tag.
 
 ## Trademarks
 

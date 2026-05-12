@@ -79,8 +79,21 @@ def _normalize_endpoint(endpoint: str) -> str:
 
     Ollama's compat URL is http://localhost:11434/v1; many users paste
     just http://localhost:11434. We tolerate both.
+
+    Pen-tester round-2 finding: previously this accepted any scheme,
+    so `file:///etc/passwd` or `gopher://...` reached httpx (which would
+    block file:// today, but a future transport pivot is one version
+    bump from RCE). Restrict to http(s) up front.
     """
     e = endpoint.rstrip("/")
+    from urllib.parse import urlparse as _urlparse
+    parsed = _urlparse(e)
+    if parsed.scheme not in ("http", "https"):
+        raise AiError(
+            f"AI endpoint scheme must be http or https; got {parsed.scheme!r}",
+        )
+    if not parsed.netloc:
+        raise AiError(f"AI endpoint must include a host; got {e!r}")
     if not e.endswith("/v1"):
         # Best-effort: if the user pasted a bare host, append /v1.
         # OpenAI proper (api.openai.com/v1) and Anthropic compat
@@ -135,9 +148,31 @@ async def chat(
     url = _normalize_endpoint(cfg.endpoint) + "/chat/completions"
     log.debug("AI POST %s model=%s", url, cfg.model)
 
+    # Pen-tester round-2: same SSRF defence-in-depth as generate_connector
+    # (which got it right): pre-call URL validation. Without this, an
+    # operator (or anyone with settings-write) who sets
+    # ai_endpoint=http://169.254.169.254/v1 can harvest cloud instance
+    # metadata via /ai/test-connection.
     try:
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
+        from connectors.rest_api.connector import _assert_url_safe
+        _assert_url_safe(url)
+    except (ValueError, ImportError) as e:
+        raise AiError(f"AI endpoint URL rejected: {e}") from e
+
+    try:
+        # follow_redirects=False — pre-call URL validation (above) is a
+        # TOCTOU pre-check; a 302 to an internal address would silently
+        # bypass it. Pin the default so an httpx version flip doesn't
+        # reopen the SSRF gate.
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
             r = await client.post(url, json=payload, headers=headers)
+            # Defence-in-depth against DNS rebinding TOCTOU — see the REST
+            # connector.
+            try:
+                from connectors.rest_api.connector import _assert_response_peer_safe
+                _assert_response_peer_safe(r)
+            except (RuntimeError, ImportError) as e:
+                raise AiError(f"AI endpoint rejected post-connect: {e}") from e
     except httpx.TimeoutException as e:
         raise AiError(f"AI request timed out after {timeout_s}s — model may be cold-loading") from e
     except httpx.RequestError as e:
@@ -199,8 +234,16 @@ async def list_models(cfg: AiConfig, *, timeout_s: float = 10.0) -> list[str]:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
 
     url = _normalize_endpoint(cfg.endpoint) + "/models"
+    # Same SSRF gate as `chat()` — pre-call URL safety check. list_models
+    # is "never raises", so on rejection just return empty + debug-log.
     try:
-        async with httpx.AsyncClient(timeout=timeout_s) as client:
+        from connectors.rest_api.connector import _assert_url_safe
+        _assert_url_safe(url)
+    except (ValueError, ImportError) as e:
+        log.debug("AI list_models: URL rejected (%s)", e)
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
             r = await client.get(url, headers=headers)
     except (httpx.RequestError, httpx.TimeoutException) as e:
         log.debug("AI list_models: %s unreachable (%s)", url, e)

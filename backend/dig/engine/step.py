@@ -38,6 +38,15 @@ class PolarsContext:
     # a sub-pipeline step recursively calls back into the executor. Used to
     # detect cycles (a sub-pipeline that references its own ancestor).
     pipeline_chain: tuple[str, ...] = ()  # data/outputs/<run_id>
+    # Pipeline-level identity + metadata. Steps that consume the variable
+    # namespace (e.g. add_runtime_column) need pipeline_name + metadata.variables
+    # so `{{ pipeline_name }}` and `{{ vars.X }}` resolve correctly inside
+    # the step's own template rendering. Round-N UX-tester finding: previously
+    # add_runtime_column called `build_namespace(pipeline_name=None, user_vars=None)`,
+    # silently breaking the documented variables surface for cell content.
+    pipeline_id: str = ""
+    pipeline_name: str = ""
+    pipeline_variables: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

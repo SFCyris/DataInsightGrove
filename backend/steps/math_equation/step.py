@@ -7,6 +7,25 @@ from typing import Any
 from dig.engine.step import Step, assert_safe_expr, quote_ident
 
 
+def _validate_column_name(name: Any) -> str:
+    """Same shape as derive_column._validate_column_name. Pen-tester
+    consistency fix: the math_equation step previously accepted arbitrary
+    `resultName` values straight into `quote_ident`, including NUL bytes
+    + control chars + leading/trailing whitespace, which could collide with
+    downstream identifier consumers. Now matches derive_column's discipline.
+    """
+    if not isinstance(name, str):
+        raise ValueError("math_equation: `resultName` must be a string")
+    s = name.strip()
+    if not s:
+        raise ValueError("math_equation: `resultName` cannot be empty")
+    if "\x00" in s:
+        raise ValueError("math_equation: `resultName` cannot contain NUL bytes")
+    if any(0 <= ord(c) <= 31 for c in s):
+        raise ValueError("math_equation: `resultName` cannot contain control characters")
+    return s
+
+
 class MathEquationStep(Step):
     def to_sql(
         self,
@@ -16,7 +35,7 @@ class MathEquationStep(Step):
         input_schemas: dict[str, dict[str, str]] | None = None,
     ) -> str:
         src = inputs["in"]
-        name = params["resultName"]
+        name = _validate_column_name(params["resultName"])
         # assert_safe_expr blocks DDL/IO/multi-statement payloads. The user's
         # math expression itself can contain arbitrary column references, the
         # standard arithmetic operators, and DuckDB math functions — those

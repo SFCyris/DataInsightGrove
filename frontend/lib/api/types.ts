@@ -335,6 +335,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pipelines/{pipeline_id}/clone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone Pipeline
+         * @description Save As — clone an existing pipeline to a new id with a new name.
+         *
+         *     Optionally clones from a specific history snapshot rather than the live
+         *     document. The new pipeline gets a fresh etag=1 and an "import"-tagged
+         *     initial snapshot so its history starts clean.
+         */
+        post: operations["clone_pipeline_pipelines__pipeline_id__clone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pipelines/{pipeline_id}/history": {
         parameters: {
             query?: never;
@@ -555,6 +579,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pipelines/seed-demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Seed Demo Bundle
+         * @description Seed the three demo pipelines used by the home page's "🌱 Try with
+         *     sample data" button: a one-click overview, a 30-step healthcare
+         *     clinical-analysis pipeline, and a housing pipeline that ends in an
+         *     interactive ``export_to_map`` output.
+         *
+         *     Idempotent on datasets (looked up by name) but pipelines are recreated
+         *     each time. The ``overwrite`` flag controls what happens when any of the
+         *     three demo pipelines already exists:
+         *
+         *       - ``overwrite=false`` (default) → 409 with ``{ existing: [name, ...] }``
+         *         so the frontend can show a confirm dialog.
+         *       - ``overwrite=true`` → existing demo pipelines are deleted first, then
+         *         all three are recreated fresh.
+         *
+         *     Returns the same shape regardless of overwrite:
+         *
+         *         {
+         *           "primary":      {"datasetId": "...", "pipelineId": "..."},
+         *           "pipelines":    [{"id": "...", "name": "...", "chartCount": int}, ...],
+         *           "totalCharts":  int
+         *         }
+         */
+        post: operations["seed_demo_bundle_pipelines_seed_demo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/from-dataset/{dataset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Overview From Dataset
+         * @description Generate a 1–3-step "overview" pipeline from a dataset's column profile.
+         *
+         *     The pipeline contains an ``export_to_image`` node per chart, each reading
+         *     directly from the dataset (parallel, not chained). The frontend opens the
+         *     new pipeline and the live image preview renders inline within a second.
+         *
+         *     Chart-pick heuristics — same shape as the column-menu ``Visualize`` action,
+         *     upgraded for "show me a few different angles":
+         *
+         *       • Most-variable numeric column   → histogram (the column with the
+         *         highest std/mean ratio so a tightly-clustered field doesn't pip a
+         *         wide-range one with a similar absolute std).
+         *       • Lowest-cardinality categorical → bar of top-N value counts (we want
+         *         the column the user is most likely to want to "slice by").
+         *       • Second-most-variable numeric   → histogram (a complementary view of
+         *         spread; only emitted when at least two numeric columns exist).
+         *
+         *     Returns a fresh PipelineDoc — caller routes the user straight to
+         *     ``/pipelines/<id>`` and the editor's StepImagePreview takes it from there.
+         */
+        post: operations["create_overview_from_dataset_pipelines_from_dataset__dataset_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pipelines/{pipeline_id}/compile": {
         parameters: {
             query?: never;
@@ -574,6 +676,11 @@ export interface paths {
          *     `terminal` selects the focus node — pass a node id to compile only the
          *     pipeline up to that step (used by the live-grid focused-step preview).
          *     Defaults to the last node in topological order.
+         *
+         *     `terminalViewMode` is meaningful only when the terminal node is a join.
+         *     Passing 'unmatched_left' / 'unmatched_right' rewrites the focused join's
+         *     kind to the matching anti-* variant for diagnostic preview ("why didn't
+         *     these rows match?"). 'matched' (default) leaves the SQL unchanged.
          */
         post: operations["compile_pipeline_pipelines__pipeline_id__compile_post"];
         delete?: never;
@@ -601,6 +708,71 @@ export interface paths {
          *     rows in the same shape the frontend's local-preview path produces.
          */
         post: operations["preview_pipeline_pipelines__pipeline_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/preview-step-rows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Step Rows
+         * @description Run a Polars-engine step on sampled upstream data and return its
+         *     output **as JSON rows** (same shape as ``/preview``).
+         *
+         *     This is the transparent-fallback path for the editor: when a user
+         *     focuses a Polars-only step (e.g. ``anomaly_zscore``,
+         *     ``changepoint_detection``, ``rolling``), DuckDB-WASM can't run it,
+         *     so the editor calls this endpoint instead and pipes the result
+         *     into the same live grid. The user sees the post-step data in the
+         *     grid; an "via backend" badge tells them where it ran.
+         *
+         *     Cheaper than ``/preview`` because we run only the focused step,
+         *     not the whole DAG.
+         */
+        post: operations["preview_step_rows_pipelines__pipeline_id__preview_step_rows_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{pipeline_id}/preview-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Step
+         * @description Render a single Polars-engine step on sampled upstream data and
+         *     return its first artifact (PNG / SVG for ``export_to_image``).
+         *
+         *     This is the path the editor uses for the live chart preview while the
+         *     user is tweaking chart params. It bypasses the run record (no row in
+         *     the runs table, no history snapshot) — the artifact is written to a
+         *     per-pipeline preview cache under ``data/outputs/__preview/<pid>/`` and
+         *     overwritten in place each call. Sampled to keep render time well under
+         *     a second; the full-fidelity image is only produced by ▶ Run.
+         *
+         *     Errors:
+         *       400 — terminal isn't a Polars step (no artifact to produce), or the
+         *             step raised during render. Error body is the actual exception
+         *             so humanizeSqlError can translate it.
+         *       404 — pipeline or terminal node missing.
+         */
+        post: operations["preview_step_pipelines__pipeline_id__preview_step_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -672,6 +844,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pipelines/{pipeline_id}/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pipeline Freshness
+         * @description Compute the freshness state of every node that declares a policy.
+         *
+         *     Pure read — combines the pipeline document's freshness declarations
+         *     with the most recent succeeded run's `finished_at` to decide each
+         *     node's halo color. The scheduler that *acts on* staleness lives in
+         *     Phase B; this endpoint is read-only.
+         */
+        get: operations["get_pipeline_freshness_pipelines__pipeline_id__freshness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Runs
+         * @description Workspace-wide runs list with filters + cursor pagination.
+         *
+         *     Pagination uses an opaque cursor encoding `(created_at, id)` so
+         *     pages stay stable even as new runs land mid-scroll.
+         */
+        get: operations["list_all_runs_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -703,6 +923,15 @@ export interface paths {
          *     `path` must resolve to a file inside data/outputs/<run_id>/ — anything
          *     outside is rejected. Used by the frontend to display PNGs from
          *     export_to_image steps inline.
+         *
+         *     Round-4 SEC fix: previously we only validated `path` against
+         *     ``data/outputs/<run_id>/``, but ``run_id`` itself was not sanitized.
+         *     A request with ``run_id="../../../etc"`` made ``safe_root`` resolve
+         *     *outside* the data directory after the `..` segments collapsed,
+         *     letting a crafted ``path`` reach arbitrary files. Now we (a) reject
+         *     any ``run_id`` that doesn't match the strict id pattern (the runs
+         *     table uses 26-char ULIDs) and (b) require the run to exist in the
+         *     DB so the path can never reference a fabricated directory.
          */
         get: operations["get_run_artifact_runs__run_id__artifact_get"];
         put?: never;
@@ -786,7 +1015,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Steps */
+        /**
+         * List Steps
+         * @description Return the union of disk-loaded steps + DB-backed pipeline-steps.
+         *
+         *     Pipeline-steps are pipelines whose document has
+         *     `metadata.publishedAsStep` set. They appear in the picker like any
+         *     other step, with a `source: "pipeline:<id>"` tag so the UI renders
+         *     a 🪆 composite badge.
+         */
         get: operations["list_steps_steps_get"];
         put?: never;
         post?: never;
@@ -803,7 +1040,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Step */
+        /**
+         * Get Step
+         * @description Get one step manifest. Supports `pipeline:<id>` for sub-pipeline steps.
+         *
+         *     Path-converter is `:path` so the colon in `pipeline:<id>` doesn't
+         *     trigger an URL-decode mismatch.
+         */
         get: operations["get_step_steps__step_id__get"];
         put?: never;
         post?: never;
@@ -878,6 +1121,31 @@ export interface paths {
         post?: never;
         /** Delete Driver */
         delete: operations["delete_driver_jdbc_drivers__driver_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jdbc-drivers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Driver Connection
+         * @description Attempt a quick connect using the supplied JDBC params.
+         *
+         *     Always returns 200 — the body's ``ok`` flag tells the UI whether the
+         *     test succeeded. Failures land in ``message`` so the user sees the
+         *     underlying JDBC driver error verbatim (which is invariably the most
+         *     useful thing for diagnosing a bad URL / firewall / wrong creds).
+         */
+        post: operations["test_driver_connection_jdbc_drivers_test_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1219,6 +1487,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/explain-dataset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explain Dataset Endpoint
+         * @description Domain-aware narrative + per-column meanings for the focused node.
+         *
+         *     Works on either a registered dataset OR any step output. When
+         *     focused on a step, samples are pulled from that step's actual
+         *     output via the pipeline's chosen sampling method, and the prompt
+         *     is rephrased to "given the original dataset and these steps, what
+         *     does the current output represent?".
+         */
+        post: operations["explain_dataset_endpoint_ai_explain_dataset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/suggest-pipeline-steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Pipeline Steps Endpoint
+         * @description Domain-aware multi-step transform suggestions for a dataset.
+         *
+         *     Returns 1-3 ordered "routes" (chains of 1-4 steps) that together
+         *     yield meaningful derived datasets — vectorize → similarity, parse
+         *     → resample → forecast, etc. Each route is rendered as a card the
+         *     user can apply with one click.
+         */
+        post: operations["suggest_pipeline_steps_endpoint_ai_suggest_pipeline_steps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/suggest-visualizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Visualizations Endpoint
+         * @description Domain-aware visualization suggestions for a dataset.
+         *
+         *     The Hints panel calls this when a dataset is focused. The LLM
+         *     inspects the column names + types + the project / pipeline name
+         *     to infer the domain, then suggests 1–3 chart kinds tailored to
+         *     that domain — pre-populated with the right column choices.
+         */
+        post: operations["suggest_visualizations_endpoint_ai_suggest_visualizations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai/generate-step": {
         parameters: {
             query?: never;
@@ -1389,6 +1733,396 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/packs/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Pack
+         * @description Receive a .dpack archive, stage it for review.
+         *
+         *     No DB write. The operator confirms the install in a follow-up
+         *     `POST /packs/install` call after seeing the staged manifest.
+         */
+        post: operations["upload_pack_packs_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Pack
+         * @description Move a staged pack into plugins/packs/<id>/, register it, and
+         *     install its declared Python dependencies.
+         *
+         *     Auto-install is on by default; set DIG_PACK_AUTO_INSTALL_DEPS=0 to
+         *     disable. The install proceeds even if pip fails — the response
+         *     surfaces success/failure so the operator can act on it.
+         */
+        post: operations["install_pack_packs_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/_pending/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Discard Pending
+         * @description Drop a staged pending pack without installing.
+         */
+        delete: operations["discard_pending_packs__pending__pack_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Installed
+         * @description Return every installed pack — registry source of truth.
+         *
+         *     Disk + DB are reconciled on read: if a pack's directory has been
+         *     manually deleted, its row is dropped; if a directory exists without
+         *     a row we surface it with the cached manifest if any. The latter
+         *     rarely happens (only after a manual file copy) but keeps the UI
+         *     honest.
+         */
+        get: operations["list_installed_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/packs/{pack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Uninstall Pack
+         * @description Remove an installed pack from disk and drop its registry row.
+         */
+        delete: operations["uninstall_pack_packs__pack_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Toggle Pack
+         * @description Enable / disable a pack without removing it from disk.
+         */
+        patch: operations["toggle_pack_packs__pack_id__patch"];
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description List notifications, newest first. Pagination via limit/offset.
+         */
+        get: operations["list_notifications_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unread Count
+         * @description Tiny endpoint for the header bell badge — avoids fetching a full
+         *     page of rows just to count them.
+         */
+        get: operations["unread_count_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notification_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Dismiss Notification
+         * @description Soft-dismiss: mark dismissed_at, keep the row for audit.
+         */
+        patch: operations["dismiss_notification_notifications__notification_id__dismiss_patch"];
+        trace?: never;
+    };
+    "/notifications/dismiss-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss All Notifications
+         * @description Soft-dismiss every currently-undismissed notification.
+         */
+        post: operations["dismiss_all_notifications_notifications_dismiss_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notification_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Notification
+         * @description Hard-delete: removes from the audit log. Use with care.
+         */
+        delete: operations["delete_notification_notifications__notification_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notification-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_notification_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_notification_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notification-rules/event-kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Event Kinds
+         * @description Returns the canonical event-kind vocabulary so the UI can populate
+         *     the rule form's event picker without hardcoding.
+         */
+        get: operations["list_event_kinds_notification_rules_event_kinds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notification-rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Rule */
+        delete: operations["delete_rule_notification_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Rule */
+        patch: operations["update_rule_notification_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/notification-rules/{rule_id}/toggle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Toggle Rule */
+        patch: operations["toggle_rule_notification_rules__rule_id__toggle_patch"];
+        trace?: never;
+    };
+    "/catalog/lineage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog Lineage
+         * @description Returns the workspace's cross-pipeline lineage graph.
+         */
+        get: operations["get_catalog_lineage_catalog_lineage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Search across pipelines, datasets, columns, and tags. Returns
+         *     results in priority order: exact matches first, then prefix
+         *     matches, then substring matches.
+         */
+        get: operations["search_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All Tags
+         * @description All tags across pipelines + datasets, deduped + sorted. Powers
+         *     autocomplete on the tag input + the catalog filter dropdown.
+         */
+        get: operations["list_all_tags_search_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search/pipelines/{pipeline_id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Pipeline Tags
+         * @description Replace the pipeline's tag list. Tags are normalised to
+         *     lowercase + trimmed so `Revenue` and `revenue` collapse.
+         *
+         *     Concurrency control: pass the current ``etag`` in an ``If-Match``
+         *     header. The endpoint rejects with 409 when the header is supplied
+         *     and doesn't match — this stops the autosave-vs-tag-edit race that
+         *     would otherwise lose either side's changes (QA finding round 2).
+         *     Callers that don't supply the header (older / scripting clients)
+         *     still go through unguarded for backward compatibility.
+         *
+         *     History snapshot: every tag change is recorded as a
+         *     ``manual_save`` snapshot with ``triggered_by="tag_edit"``. The
+         *     previous version of this endpoint was a back-channel that mutated
+         *     the document AND bumped the etag without a snapshot, so undo /
+         *     restore couldn't see the change.
+         */
+        put: operations["set_pipeline_tags_search_pipelines__pipeline_id__tags_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1437,6 +2171,78 @@ export interface components {
              */
             options: string;
         };
+        /** Body_upload_pack_packs_upload_post */
+        Body_upload_pack_packs_upload_post: {
+            /** File */
+            file: string;
+        };
+        /**
+         * CatalogEdgeOut
+         * @description A→B edge: pipeline A produces output, pipeline B reads it.
+         */
+        CatalogEdgeOut: {
+            /** From Id */
+            from_id: string;
+            /** To Id */
+            to_id: string;
+            /** Via */
+            via?: string | null;
+            /**
+             * Columns
+             * @default []
+             */
+            columns: string[];
+        };
+        /**
+         * CatalogNodeOut
+         * @description One node in the workspace-wide meta-graph.
+         */
+        CatalogNodeOut: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Last Run At */
+            last_run_at?: string | null;
+            /** Last Run Status */
+            last_run_status?: string | null;
+            /**
+             * Node Count
+             * @default 0
+             */
+            node_count: number;
+            /**
+             * Group Count
+             * @default 0
+             */
+            group_count: number;
+            /**
+             * Inputs
+             * @default []
+             */
+            inputs: string[];
+            /**
+             * Outputs
+             * @default []
+             */
+            outputs: string[];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+        };
+        /** CatalogOut */
+        CatalogOut: {
+            /** Nodes */
+            nodes: components["schemas"]["CatalogNodeOut"][];
+            /** Edges */
+            edges: components["schemas"]["CatalogEdgeOut"][];
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Role */
@@ -1468,6 +2274,13 @@ export interface components {
             usage?: {
                 [key: string]: number;
             } | null;
+        };
+        /** ClonePipelineRequest */
+        ClonePipelineRequest: {
+            /** Name */
+            name: string;
+            /** Fromsnapshotid */
+            fromSnapshotId?: string | null;
         };
         /** ColumnInfo */
         ColumnInfo: {
@@ -1544,6 +2357,13 @@ export interface components {
             nodes: components["schemas"]["ColumnLineageNodeOut"][];
             /** Edges */
             edges: components["schemas"]["ColumnLineageEdgeOut"][];
+        };
+        /** ColumnMeaning */
+        ColumnMeaning: {
+            /** Name */
+            name: string;
+            /** Meaning */
+            meaning: string;
         };
         /** CompileOut */
         CompileOut: {
@@ -1684,6 +2504,39 @@ export interface components {
              */
             toRef: string;
         };
+        /** ExplainDatasetIn */
+        ExplainDatasetIn: {
+            /**
+             * Pipeline Id
+             * @description Pipeline whose document supplies the project name, sampling config, and (when node_id is set) the chain of applied steps.
+             */
+            pipeline_id: string;
+            /**
+             * Node Id
+             * @description Optional id of the focused node (a step OR a dataset alias inside the pipeline). When set, samples come from that node's actual output via the pipeline's chosen sampling method, and the prompt is rephrased for derived contexts. When omitted, falls back to the upstream dataset's cached profile (legacy behavior).
+             */
+            node_id?: string | null;
+            /**
+             * Dataset Id
+             * @description Back-compat: the registered dataset's row id. Equivalent to passing the dataset's pipeline-doc alias as `node_id`. Ignored when `node_id` is set.
+             */
+            dataset_id?: string | null;
+        };
+        /** ExplainDatasetOut */
+        ExplainDatasetOut: {
+            /** Narrative */
+            narrative: string;
+            /** Domain */
+            domain: string;
+            /** Confidence */
+            confidence: string;
+            /** Columns */
+            columns: components["schemas"]["ColumnMeaning"][];
+            /** Model */
+            model?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ExplainOut */
         ExplainOut: {
             /** Markdown */
@@ -1729,6 +2582,26 @@ export interface components {
             confidence: string;
             /** Model */
             model: string;
+        };
+        /**
+         * FreshnessOut
+         * @description Per-node + per-group freshness state for the canvas halo overlay.
+         *
+         *     Returned by GET /pipelines/{id}/freshness. Items without a declared
+         *     freshness policy are omitted from the response (no halo rendered).
+         */
+        FreshnessOut: {
+            /** States */
+            states: {
+                [key: string]: string;
+            };
+            /**
+             * Group States
+             * @default {}
+             */
+            group_states: {
+                [key: string]: string;
+            };
         };
         /** FromUriRequest */
         FromUriRequest: {
@@ -1899,6 +2772,50 @@ export interface components {
             version: string;
             /** Name */
             name: string;
+            /**
+             * Extensions
+             * @default []
+             */
+            extensions: components["schemas"]["HealthExtension"][];
+            /**
+             * Protocol Version
+             * @default [
+             *       1,
+             *       0
+             *     ]
+             */
+            protocol_version: [
+                number,
+                number
+            ];
+        };
+        /**
+         * HealthExtension
+         * @description One discovered extension — entry-point or filesystem.
+         *
+         *     Surfaced by /health.extensions[*]. Frontend reads `loaded` to gate UI;
+         *     `load_error` (when set) tells the operator why an extension is silent.
+         */
+        HealthExtension: {
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Package */
+            package?: string | null;
+            /** Package Version */
+            package_version?: string | null;
+            /** Group */
+            group?: string | null;
+            /** Url Prefix */
+            url_prefix?: string | null;
+            /**
+             * Loaded
+             * @default true
+             */
+            loaded: boolean;
+            /** Load Error */
+            load_error?: string | null;
         };
         /** HistoryEntry */
         HistoryEntry: {
@@ -1929,10 +2846,48 @@ export interface components {
             /** Connector Id */
             connector_id: string;
         };
+        /** InstallPackIn */
+        InstallPackIn: {
+            /** Pack Id */
+            pack_id: string;
+            /** Version */
+            version: string;
+        };
         /** InstallStepIn */
         InstallStepIn: {
             /** Step Id */
             step_id: string;
+        };
+        /** InstalledPackOut */
+        InstalledPackOut: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description?: string | null;
+            /** License */
+            license?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Homepage */
+            homepage?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Steps */
+            steps: string[];
+            /** Connectors */
+            connectors: string[];
+            /** Python Requirements */
+            python_requirements?: string[];
+            /** Checksum */
+            checksum?: string | null;
+            /** Installed At */
+            installed_at: string;
+            /** Updated At */
+            updated_at: string;
         };
         /** JdbcDriverIn */
         JdbcDriverIn: {
@@ -1962,6 +2917,38 @@ export interface components {
             /** Id */
             id: string;
         };
+        /**
+         * JdbcTestIn
+         * @description Ad-hoc test parameters. Not persisted — the URL + credentials are
+         *     only used to open and close one connection. The driverClass and jarPath
+         *     are the same as the saved driver record.
+         */
+        JdbcTestIn: {
+            /** Driverclass */
+            driverClass: string;
+            /** Jarpath */
+            jarPath: string;
+            /**
+             * Url
+             * @description Optional JDBC URL. With a URL, we try a real connection. Without, we only verify the JAR exists and the driver class can be loaded.
+             */
+            url?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Password */
+            password?: string | null;
+        };
+        /** JdbcTestOut */
+        JdbcTestOut: {
+            /** Ok */
+            ok: boolean;
+            /** Message */
+            message: string;
+            /** Latencyms */
+            latencyMs?: number | null;
+            /** Serverinfo */
+            serverInfo?: string | null;
+        };
         /** ModelsOut */
         ModelsOut: {
             /** Models */
@@ -1976,6 +2963,44 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** NotificationListOut */
+        NotificationListOut: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
+            /** Total */
+            total: number;
+            /** Unread */
+            unread: number;
+        };
+        /**
+         * NotificationOut
+         * @description Single notification, as returned by GET /notifications.
+         */
+        NotificationOut: {
+            /** Id */
+            id: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Kind */
+            kind: string;
+            /** Level */
+            level: string;
+            /** Title */
+            title: string;
+            /** Message */
+            message?: string | null;
+            /** Userid */
+            userId?: string | null;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            } | null;
+            /** Dismissedat */
+            dismissedAt?: string | null;
+        };
         /** OutputDiffOut */
         OutputDiffOut: {
             /** Kind */
@@ -1988,6 +3013,13 @@ export interface components {
             a_from?: string | null;
             /** B From */
             b_from?: string | null;
+        };
+        /** PackConflictOut */
+        PackConflictOut: {
+            /** Step Id */
+            step_id: string;
+            /** Existing Source */
+            existing_source: string;
         };
         /** ParamDiffOut */
         ParamDiffOut: {
@@ -2074,6 +3106,32 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PipelineRouteOut */
+        PipelineRouteOut: {
+            /** Title */
+            title: string;
+            /** Why */
+            why: string;
+            /** Confidence */
+            confidence: string;
+            /** Steps */
+            steps: components["schemas"]["PipelineStepIn"][];
+        };
+        /** PipelineStepIn */
+        PipelineStepIn: {
+            /** Step Id */
+            step_id: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Rationale */
+            rationale: string;
+            /** Outcome */
+            outcome?: string | null;
+            /** Right Ref */
+            right_ref?: string | null;
+        };
         /** PipelineSummary */
         PipelineSummary: {
             /** Id */
@@ -2098,10 +3156,21 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
-            /** Missingdatasetcount */
-            missingDatasetCount?: number;
-            /** Missingoutputcount */
-            missingOutputCount?: number;
+            /**
+             * Missingdatasetcount
+             * @default 0
+             */
+            missingDatasetCount: number;
+            /**
+             * Missingoutputcount
+             * @default 0
+             */
+            missingOutputCount: number;
+        };
+        /** PipelineTagsIn */
+        PipelineTagsIn: {
+            /** Tags */
+            tags: string[];
         };
         /** PreviewOut */
         PreviewOut: {
@@ -2178,6 +3247,142 @@ export interface components {
             /** Totalrows */
             totalRows?: number | null;
         };
+        /**
+         * RuleAction
+         * @description Action to take when a rule fires. Today only `in_app`; future
+         *     expansion to email / slack / webhook keeps the schema stable by
+         *     adding `channel` variants here.
+         */
+        RuleAction: {
+            /**
+             * Level
+             * @default auto
+             */
+            level: string;
+            /** Title */
+            title: string;
+            /** Message */
+            message?: string | null;
+            /**
+             * Channel
+             * @default in_app
+             */
+            channel: string;
+        };
+        /** RuleIn */
+        RuleIn: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Kind */
+            event_kind: string;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            action: components["schemas"]["RuleAction"];
+            /** Cooldown Seconds */
+            cooldown_seconds?: number | null;
+        };
+        /** RuleOut */
+        RuleOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Event Kind */
+            event_kind: string;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            action: components["schemas"]["RuleAction"];
+            /** Cooldown Seconds */
+            cooldown_seconds?: number | null;
+            /** Last Fired At */
+            last_fired_at?: string | null;
+            /** Fire Count */
+            fire_count: number;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RunListItem */
+        RunListItem: {
+            /** Id */
+            id: string;
+            /** Pipelineid */
+            pipelineId: string;
+            /** Pipelinename */
+            pipelineName?: string | null;
+            /** Pipelinetags */
+            pipelineTags?: string[];
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: number;
+            /** Error */
+            error?: string | null;
+            /**
+             * Triggeredby
+             * @default manual
+             */
+            triggeredBy: string;
+            /** Startedat */
+            startedAt?: string | null;
+            /** Finishedat */
+            finishedAt?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Durationms */
+            durationMs?: number | null;
+            /**
+             * Outputcount
+             * @default 0
+             */
+            outputCount: number;
+            /**
+             * Nodecount
+             * @default 0
+             */
+            nodeCount: number;
+            /** Rowcounttotal */
+            rowCountTotal?: number | null;
+        };
+        /**
+         * RunListPage
+         * @description Paginated runs list. `next_cursor` is null when no more rows.
+         */
+        RunListPage: {
+            /** Items */
+            items: components["schemas"]["RunListItem"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total Estimate */
+            total_estimate?: number | null;
+        };
         /** RunOut */
         RunOut: {
             /** Id */
@@ -2198,25 +3403,17 @@ export interface components {
                     [key: string]: unknown;
                 }[];
             } | null;
-            /** Nodemetrics — Phase A Layer 1: per-node run metrics */
+            /** Nodemetrics */
             nodeMetrics?: {
-                [nodeId: string]: {
-                    status?: string;
-                    rows_out?: number | null;
-                    elapsed_ms?: number | null;
-                    error?: string;
+                [key: string]: {
+                    [key: string]: unknown;
                 };
             } | null;
-            /** Nanorigins — per-node NaN/cast-failure sidecar (see internal/proposals/NULL_AND_NAN_DISPLAY.md) */
+            /** Nanorigins */
             nanOrigins?: {
-                [nodeId: string]: Array<{
-                    column: string;
-                    cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
-                    count: number;
-                    row_indices: number[];
-                    truncated: boolean;
-                    source_column?: string;
-                }>;
+                [key: string]: {
+                    [key: string]: unknown;
+                }[];
             } | null;
             /** Startedat */
             startedAt?: string | null;
@@ -2268,6 +3465,36 @@ export interface components {
             /** Raw */
             raw: string;
         };
+        /**
+         * SearchHit
+         * @description One result row. `kind` drives icon + click target on the
+         *     frontend; `id` is the entity id; `label` is the user-visible
+         *     title; `subtitle` carries the secondary info (description /
+         *     parent / type).
+         */
+        SearchHit: {
+            /** Kind */
+            kind: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Subtitle */
+            subtitle?: string | null;
+            /** Href */
+            href: string;
+            /** Tag Match */
+            tag_match?: string | null;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Query */
+            query: string;
+            /** Hits */
+            hits: components["schemas"]["SearchHit"][];
+            /** Total */
+            total: number;
+        };
         /** SettingDescriptor */
         SettingDescriptor: {
             /** Key */
@@ -2318,6 +3545,37 @@ export interface components {
              */
             createdAt: string;
         };
+        /** StagedPackOut */
+        StagedPackOut: {
+            /** Pack Id */
+            pack_id: string;
+            /** Version */
+            version: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** License */
+            license?: string | null;
+            /** Author */
+            author?: string | null;
+            /** Homepage */
+            homepage?: string | null;
+            /** Readme */
+            readme?: string | null;
+            /** Steps */
+            steps: string[];
+            /** Connectors */
+            connectors: string[];
+            /** Python Requirements */
+            python_requirements?: string[];
+            /** Declared Checksum */
+            declared_checksum?: string | null;
+            /** Computed Checksum */
+            computed_checksum: string;
+            /** Conflicts */
+            conflicts: components["schemas"]["PackConflictOut"][];
+        };
         /** StepDiffOut */
         StepDiffOut: {
             /** Kind */
@@ -2362,6 +3620,67 @@ export interface components {
             }[];
             /** Model */
             model: string;
+        };
+        /** SuggestPipelineStepsIn */
+        SuggestPipelineStepsIn: {
+            /** Pipeline Id */
+            pipeline_id: string;
+            /**
+             * Node Id
+             * @description Optional id of the focused node. When set, suggestions are framed around that node's actual output (sampled per the pipeline's chosen method). Applying a route mid-pipeline branches off the focused node — see frontend apply path.
+             */
+            node_id?: string | null;
+            /**
+             * Dataset Id
+             * @description Back-compat: equivalent to passing the dataset's pipeline-doc alias as `node_id`.
+             */
+            dataset_id?: string | null;
+            /** Goal */
+            goal?: string | null;
+        };
+        /** SuggestPipelineStepsOut */
+        SuggestPipelineStepsOut: {
+            /** Domain */
+            domain: string;
+            /** Routes */
+            routes: components["schemas"]["PipelineRouteOut"][];
+            /** Model */
+            model?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** SuggestVisualizationsIn */
+        SuggestVisualizationsIn: {
+            /** Pipeline Id */
+            pipeline_id: string;
+            /**
+             * Node Id
+             * @description Optional id of the focused node. When set, viz suggestions are tailored to that node's actual output (sampled per the pipeline's chosen method) rather than the upstream dataset.
+             */
+            node_id?: string | null;
+            /**
+             * Dataset Id
+             * @description Back-compat: equivalent to passing the dataset's pipeline-doc alias as `node_id`.
+             */
+            dataset_id?: string | null;
+        };
+        /** SuggestVisualizationsOut */
+        SuggestVisualizationsOut: {
+            /** Domain */
+            domain: string;
+            /** Domain Confidence */
+            domain_confidence: string;
+            /** Suggestions */
+            suggestions: components["schemas"]["VizSuggestionOut"][];
+            /** Model */
+            model?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** TagsOut */
+        TagsOut: {
+            /** Tags */
+            tags: string[];
         };
         /** TemplateDetailOut */
         TemplateDetailOut: {
@@ -2435,6 +3754,11 @@ export interface components {
              */
             created_at: string;
         };
+        /** TogglePackIn */
+        TogglePackIn: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /**
          * TypeCandidate
          * @description One detected possibility for a column's type. Profiling attaches a
@@ -2465,6 +3789,10 @@ export interface components {
             };
             /** Expectedetag */
             expectedEtag?: number | null;
+            /** Triggeredby */
+            triggeredBy?: string | null;
+            /** Changereason */
+            changeReason?: string | null;
         };
         /** ValidateOut */
         ValidateOut: {
@@ -2495,6 +3823,21 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VizSuggestionOut */
+        VizSuggestionOut: {
+            /** Step Id */
+            step_id: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+            /** Why */
+            why: string;
+            /** Confidence */
+            confidence: string;
         };
     };
     responses: never;
@@ -3106,6 +4449,41 @@ export interface operations {
             };
         };
     };
+    clone_pipeline_pipelines__pipeline_id__clone_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClonePipelineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineDoc"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_pipeline_history_pipelines__pipeline_id__history_get: {
         parameters: {
             query?: {
@@ -3421,12 +4799,77 @@ export interface operations {
             };
         };
     };
+    seed_demo_bundle_pipelines_seed_demo_post: {
+        parameters: {
+            query?: {
+                overwrite?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_overview_from_dataset_pipelines_from_dataset__dataset_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineDoc"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     compile_pipeline_pipelines__pipeline_id__compile_post: {
         parameters: {
             query?: {
                 target?: string;
                 sample_rows?: number | null;
                 terminal?: string | null;
+                terminalViewMode?: string | null;
             };
             header?: never;
             path: {
@@ -3478,6 +4921,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_step_rows_pipelines__pipeline_id__preview_step_rows_post: {
+        parameters: {
+            query: {
+                terminal: string;
+                sample_rows?: number;
+                preview_limit?: number;
+            };
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_step_pipelines__pipeline_id__preview_step_post: {
+        parameters: {
+            query: {
+                terminal: string;
+                sample_rows?: number;
+            };
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -3612,6 +5124,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pipeline_freshness_pipelines__pipeline_id__freshness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreshnessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_runs_runs_get: {
+        parameters: {
+            query?: {
+                pipeline_id?: string | null;
+                status?: string | null;
+                tag?: string | null;
+                started_after?: string | null;
+                started_before?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListPage"];
                 };
             };
             /** @description Validation Error */
@@ -4012,6 +5592,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_driver_connection_jdbc_drivers_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JdbcTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JdbcTestOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -4529,6 +6142,105 @@ export interface operations {
             };
         };
     };
+    explain_dataset_endpoint_ai_explain_dataset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExplainDatasetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplainDatasetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_pipeline_steps_endpoint_ai_suggest_pipeline_steps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestPipelineStepsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestPipelineStepsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_visualizations_endpoint_ai_suggest_visualizations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestVisualizationsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestVisualizationsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_step_endpoint_ai_generate_step_post: {
         parameters: {
             query?: never;
@@ -4833,6 +6545,619 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_pack_packs_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_pack_packs_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StagedPackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_pack_packs_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallPackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_pending_packs__pending__pack_id__delete: {
+        parameters: {
+            query: {
+                version: string;
+            };
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_installed_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstalledPackOut"][];
+                };
+            };
+        };
+    };
+    uninstall_pack_packs__pack_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_pack_packs__pack_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TogglePackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_notifications_get: {
+        parameters: {
+            query?: {
+                /** @description Filter by notification kind */
+                kind?: string | null;
+                /** @description Filter by level */
+                level?: string | null;
+                /** @description Include soft-dismissed rows */
+                include_dismissed?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unread_count_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    dismiss_notification_notifications__notification_id__dismiss_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_all_notifications_notifications_dismiss_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    delete_notification_notifications__notification_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_notification_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"][];
+                };
+            };
+        };
+    };
+    create_rule_notification_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_event_kinds_notification_rules_event_kinds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string[];
+                    };
+                };
+            };
+        };
+    };
+    delete_rule_notification_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_notification_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_rule_notification_rules__rule_id__toggle_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_catalog_lineage_catalog_lineage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogOut"];
+                };
+            };
+        };
+    };
+    search_search_get: {
+        parameters: {
+            query?: {
+                /** @description Substring to search for. Case-insensitive. */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_tags_search_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagsOut"];
+                };
+            };
+        };
+    };
+    set_pipeline_tags_search_pipelines__pipeline_id__tags_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pipeline_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelineTagsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagsOut"];
                 };
             };
             /** @description Validation Error */

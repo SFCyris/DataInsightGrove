@@ -68,6 +68,16 @@ class JobManager:
         return run_id
 
     async def _run(self, run_id: str, pipeline: Pipeline, sample_rows: int | None) -> None:
+        # Inflight gauge — bumped on running, decremented in finally.
+        from dig.observability import inc, set_gauge
+        # NB: this is racy for the gauge value across coroutines but the
+        # counter monotonic-add is correct; for our throughput (a few
+        # runs per second peak) the gauge is good enough as a "ballpark".
+        try:
+            set_gauge("dig_inflight_runs", float(len(self._tasks)))
+        except Exception:
+            pass
+
         await hub.publish(f"run:{run_id}", {"status": "queued"})
 
         started_at = _utcnow()
@@ -104,6 +114,10 @@ class JobManager:
                 node_metrics=result.nodeMetrics or None,
                 nan_origins=result.nanOrigins or None,
             )
+            try:
+                inc("dig_runs_total", labels={"status": "succeeded"})
+            except Exception:
+                pass
             await hub.publish(f"run:{run_id}", {
                 "status": "succeeded",
                 "progress": 1.0,
@@ -147,6 +161,10 @@ class JobManager:
                 finished_at=finished_at,
                 error=f"{type(e).__name__}: {e}",
             )
+            try:
+                inc("dig_runs_total", labels={"status": "failed"})
+            except Exception:
+                pass
             await hub.publish(f"run:{run_id}", {
                 "status": "failed",
                 "error": f"{type(e).__name__}: {e}",

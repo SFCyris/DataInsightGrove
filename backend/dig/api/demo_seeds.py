@@ -1,6 +1,6 @@
 """Demo-bundle seeding for the home-page "🌱 Try with sample data" button.
 
-The button now seeds three pipelines side-by-side instead of just the
+The button now seeds four pipelines side-by-side instead of just the
 single-dataset overview:
 
   1. **customers overview**  (1 dataset, 1–3 chart nodes — kept from the v1
@@ -44,8 +44,9 @@ log = logging.getLogger(__name__)
 NAME_OVERVIEW   = "📊 demo · customers — overview"
 NAME_HEALTHCARE = "🏥 demo · healthcare — clinical analysis"
 NAME_HOUSING    = "🏘 demo · housing — market with map"
+NAME_VARIABLES  = "📅 demo · variables — timestamped report"
 
-DEMO_PIPELINE_NAMES = (NAME_OVERVIEW, NAME_HEALTHCARE, NAME_HOUSING)
+DEMO_PIPELINE_NAMES = (NAME_OVERVIEW, NAME_HEALTHCARE, NAME_HOUSING, NAME_VARIABLES)
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +231,94 @@ def build_overview_pipeline_doc(d: Dataset) -> tuple[dict[str, Any], int]:
         }],
         "nodes": nodes,
         "outputs": outputs,
+    }
+    return doc, len(nodes)
+
+
+# ---- variables / timestamped-report demo ----------------------------------
+#
+# Showcases two 1.0 capabilities discoverable from the demo bundle:
+#   1. `add_runtime_column` — appends a `report_run_at` column whose value
+#      is rendered from `{{ now }}` once per run.
+#   2. Output sink URI templating — `file:///exports/{{ year }}/{{ month }}/
+#      customers-{{ today | strftime('%Y%m%d_%H%M%S') }}.parquet` resolves
+#      to a year/month-foldered, timestamp-named file on every run.
+#
+# Reuses the customers-demo.csv dataset already imported for the overview
+# demo — no extra ingest required, no extra dataset dependency. See
+# docs/VARIABLES.md for the full namespace + filter list.
+
+
+def build_variables_pipeline_doc(d: Dataset) -> tuple[dict[str, Any], int]:
+    """Build the variables / timestamped-report demo pipeline.
+
+    Two-node chain:
+      ds_<id> → add_runtime_column → output (templated path)
+
+    Returns (doc, node_count). Caller fills in the pipeline ID before
+    persisting.
+    """
+    ds_alias = f"ds_{d.id.lower()}"
+    nodes: list[dict[str, Any]] = [
+        {
+            "id": "n_runtime_col",
+            "step": "add_runtime_column",
+            "stepVersion": "1.0.0",
+            "inputs": {"in": {"port": "out", "ref": ds_alias}},
+            "outputs": ["out"],
+            "params": {
+                "name": "report_run_at",
+                "template": "{{ now }}",
+                "columnType": "datetime",
+                "position": "end",
+            },
+            "ui": {"x": 280, "y": 100, "label": "⏱ Stamp report time"},
+        },
+    ]
+    outputs: list[dict[str, Any]] = [
+        {
+            "id": "o_timestamped",
+            "name": "timestamped_customers",
+            "from": {"port": "out", "ref": "n_runtime_col"},
+            "sink": {
+                "connector": "parquet",
+                # NOTE: relative `file://exports/...` resolves under the run's
+                # output directory (data/outputs/<run_id>/exports/...), which
+                # is always writable. Earlier the URI was `file:///...` which
+                # wrote to filesystem root and EACCES-failed for any non-root
+                # user — broke the demo on first click.
+                "uri": (
+                    "file://exports/{{ pipeline_name }}/"
+                    "{{ year }}/{{ month }}/"
+                    "customers-{{ today | strftime('%Y%m%d') }}-"
+                    "{{ utime | replace(':', '-') }}.parquet"
+                ),
+                "options": {},
+            },
+        },
+    ]
+
+    doc = {
+        "schemaVersion": 1,
+        "id": "{{PIPELINE_ID}}",
+        "name": NAME_VARIABLES,
+        "description": (
+            "Demonstrates DIG 1.0 variable templating: the output sink URI "
+            "uses `{{ year }}/{{ month }}/...` to write into a date-folder "
+            "tree, and an `add_runtime_column` step stamps every row with "
+            "`{{ now }}`. See docs/VARIABLES.md for the full namespace."
+        ),
+        "datasets": [{
+            "id": ds_alias,
+            "connector": "parquet",
+            "uri": d.storage_uri,
+            "label": d.name,
+        }],
+        "nodes": nodes,
+        "outputs": outputs,
+        "metadata": {
+            "engineHints": {"prefer": "polars"},
+        },
     }
     return doc, len(nodes)
 
@@ -734,6 +823,11 @@ def build_housing_pipeline_doc(uris: dict[str, tuple[str, str]]) -> tuple[dict[s
     add("n_chart_map", "export_to_map",
         {"in": {"ref": "n_list_top500"}},
         {
+            # `mode` is declared `required: true` in the manifest and the
+            # validator (`engine/dag.py:validate_params_against_manifests`)
+            # rejects required-but-None even when the manifest has a default.
+            # Pass explicitly so the demo runs out of the box.
+            "mode": "points",
             "format": "lat_lon",
             "location": "loc_str",
             "name_col": "popup_label",
@@ -859,7 +953,7 @@ async def delete_demo_pipelines(session: AsyncSession) -> int:
 
 
 async def seed_all_demos(session: AsyncSession) -> dict[str, Any]:
-    """Idempotently import bundled CSVs and create the three demo pipelines.
+    """Idempotently import bundled CSVs and create the four demo pipelines.
 
     Caller is responsible for the "already exists" check + overwrite gate
     (use ``detect_existing_demo_pipelines`` and ``delete_demo_pipelines``
@@ -927,6 +1021,14 @@ async def seed_all_demos(session: AsyncSession) -> dict[str, Any]:
     session.add(hou_row)
     await snapshot_pipeline(session, hou_pid, hou_doc, 1, triggered_by="import")
 
+    # --- 4. Variables / timestamped-report (reuses customers dataset) ----
+    var_doc, var_nodes = build_variables_pipeline_doc(customers)
+    var_pid = str(ULID())
+    var_doc["id"] = var_pid
+    var_row = PipelineRow(id=var_pid, name=NAME_VARIABLES, document=var_doc, etag=1)
+    session.add(var_row)
+    await snapshot_pipeline(session, var_pid, var_doc, 1, triggered_by="import")
+
     await session.commit()
 
     return {
@@ -935,6 +1037,7 @@ async def seed_all_demos(session: AsyncSession) -> dict[str, Any]:
             {"id": cust_pid, "name": NAME_OVERVIEW,   "chartCount": cust_charts},
             {"id": h_pid,    "name": NAME_HEALTHCARE, "chartCount": h_charts},
             {"id": hou_pid,  "name": NAME_HOUSING,    "chartCount": hou_charts},
+            {"id": var_pid,  "name": NAME_VARIABLES,  "chartCount": 0},
         ],
         "totalCharts": cust_charts + h_charts + hou_charts,
     }

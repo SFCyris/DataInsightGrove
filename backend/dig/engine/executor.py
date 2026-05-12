@@ -31,6 +31,12 @@ from dig.engine.dag import infer_schemas, topo_sort, validate
 from dig.engine.pipeline import Node, OutputSpec, Pipeline, Reference, effective_connector
 from dig.engine.registry import connectors, steps
 from dig.engine.step import NanOrigin, PolarsContext, PolarsResult, Step, quote_ident, quote_str
+from dig.engine.templates import (
+    TemplateError,
+    build_namespace,
+    has_template,
+    render_path,
+)
 from dig.storage.files import data_dir
 
 log = logging.getLogger(__name__)
@@ -65,10 +71,50 @@ def _ref_alias(ref: Reference) -> str:
     return ref.ref
 
 
+def _render_pipeline_paths(p: Pipeline, *, run_id: str) -> Pipeline:
+    """Resolve `{{ }}` templates in dataset URIs + output sink URIs once per
+    run, returning a copy of the pipeline with the rendered values.
+
+    Variables resolve against a frozen-at-run-start namespace
+    (see dig.engine.templates.build_namespace) so every node in the run
+    sees consistent timestamps and IDs. URI templates that don't contain
+    `{{ }}` are passed through unchanged.
+
+    Path safety is enforced — see `assert_path_safe` in templates.py.
+    Raises TemplateError on bad references / unsafe paths.
+    """
+    user_vars = dict(((p.metadata or {}).get("variables")) or {})
+    ns = build_namespace(
+        run_id=run_id,
+        pipeline_id=p.id,
+        pipeline_name=p.name,
+        user_vars=user_vars,
+        env="run",
+    )
+    # Deep-copy via Pydantic so the original Pipeline (which is often the saved
+    # document) is not mutated. The executor sees a separate, rendered copy.
+    rendered = p.model_copy(deep=True)
+    for d in rendered.datasets:
+        if has_template(d.uri):
+            d.uri = render_path(d.uri, ns, expand_absolute=True)
+    for o in rendered.outputs:
+        if o.sink is not None and has_template(o.sink.uri):
+            o.sink.uri = render_path(o.sink.uri, ns, expand_absolute=True)
+    return rendered
+
+
 # Cap row-index lists at 10k per (node, column) tuple — keeps the run JSON
 # payload bounded. Above the cap we record only the first N indices plus a
 # `truncated_count`; the column-header badge still shows the full count.
 _NAN_ORIGIN_ROW_CAP = 10_000
+
+# Per-step cap on TOTAL row-index payload across all columns. A wide table
+# with 100 float columns each carrying NaN at the row cap would otherwise
+# produce 1M indices per step, ballooning the Run.nan_origins JSON column.
+# Above this cap, additional columns get count-only entries (row_indices=[],
+# truncated=True) so the operator still sees the count in /health and on the
+# header chip but the JSON payload stays bounded.
+_NAN_ORIGIN_TOTAL_CAP_PER_STEP = 50_000
 
 
 def _scan_and_coerce_nan(
@@ -101,8 +147,18 @@ def _scan_and_coerce_nan(
     new_entries: list[NanOrigin] = []
 
     df = result.output
+    # Track total payload across all columns this step. Above the cap, we
+    # still record per-column counts but stop appending row indices to the
+    # JSON sidecar. The grid still shows the chip count; the cells just lose
+    # individual orange-⚠ highlighting beyond the cap.
+    total_indices_so_far = 0
     for col, dtype in df.schema.items():
-        if dtype not in (pl.Float32, pl.Float64):
+        # Float columns and Decimal columns can hold IEEE-style NaN/±Inf.
+        # Polars Decimal is a separate dtype; include it so divides-to-NaN
+        # in decimal arithmetic don't slip past the scanner.
+        is_float = dtype in (pl.Float32, pl.Float64)
+        is_decimal = isinstance(dtype, pl.Decimal) if hasattr(pl, "Decimal") else False
+        if not (is_float or is_decimal):
             continue
         # Split is_nan vs is_infinite so we can record `arithmetic_nan`
         # vs `arithmetic_inf` distinctly (telemetry uses this; the
@@ -113,14 +169,22 @@ def _scan_and_coerce_nan(
             continue
         if nan_mask.any():
             indices = [int(i) for i, v in enumerate(nan_mask.to_list()) if v]
+            # Apply the per-step total cap — beyond the cap, drop row_indices
+            # but keep the count so the grid chip + telemetry still see it.
+            kept = indices if total_indices_so_far + len(indices) <= _NAN_ORIGIN_TOTAL_CAP_PER_STEP else []
+            total_indices_so_far += len(indices)
             new_entries.append(NanOrigin(
-                column=col, row_indices=indices,
+                column=col,
+                row_indices=kept if kept else [],  # mark count only if dropped
                 cause="arithmetic_nan", source_column=None,
             ))
         if inf_mask.any():
             indices = [int(i) for i, v in enumerate(inf_mask.to_list()) if v]
+            kept = indices if total_indices_so_far + len(indices) <= _NAN_ORIGIN_TOTAL_CAP_PER_STEP else []
+            total_indices_so_far += len(indices)
             new_entries.append(NanOrigin(
-                column=col, row_indices=indices,
+                column=col,
+                row_indices=kept if kept else [],
                 cause="arithmetic_inf", source_column=None,
             ))
         # Coerce in place: both NaN and ±Inf become NULL on this step's
@@ -139,6 +203,19 @@ def _scan_and_coerce_nan(
     # Telemetry — emit one event per (column, cause). Logged + swallowed
     # on failure so the run never breaks because of a telemetry hiccup.
     if result.nan_origins:
+        # Bump the Prometheus counter — fire-and-forget, never propagates.
+        try:
+            from dig.observability import inc as _metric_inc
+
+            for origin in result.nan_origins:
+                _metric_inc(
+                    "dig_nan_cells_produced_total",
+                    value=float(len(origin.row_indices)),
+                    labels={"cause": origin.cause, "step_id": step_id},
+                )
+        except Exception:
+            log.exception("nan-cell metric increment failed for node %s", node_id)
+
         try:
             import asyncio
             from dig.api.events import EventKinds, emit_event
@@ -217,7 +294,13 @@ def _dataset_cte(p: Pipeline, dataset_id: str) -> str:
     conn = effective_connector(spec)
     if conn == "csv":
         # Use DuckDB's read_csv_auto for speed; let it sniff types like our connector does.
-        path = urlparse(spec.uri).path if spec.uri.startswith("file://") else spec.uri
+        # Path is gated by `assert_local_path_safe` BEFORE handing it to DuckDB so
+        # a pipeline whose dataset URI was crafted to escape data_dir() (e.g.
+        # `file:///etc/passwd`) is rejected, not silently slurped. Round-N
+        # finding by the pen tester — the connector layer enforced this gate
+        # but the executor's fast-path bypassed it.
+        from dig.engine.uri_safety import assert_local_path_safe
+        path = str(assert_local_path_safe(spec.uri))
         delim = spec.options.get("delimiter", ",")
         if delim == "\\t":
             delim = "\t"
@@ -227,7 +310,8 @@ def _dataset_cte(p: Pipeline, dataset_id: str) -> str:
             f"delim={quote_str(delim)}, header={'true' if header else 'false'})"
         )
     elif conn == "parquet":
-        path = urlparse(spec.uri).path if spec.uri.startswith("file://") else spec.uri
+        from dig.engine.uri_safety import assert_local_path_safe
+        path = str(assert_local_path_safe(spec.uri))
         body = f"SELECT * FROM read_parquet({quote_str(path)})"
     else:
         raise ValueError(f"executor: unsupported connector '{conn}'")
@@ -439,6 +523,8 @@ def materialize_polars_ancestors(
         from dig.engine.step import PolarsContext  # local: avoid module cycle
         ctx = PolarsContext(
             run_id=run_id, out_dir=out_dir, node_id=node.id, pipeline_chain=pipeline_chain,
+            pipeline_id=p.id, pipeline_name=p.name,
+            pipeline_variables=dict(((p.metadata or {}).get("variables")) or {}),
         )
         try:
             res = step.execute_polars(input_frames, node.params, ctx)
@@ -496,6 +582,8 @@ def _run_one_output(
 
         ctx = PolarsContext(
             run_id=run_id, out_dir=out_dir, node_id=poly_node.id, pipeline_chain=pipeline_chain,
+            pipeline_id=p.id, pipeline_name=p.name,
+            pipeline_variables=dict(((p.metadata or {}).get("variables")) or {}),
         )
         try:
             result = step.execute_polars(input_frames, poly_node.params, ctx)
@@ -643,6 +731,13 @@ def execute(
     started = time.perf_counter()
     validate(p)
 
+    # Resolve `{{ }}` templates in dataset URIs + sink URIs once, against a
+    # per-run namespace. See dig.engine.templates and docs/VARIABLES.md.
+    try:
+        p = _render_pipeline_paths(p, run_id=run_id)
+    except TemplateError as te:
+        raise RuntimeError(f"pipeline template render failed: {te}") from te
+
     out_dir = data_dir() / "outputs" / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -702,6 +797,8 @@ def execute(
                 input_frames[port] = _materialize_sql_to_polars(con, up_sql)
             ctx = PolarsContext(
                 run_id=run_id, out_dir=out_dir, node_id=node.id, pipeline_chain=_pipeline_chain,
+                pipeline_id=p.id, pipeline_name=p.name,
+                pipeline_variables=dict(((p.metadata or {}).get("variables")) or {}),
             )
             node_started = time.perf_counter()
             try:

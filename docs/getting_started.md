@@ -46,7 +46,7 @@ The installer is idempotent — re-run any time to verify or repair the environm
 ```bash
 ./start.sh    # bring up API + web (detached)
 ./stop.sh     # graceful TERM, escalates to KILL after 5s
-./status.sh   # is it up? where?
+make status   # is it up? where? (uses scripts/dig-status.sh)
 make dev      # foreground mode with prefixed logs (Ctrl-C to stop)
 ```
 
@@ -174,7 +174,9 @@ The same pipeline produces byte-identical output in both engines (DIG ships pari
 
 ---
 
-## 5 · The transform toolkit (25 steps, 8 connectors)
+## 5 · The transform toolkit (51 built-in steps + 16 connectors, plus 160+ optional pack steps)
+
+> See [`docs/STEPS.md`](STEPS.md) for the full auto-generated catalog.
 
 | Category | Steps |
 |---|---|

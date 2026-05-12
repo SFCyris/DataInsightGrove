@@ -30,6 +30,16 @@ class Dataset(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Per-column free-text notes from the user. Shape: { "<col_name>": "this is in cents, not dollars" }
     annotations: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    # Enterprise-anticipatory identity columns. Always NULL in OSS / single-user.
+    # See internal/TIER_ARCHITECTURE.md § 4.2.
+    owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Free-form metadata + namespaced extensions slot.
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
+    extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -45,6 +55,15 @@ class Pipeline(Base):
     name: Mapped[str] = mapped_column(String(255))
     document: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     etag: Mapped[int] = mapped_column(Integer, default=1)
+    # Enterprise-anticipatory identity + audit columns. Always NULL in OSS.
+    # See internal/TIER_ARCHITECTURE.md § 4.2.
+    owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
+    extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     # Indexed: list_pipelines orders by `updated_at desc`. Without an index
     # the planner does a full sort over every row.
@@ -119,6 +138,17 @@ class Run(Base):
     # producing step only — the next step sees plain NULL. See
     # `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
     nan_origins: Mapped[dict[str, list[dict[str, Any]]] | None] = mapped_column(JSON, nullable=True)
+    # Enterprise-anticipatory identity + cost columns. Always NULL in OSS / single-user.
+    # See internal/TIER_ARCHITECTURE.md § 3.3 + § 4.2.
+    owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    triggered_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bytes_scanned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    compute_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(nullable=True)
+    extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
+    extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     # Indexed: list_runs orders by `created_at desc`. Composite with
     # pipeline_id would be ideal but two single-column indexes are
     # cheap enough on this workload.
