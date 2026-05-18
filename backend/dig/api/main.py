@@ -209,12 +209,20 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         self._token = token
 
     async def dispatch(self, request: Request, call_next):
+        # Default — overwritten below when a valid token is presented.
+        # Handlers (e.g. /health) can branch on this to redact extra
+        # detail for anonymous callers (round-4 QA finding).
+        request.state.auth_ok = False
         if self._token is None:
+            # No token configured — everyone is "trusted" (loopback dev mode).
+            request.state.auth_ok = True
             return await call_next(request)
         if request.method == "OPTIONS":  # CORS preflight
             return await call_next(request)
         path = request.url.path
         if path in _AUTH_BYPASS_PATHS:
+            # Bypass path — handler runs without authentication. Mark
+            # the request as anonymous so the handler can self-redact.
             return await call_next(request)
         # ``openapi.json`` / ``/docs`` / ``/redoc`` were previously
         # bypassed entirely so a developer could browse the API spec
@@ -248,6 +256,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 headers={"WWW-Authenticate": 'Bearer realm="DIG"'},
             )
+        request.state.auth_ok = True
         return await call_next(request)
 
 
@@ -363,28 +372,51 @@ def create_app() -> FastAPI:
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=_max_body_bytes())
 
     @app.get("/health", response_model=Health, tags=["meta"])
-    async def health() -> Health:
+    async def health(request: Request) -> Health:
         from dig.protocols import PROTOCOL_VERSION
+
+        # Round-4 QA finding: ``/health`` is in ``_AUTH_BYPASS_PATHS`` so
+        # any LAN-reachable scanner can fetch it. The previous shape
+        # leaked package name + version + group of every installed
+        # extension, which is dependency-fingerprint gold for a chained
+        # CVE attack ("oh, this DIG ships dig-enterprise-rcN; CVE-2026-…"
+        # applies). Detailed fields stay behind auth; unauthenticated
+        # callers see only counts + a generic "loaded/failed" mix.
+        is_authed = bool(getattr(request.state, "auth_ok", False))
 
         ext_records: list[HealthExtension] = []
         for ep in _DISCOVERED_EXTENSIONS.get("entry_points", []):
-            ext_records.append(HealthExtension(
-                kind="entry_point",
-                name=ep["name"],
-                package=ep["package"],
-                package_version=ep["package_version"],
-                group=ep["group"],
-                loaded=ep["loaded"],
-                load_error=ep["load_error"],
-            ))
+            if is_authed:
+                ext_records.append(HealthExtension(
+                    kind="entry_point",
+                    name=ep["name"],
+                    package=ep["package"],
+                    package_version=ep["package_version"],
+                    group=ep["group"],
+                    loaded=ep["loaded"],
+                    load_error=ep["load_error"],
+                ))
+            else:
+                ext_records.append(HealthExtension(
+                    kind="entry_point",
+                    name="<redacted>",
+                    loaded=ep["loaded"],
+                ))
         for fs in _DISCOVERED_EXTENSIONS.get("fs", []):
-            ext_records.append(HealthExtension(
-                kind="fs",
-                name=fs["name"],
-                url_prefix=fs["url_prefix"],
-                loaded=fs["load_error"] is None,
-                load_error=fs["load_error"],
-            ))
+            if is_authed:
+                ext_records.append(HealthExtension(
+                    kind="fs",
+                    name=fs["name"],
+                    url_prefix=fs["url_prefix"],
+                    loaded=fs["load_error"] is None,
+                    load_error=fs["load_error"],
+                ))
+            else:
+                ext_records.append(HealthExtension(
+                    kind="fs",
+                    name="<redacted>",
+                    loaded=fs["load_error"] is None,
+                ))
         return Health(
             status="ok", version=__version__, name="dig",
             extensions=ext_records,
@@ -602,7 +634,16 @@ def run() -> None:
                 return True
             if "token=" in msg:
                 import re as _re
-                redacted = _re.sub(r"token=[^&\s\"']+", "token=<redacted>", msg)
+                # Round-9 fix: only match URL-safe token characters
+                # (RFC 3986 unreserved + a few url-safe extras). The
+                # previous negative class missed separators like ``;``
+                # and ``]``/``}``/``,`` that some loggers append after
+                # the token, leaking the credential.
+                redacted = _re.sub(
+                    r"token=[A-Za-z0-9._~+/=\-]+",
+                    "token=<redacted>",
+                    msg,
+                )
                 if redacted != msg:
                     # Replace the args so getMessage returns the redacted form.
                     record.msg = redacted
@@ -616,6 +657,23 @@ def run() -> None:
     log_config["loggers"].setdefault("uvicorn.access", {}).setdefault("handlers", []).append("default")
     log_config["loggers"]["uvicorn.access"]["filters"] = ["redact_token"]
 
+    # Round-3 operational finding: configure_logging() makes the root
+    # logger emit structured JSON when ``DIG_LOG_FORMAT=json`` is set,
+    # but uvicorn ships its OWN LOGGING_CONFIG and its access logger
+    # used a plain-text formatter regardless. Operators piping logs
+    # into ``jq`` got mixed lines (DIG = JSON, uvicorn = ascii table).
+    # When JSON mode is on, swap uvicorn's two formatters to the same
+    # JsonFormatter the rest of DIG uses.
+    from dig.observability.logging_setup import JsonFormatter, is_json_logging
+    if is_json_logging():
+        log_config.setdefault("formatters", {})["dig_json"] = {
+            "()": "dig.observability.logging_setup.JsonFormatter",
+        }
+        for handler_name in ("default", "access"):
+            handler_cfg = log_config.get("handlers", {}).get(handler_name)
+            if handler_cfg is not None:
+                handler_cfg["formatter"] = "dig_json"
+
     # Round-4 DoS #2 — cap WebSocket frame size. Without this, a
     # malicious client could ship a single 4 GiB frame and tie up the
     # event loop while websockets buffers it. 1 MiB is plenty for our
@@ -624,6 +682,13 @@ def run() -> None:
     # DIG_WS_MAX_BYTES if a future feature genuinely needs bigger
     # frames; the default is intentionally conservative.
     ws_max_size = int(os.environ.get("DIG_WS_MAX_BYTES", str(1024 * 1024)))
+
+    # Uvicorn serves plain HTTP. TLS termination — when enabled — is
+    # handled by ``scripts/dig_tls_proxy.py`` which runs as a sibling
+    # process: it terminates HTTPS on a separate port (api.httpsPort)
+    # and forwards plain HTTP to us. That keeps uvicorn's signal /
+    # job-manager / WebSocket state in one place and avoids running two
+    # API instances against the same SQLite DB.
     uvicorn.run(
         "dig.api.main:app", host=host, port=port, reload=reload,
         log_config=log_config,

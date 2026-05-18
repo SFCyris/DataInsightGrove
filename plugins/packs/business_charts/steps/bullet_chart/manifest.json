@@ -1,0 +1,26 @@
+{
+  "id": "bullet_chart",
+  "version": "1.0.0",
+  "label": "🎯 Bullet chart",
+  "description": "Edward Tufte's compact target-vs-actual chart. A single horizontal bar shows the actual value; a thin marker shows the target; quantitative bands (poor / OK / good) shade the background. One row per row in the input.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "labelColumn":   { "type": "column_ref", "label": "Label column", "columnFrom": "in", "required": true },
+    "actualColumn":  { "type": "column_ref", "label": "Actual value column", "columnFrom": "in", "required": true },
+    "targetColumn":  { "type": "column_ref", "label": "Target column", "columnFrom": "in", "required": true },
+    "poorMaxColumn": { "type": "column_ref", "label": "Poor band upper bound (optional)", "columnFrom": "in" },
+    "okMaxColumn":   { "type": "column_ref", "label": "OK band upper bound (optional)", "columnFrom": "in" },
+    "goodMaxColumn": { "type": "column_ref", "label": "Good band upper bound (optional)", "columnFrom": "in" },
+    "title": { "type": "string", "label": "Title", "default": "Performance vs target" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "business", "kpi", "target", "bullet"],
+  "aliases": ["target chart", "tufte bullet"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}, {"kind": "numeric"}]
+}

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -255,6 +256,173 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
         "type": "integer",
         "validate": lambda v: _validate_positive_int(v, lo=0, hi=600),
     },
+
+    # ---- Boot-time config (persists in ~/.config/dig/config.json) ----
+    # These are read by scripts/dig-start.sh + dig_log_rotate.py +
+    # dig_tls_proxy.py BEFORE the FastAPI app comes up. We surface them
+    # in the same Settings UI for discoverability, but writes round-trip
+    # through scripts/dig_config.py so the file stays authoritative.
+    # ``requires_restart`` flags them so the UI can show "(takes effect
+    # on next restart)". ``group="boot"`` lets the UI cluster them in
+    # their own section.
+
+    "logDir": {
+        "default": "/var/log/DIG",
+        "label": "Log directory",
+        "help": "Where dig-start.sh writes the rotated log streams. Default /var/log/DIG (Unix-canonical; bootstrapped with sudo on first run, falls back to ~/Library/Logs/DIG on macOS or ~/.local/state/DIG/logs on Linux if sudo declined). Takes effect on next restart.",
+        "type": "string",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: _validate_string(v, max_len=1024, allow_empty=False),
+    },
+    "log.maxBytes": {
+        "default": 10 * 1024 * 1024,
+        "label": "Log file size limit (bytes)",
+        "help": "Per-stream rotation threshold. When the active log file reaches this size, it's rolled (.log → .log.1) and a fresh file is started. Default 10 MB. Takes effect on next restart.",
+        "type": "integer",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: _validate_positive_int(v, lo=1024, hi=10 * 1024 * 1024 * 1024),
+    },
+    "log.backupCount": {
+        "default": 5,
+        "label": "Log rotations kept",
+        "help": "How many rotated log files to keep per stream (.log.1 .. .log.N). Older files are pruned. Default 5 → 50 MB max history per stream. Takes effect on next restart.",
+        "type": "integer",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: _validate_positive_int(v, lo=0, hi=1000),
+    },
+
+    "tls.enabled": {
+        "default": True,
+        "label": "HTTPS enabled",
+        "help": "When on, scripts/dig_tls_proxy.py terminates HTTPS on api.httpsPort + web.httpsPort and forwards plain HTTP to the primary ports. Off = HTTP-only (plain http:// URLs are always live regardless). Takes effect on next restart.",
+        "type": "boolean",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: bool(v),
+    },
+    "tls.autoTrust": {
+        "default": True,
+        "label": "Auto-install cert in system trust store",
+        "help": "On first start, prompt for sudo to install the self-signed cert into the system keychain so browsers stop showing 'Not Secure'. The attempt happens exactly once — once attempted (successful or declined) subsequent restarts skip it. Re-trigger with `./scripts/dig_tls.py trust`. Takes effect on next restart.",
+        "type": "boolean",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: bool(v),
+    },
+
+    "api.httpsPort": {
+        "default": 8443,
+        "label": "API HTTPS port",
+        "help": "Port the TLS proxy listens on for the API. The plain HTTP port (default 8090) stays in 'api.port'. Takes effect on next restart.",
+        "type": "integer",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: _validate_positive_int(v, lo=1, hi=65535),
+    },
+    "web.httpsPort": {
+        "default": 3443,
+        "label": "Web HTTPS port",
+        "help": "Port the TLS proxy listens on for the web UI. The plain HTTP port (default 3000) stays in 'web.port'. Takes effect on next restart.",
+        "type": "integer",
+        "source": "config_file",
+        "group": "boot",
+        "requires_restart": True,
+        "validate": lambda v: _validate_positive_int(v, lo=1, hi=65535),
+    },
+}
+
+
+# ---- Boot-time config-file passthrough ------------------------------------
+#
+# Some settings have to be honoured BEFORE the FastAPI app starts (log
+# paths, log rotation, TLS cert paths, the HTTPS port the TLS proxy
+# binds to). Those can't live in the SQLite ``settings`` table, because
+# scripts/dig-start.sh needs them before the DB is touched. They live
+# in ~/.config/dig/config.json instead — single source of truth across
+# every dig-* shell script and the FastAPI process.
+#
+# We expose them in the same Settings UI as everything else, but route
+# their GET / PUT through scripts/dig_config.py so writes land in the
+# right file. ``group="boot"`` + ``requires_restart=True`` flag them in
+# the response so the UI can render the right hint next to each field.
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DIG_CONFIG_HELPER = _REPO_ROOT / "scripts" / "dig_config.py"
+
+
+def _config_file_get(dotted_path: str) -> Any:
+    """Read a single dotted-key from the resolved config.
+
+    Returns None if anything fails — UI then falls back to the spec's
+    default. ``dotted_path`` looks like ``log.maxBytes`` or
+    ``tls.enabled`` (the same shape the helper's ``get`` subcommand
+    accepts)."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            [sys.executable, str(_DIG_CONFIG_HELPER), "get", dotted_path],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        if r.returncode != 0:
+            return None
+        raw = r.stdout.strip()
+        # The helper prints "(unset)" when the key isn't in the merged
+        # config. Treat it as None so the UI shows the spec default.
+        if not raw or raw == "(unset)":
+            return None
+        # Try to coerce booleans + ints; the helper prints the Python repr
+        # for these, which is JSON-compatible for our types.
+        if raw.lower() in ("true", "false"):
+            return raw.lower() == "true"
+        if raw.lstrip("-").isdigit():
+            return int(raw)
+        return raw
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _config_file_set(dotted_path: str, value: Any) -> None:
+    """Persist a value to the config file via the helper's ``set``
+    subcommand. Raises ValueError on failure so the PUT endpoint can
+    surface a 400."""
+    import subprocess
+    # The helper accepts strings; it coerces "true"/"false"/digits/null
+    # itself, so we just stringify uniformly.
+    str_val = "null" if value is None else (
+        "true"  if value is True  else
+        "false" if value is False else
+        str(value)
+    )
+    r = subprocess.run(
+        [sys.executable, str(_DIG_CONFIG_HELPER), "set", dotted_path, str_val],
+        capture_output=True, text=True, timeout=5, check=False,
+    )
+    if r.returncode != 0:
+        raise ValueError(r.stderr.strip() or r.stdout.strip() or "config write failed")
+
+
+# Settings whose ``"source": "config_file"`` lives in _SETTINGS_SPEC
+# instead of the DB. Maps the public key → dotted path in config.json.
+# Lookup table extracted so list_settings + set_setting both reference
+# the same map; no risk of one path serialising while the other reads
+# from the DB.
+_CONFIG_FILE_PATHS: dict[str, str] = {
+    "log.maxBytes":          "log.maxBytes",
+    "log.backupCount":       "log.backupCount",
+    "logDir":                "logDir",
+    "tls.enabled":           "tls.enabled",
+    "tls.autoTrust":         "tls.autoTrust",
+    "api.httpsPort":         "api.httpsPort",
+    "web.httpsPort":         "web.httpsPort",
 }
 
 
@@ -386,6 +554,13 @@ class SettingDescriptor(BaseModel):
     help: str
     type: str
     options: list[str] | None = None
+    # Boot-time settings persist in ~/.config/dig/config.json instead of
+    # the SQLite ``settings`` table — they're read by scripts/dig-start.sh
+    # before uvicorn comes up. The UI surfaces these alongside the normal
+    # settings but tags them so it can show "(requires restart)" next to
+    # the field. Optional fields default to false / null on the wire.
+    requires_restart: bool = False
+    group: str = "general"
 
 
 def _present_value(key: str, value: Any) -> Any:
@@ -403,7 +578,16 @@ async def list_settings(session: AsyncSession = Depends(get_session)) -> list[Se
     saved = {r.key: r.value for r in rows}
     out: list[SettingDescriptor] = []
     for key, spec in _SETTINGS_SPEC.items():
-        raw = saved.get(key, spec["default"])
+        # Boot-time settings live in ~/.config/dig/config.json instead of
+        # the SQLite settings table — read them through dig_config.py so
+        # the UI sees the same value the start script would see at boot.
+        if spec.get("source") == "config_file":
+            dotted = _CONFIG_FILE_PATHS.get(key, key)
+            raw = _config_file_get(dotted)
+            if raw is None:
+                raw = spec["default"]
+        else:
+            raw = saved.get(key, spec["default"])
         out.append(SettingDescriptor(
             key=key,
             value=_present_value(key, raw),
@@ -412,6 +596,8 @@ async def list_settings(session: AsyncSession = Depends(get_session)) -> list[Se
             help=spec["help"],
             type=spec["type"],
             options=spec.get("options"),
+            requires_restart=bool(spec.get("requires_restart", False)),
+            group=spec.get("group", "general"),
         ))
     return out
 
@@ -425,23 +611,68 @@ async def set_setting(
     spec = _SETTINGS_SPEC.get(key)
     if spec is None:
         raise HTTPException(404, f"unknown setting key '{key}'")
-    try:
-        validated = spec["validate"](body.value)
-    except ValueError as e:
-        raise HTTPException(400, f"{key}: {e}") from e
 
+    # Boot-time settings round-trip through dig_config.py so the
+    # ~/.config/dig/config.json file remains the single source of
+    # truth — the SQLite settings table never sees them.
+    if spec.get("source") == "config_file":
+        try:
+            validated = spec["validate"](body.value)
+        except ValueError as e:
+            raise HTTPException(400, f"{key}: {e}") from e
+        try:
+            _config_file_set(_CONFIG_FILE_PATHS.get(key, key), validated)
+        except ValueError as e:
+            raise HTTPException(500, f"could not persist '{key}' to config file: {e}") from e
+        return SettingDescriptor(
+            key=key,
+            value=_present_value(key, validated),
+            default=_present_value(key, spec["default"]),
+            label=spec["label"], help=spec["help"], type=spec["type"],
+            options=spec.get("options"),
+            requires_restart=True,
+            group=spec.get("group", "boot"),
+        )
+
+    # Round-3 pen-tester: the GET path masks secret values to
+    # ``sk-…abcd`` so the cleartext never leaves the server. The
+    # frontend redisplays the masked form in the input. If the user
+    # clicks Save without retyping, the PUT round-trip writes that
+    # placeholder back as the new "secret" — silently clobbering the
+    # real key with three chars + an ellipsis. Detect the mask sentinel
+    # (``…`` / U+2026, which never appears in legitimate API keys) and
+    # treat the submission as a no-op: the existing stored value stays.
     existing = await session.get(Setting, key)
-    if existing is None:
-        session.add(Setting(key=key, value=validated))
+    if (
+        key in _SECRET_KEYS
+        and isinstance(body.value, str)
+        and "…" in body.value
+    ):
+        if existing is None:
+            raise HTTPException(
+                400,
+                f"{key}: received masked placeholder but no existing secret is stored; "
+                "please paste the real API key",
+            )
+        validated = existing.value
     else:
-        existing.value = validated
-    await session.commit()
+        try:
+            validated = spec["validate"](body.value)
+        except ValueError as e:
+            raise HTTPException(400, f"{key}: {e}") from e
+        if existing is None:
+            session.add(Setting(key=key, value=validated))
+        else:
+            existing.value = validated
+        await session.commit()
     return SettingDescriptor(
         key=key,
         value=_present_value(key, validated),
         default=_present_value(key, spec["default"]),
         label=spec["label"], help=spec["help"], type=spec["type"],
         options=spec.get("options"),
+        requires_restart=bool(spec.get("requires_restart", False)),
+        group=spec.get("group", "general"),
     )
 
 

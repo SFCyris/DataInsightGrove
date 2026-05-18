@@ -2,7 +2,7 @@
   "id": "split_column",
   "version": "1.0.0",
   "label": "✂️ Split column",
-  "description": "Split a string column on a delimiter into N new columns (named col_1, col_2, …).",
+  "description": "Split a string column on a delimiter into N new columns (named <column>_1, <column>_2, …).",
   "category": "shape",
   "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
   "io": {

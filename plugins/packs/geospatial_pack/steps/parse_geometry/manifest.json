@@ -1,0 +1,38 @@
+{
+  "id": "parse_geometry",
+  "version": "1.0.0",
+  "label": "📐 Parse geometry",
+  "description": "Parse a column of geometry strings (WKT or GeoJSON) into a typed geometry column. Adds three columns: geometry (a serialised shapely geometry), geometry_type (Point / LineString / Polygon / MultiPolygon / …), and geometry_valid (boolean). Required upstream of spatial_join when your input is text-encoded GIS data.",
+  "category": "shape",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "sourceColumn": {
+      "type": "column_ref",
+      "label": "Source column (text)",
+      "columnFrom": "in",
+      "required": true
+    },
+    "format": {
+      "type": "enum",
+      "label": "Encoding",
+      "enumValues": ["auto", "wkt", "geojson"],
+      "default": "auto",
+      "required": true,
+      "help": "auto: detect per row (look for 'POINT(' / 'POLYGON(' / etc. for WKT, leading '{' for GeoJSON). wkt: assume Well-Known Text. geojson: assume GeoJSON Feature / Geometry strings."
+    },
+    "outputPrefix": {
+      "type": "string",
+      "label": "Output prefix",
+      "default": "",
+      "help": "Optional prefix prepended to the three output column names. Use to keep multiple parsed-geometry sets distinct."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geometry", "wkt", "geojson", "spatial", "geo", "parse"],
+  "requires": [{"kind": "string"}],
+  "aliases": ["wkt parse", "geojson parse", "shapely from string"]
+}

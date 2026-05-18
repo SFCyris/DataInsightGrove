@@ -5,6 +5,7 @@ import { QueryProvider } from "@/lib/query";
 import { useSettings, useSystemThemeWatcher } from "@/lib/settings";
 import { CommandPalette } from "@/components/command-palette";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
+import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { ServerStatusOverlay } from "@/components/server-status-overlay";
 import { MacTitlebar } from "@/components/mac-titlebar";
 import { AiKeepalive } from "@/components/ai-keepalive";
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       {children}
       <CommandPalette />
       <ShortcutsCheatsheet />
+      <GlobalShortcuts />
       <Toaster position="bottom-right" richColors closeButton />
     </QueryProvider>
   );

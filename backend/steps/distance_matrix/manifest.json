@@ -1,0 +1,54 @@
+{
+  "id": "distance_matrix",
+  "version": "1.0.0",
+  "label": "📏 Distance matrix",
+  "description": "Compute pairwise distances between every pair of rows from a vector column. Output is either a long-form (i, j, distance) table or a square N×N table. Use as input to hierarchical clustering, multidimensional scaling, k-medoids, or just to explore which rows are closest to which.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "vectorColumn": {
+      "type": "column_ref",
+      "label": "Vector column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "metric": {
+      "type": "enum",
+      "label": "Metric",
+      "enumValues": ["euclidean", "cosine", "manhattan", "chebyshev"],
+      "default": "euclidean",
+      "required": true,
+      "help": "euclidean: L2 (straight-line) distance. cosine: 1 - cosine similarity (range 0-2). manhattan: L1 (city-block). chebyshev: max element-wise distance."
+    },
+    "outputFormat": {
+      "type": "enum",
+      "label": "Output format",
+      "enumValues": ["long", "square"],
+      "default": "long",
+      "required": true,
+      "help": "long: one row per (i, j) pair with columns row_i, row_j, distance. square: an N×N table where the value at (i, j) is the distance from row i to row j."
+    },
+    "labelColumn": {
+      "type": "column_ref",
+      "label": "Label column (optional)",
+      "columnFrom": "in",
+      "help": "Use this column's values instead of row indices to identify rows in the output. Defaults to integer row index."
+    },
+    "maxRows": {
+      "type": "integer",
+      "label": "Max rows",
+      "default": 1000,
+      "min": 2,
+      "max": 10000,
+      "help": "N rows produces an N² result. The cap prevents accidentally materialising a 10,000² = 100M-row distance matrix. Raise consciously if you really want that."
+    }
+  },
+  "preview": { "rowImpact": "may_grow", "schemaImpact": "rebuilds" },
+  "tags": ["distance", "matrix", "pairwise", "linalg", "clustering", "mds", "knn"],
+  "requires": [{"kind": ["array", "vector"]}],
+  "aliases": ["pairwise distance", "all-pairs", "MDS input", "scipy pdist"]
+}

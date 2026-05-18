@@ -1,8 +1,8 @@
 {
   "id": "business_charts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "label": "\ud83d\udcc8 Business charts",
-  "description": "BI dashboard staples: waterfall (cumulative contribution), Pareto (80/20 rule), funnel (sequential conversion). Renders PNG artifacts using matplotlib.",
+  "description": "BI dashboard staples: waterfall (cumulative contribution), Pareto (80/20 rule), funnel (sequential conversion), pie / donut (composition), Marimekko / mosaic (2-D part-to-whole), bullet (target-vs-actual), and gauge (single-metric speedometer). Renders PNG artifacts using matplotlib.",
   "author": "DataInsightGrove",
   "license": "AGPL-3.0",
   "homepage": "https://github.com/SFCyris/DataInsightGrove",
@@ -10,9 +10,15 @@
   "steps": [
     "waterfall_chart",
     "pareto_chart",
-    "funnel_chart"
+    "funnel_chart",
+    "pie_donut",
+    "mosaic_marimekko",
+    "bullet_chart",
+    "gauge_chart"
   ],
   "connectors": [],
-  "pythonRequirements": [],
-  "checksum": "sha256:314e90ea4bf7b23bd518155f3a907a57663c0898774c26667cdab6252049d183"
+  "pythonRequirements": [
+    "matplotlib>=3.8"
+  ],
+  "checksum": "sha256:0f3e4d06f37164e0fad844aae01b999c6a76b41ae5c6ea18dc8cd4b159c446c6"
 }

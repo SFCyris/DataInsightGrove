@@ -113,6 +113,21 @@ async def snapshot_pipeline(
     endpoint can resolve `run:<id>` refs by column lookup instead of by
     grovelling for a key that was never written into the document.
     """
+    # Round-4 QA finding: ``PipelineHistory.document`` is a JSON column
+    # with no size cap. A pipeline doc with megabyte-sized params (e.g.
+    # a malformed import) was re-snapshotted on every save / run start,
+    # so the row stack could grow to tens of MB and slow every
+    # list-pipelines query. Cap defensively — anything above this is
+    # operationally suspect.
+    import json as _json_for_size
+    encoded = _json_for_size.dumps(document, default=str)
+    _MAX_SNAPSHOT_BYTES = 512 * 1024  # 512 KiB
+    if len(encoded) > _MAX_SNAPSHOT_BYTES:
+        raise ValueError(
+            f"pipeline document is {len(encoded):,} bytes; refusing to "
+            f"snapshot (max {_MAX_SNAPSHOT_BYTES:,}). Trim large step "
+            "parameters before saving.",
+        )
     h = document_hash(document)
     latest = await _latest_snapshot(session, pipeline_id)
     # Dedup by document hash for transient triggers (autosave / run_start),

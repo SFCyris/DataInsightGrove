@@ -78,6 +78,57 @@ def _is_private_address(host: str) -> bool:
     return False
 
 
+# RFC 7230 token chars for header names (the strict spec set, minus the
+# httpx-permitted superset). Used to gate caller-supplied header names
+# before they cross into the wire-format builder.
+_HEADER_NAME_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,256}$")
+# Maximum length for a single header value. Picked to match common reverse
+# proxy defaults (nginx large_client_header_buffers 8k); larger values are
+# almost always a sign of misuse.
+_MAX_HEADER_VALUE_LEN = 8192
+
+
+def _validate_header_pair(name: str, value: str) -> tuple[str, str]:
+    """Reject header pairs that could splice extra headers/bodies into the
+    outgoing request. The classic CRLF-injection vector — a value of
+    ``"foo\\r\\nX-Smuggled: bar"`` turns one header into two — is blocked
+    by banning ``\\r`` / ``\\n`` / ``\\x00`` in values. Header names are
+    held to the RFC 7230 token set so dotted/newline-bearing names can't
+    sneak past the same gate.
+
+    Round-3 pen-tester finding: REST ``extra_headers`` / ``auth_param_name``
+    and webhook ``hook.headers`` were interpolated into the outbound
+    request without sanitisation. A pipeline import (or a forged Settings
+    POST) could then inject arbitrary extra headers, including
+    ``Host:`` / ``Content-Length:`` for HTTP-request smuggling.
+    """
+    if not isinstance(name, str) or not _HEADER_NAME_RE.match(name):
+        raise ValueError(
+            f"REST/webhook header name {name!r} is invalid — must match "
+            "RFC 7230 token set (letters/digits/!#$%&'*+-.^_`|~), 1..256 chars",
+        )
+    if not isinstance(value, str):
+        raise ValueError(
+            f"REST/webhook header value for {name!r} must be a string, got {type(value).__name__}",
+        )
+    if len(value) > _MAX_HEADER_VALUE_LEN:
+        raise ValueError(
+            f"REST/webhook header {name!r} value too long "
+            f"({len(value)} bytes; max {_MAX_HEADER_VALUE_LEN})",
+        )
+    # Forbid every C0 control byte plus DEL. CR/LF are the smuggling
+    # vectors; NUL terminates C strings; other control bytes have no
+    # legitimate use in an HTTP header field-value.
+    for ch in value:
+        cp = ord(ch)
+        if cp < 0x20 or cp == 0x7F:
+            raise ValueError(
+                f"REST/webhook header {name!r} value contains control byte "
+                f"U+{cp:04X} — header injection is not permitted",
+            )
+    return name, value
+
+
 def _assert_url_safe(url: str) -> None:
     """Validate scheme + host before any network call. Raises ValueError
     on a rejected URL. Bypassable via `DIG_REST_ALLOW_PRIVATE=1` for
@@ -264,14 +315,20 @@ class RestApiConnector(Connector):
             "Accept": "application/json",
         }
         for k, v in extra_headers.items():
-            headers[str(k)] = str(v)
+            n, val = _validate_header_pair(str(k), str(v))
+            headers[n] = val
 
         # Apply auth
         first_url = uri
         if auth_kind == "bearer" and auth_value:
-            headers["Authorization"] = f"Bearer {auth_value}"
+            n, val = _validate_header_pair("Authorization", f"Bearer {auth_value}")
+            headers[n] = val
         elif auth_kind == "api_key_header" and auth_value:
-            headers[auth_param_name] = auth_value
+            # `auth_param_name` is the user-controlled header NAME here —
+            # without _validate_header_pair, a name of "X\r\nX-Smuggled: 1"
+            # would let the operator splice an arbitrary second header.
+            n, val = _validate_header_pair(auth_param_name, auth_value)
+            headers[n] = val
         elif auth_kind == "api_key_query" and auth_value:
             first_url = _add_query(first_url, {auth_param_name: auth_value})
         elif auth_kind == "basic" and auth_value:
@@ -412,3 +469,15 @@ class RestApiConnector(Connector):
         # infer_schema_length=None → use all rows for type inference, more
         # accurate but slower for very large pulls. Bounded by max_pages × page_size.
         return pl.DataFrame(flat, infer_schema_length=None).lazy()
+
+
+# Module-level instance the registry imports. Every connector module is
+# required to export ``connector = <Connector subclass instance>``;
+# without this the registry's loader prints
+# ``failed to load connector rest_api: must export 'connector' of type Connector``
+# at every startup and the REST connector silently doesn't show up in the
+# Datasets → From REST flow.
+from pathlib import Path  # noqa: E402 — keep alongside the manifest-load it's used for
+
+_manifest_path = Path(__file__).parent / "manifest.json"
+connector = RestApiConnector(json.loads(_manifest_path.read_text()))

@@ -1,8 +1,8 @@
 {
   "id": "stats_pro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "label": "\ud83d\udcd0 Statistics Pro",
-  "description": "Hypothesis tests, effect sizes, multiple-comparison corrections, and bootstrap confidence intervals. The full inferential-statistics toolbox extending the basic statspack.",
+  "description": "Hypothesis tests, effect sizes, multiple-comparison corrections, bootstrap confidence intervals, and binary classification via logistic regression. The full inferential-statistics toolbox extending the basic statspack.",
   "author": "DataInsightGrove",
   "license": "AGPL-3.0",
   "homepage": "https://github.com/SFCyris/DataInsightGrove",
@@ -13,12 +13,14 @@
     "mann_whitney",
     "effect_size",
     "multiple_comparison_correction",
-    "bootstrap_ci"
+    "bootstrap_ci",
+    "logistic_regression"
   ],
   "connectors": [],
   "pythonRequirements": [
     "scipy>=1.11",
-    "statsmodels>=0.14"
+    "statsmodels>=0.14",
+    "scikit-learn>=1.3"
   ],
-  "checksum": "sha256:d06281c0b0ac695edc44d057ff2e1cf56b6a472f3eac6b6c34bb2606509e737e"
+  "checksum": "sha256:25bce2aec58f361bcbc5393d5bdde0e15c080a7791c4235d1186fba8cbd1c8af"
 }

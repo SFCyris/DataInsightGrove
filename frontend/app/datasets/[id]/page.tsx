@@ -4,7 +4,7 @@ import Link from "next/link";
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, type Dataset } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import { ProfileCard } from "@/components/profile/profile-card";
 import { SheetPickerModal } from "@/components/sheet-picker-modal";
 import { IslandPickerModal } from "@/components/island-picker-modal";
 import { fmtInt } from "@/lib/format-number";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { toastError } from "@/lib/toast-error";
 
 function _datasetRefId(id: string): string {
   return `ds_${id.toLowerCase()}`;
@@ -24,13 +26,15 @@ export default function DatasetDetailPage({ params }: PageProps) {
   const { id } = use(params);
   const reduce = useReducedMotion();
   const router = useRouter();
-  const [shaping, setShaping] = useState(false);
+  // Round-9 fix: ``shaping`` was a duplicate of `shapeInPipeline.isPending`.
+  // Dropped — every consumer now reads `shapeInPipeline.isPending`.
 
   const dataset = useQuery({
     queryKey: ["dataset", id],
     queryFn: () => api.getDataset(id),
     refetchInterval: (q) => (q.state.data?.status === "ingesting" ? 1500 : false),
   });
+  useDocumentTitle(dataset.data?.name ? `${dataset.data.name} · Dataset` : "Dataset");
 
   // Workflow CTA: create a fresh pipeline pre-attached to this dataset and
   // navigate straight into the editor. Closes the largest UX gap from the
@@ -61,8 +65,7 @@ export default function DatasetDetailPage({ params }: PageProps) {
       router.push(`/pipelines/${res.id}`);
     },
     onError: (e: Error) => {
-      setShaping(false);
-      toast.error(`Couldn't create pipeline: ${e.message}`);
+      toastError("Couldn't create pipeline", e);
     },
   });
 
@@ -83,7 +86,27 @@ export default function DatasetDetailPage({ params }: PageProps) {
       );
       router.push(`/pipelines/${res.id}`);
     },
-    onError: (e: Error) => toast.error(`Overview failed: ${e.message}`),
+    onError: (e: Error) => toastError("Overview failed", e),
+  });
+
+  // Round-5 W3: refresh / retry path. Re-ingests in place using the
+  // existing source_uri + options; preserves the dataset_id so any
+  // downstream pipelines stay attached.
+  const queryClient = useQueryClient();
+  const refreshM = useMutation({
+    mutationFn: async () => api.refreshDataset(id),
+    onSuccess: (d) => {
+      if (d.status === "ready") {
+        toast.success(`🔄 Refreshed "${d.name}" (${d.rowCount?.toLocaleString() ?? "?"} rows)`);
+      } else if (d.status === "failed") {
+        toast.error(`Refresh failed: ${d.error ?? "see dataset detail"}`);
+      } else {
+        toast(`Refresh: ${d.status}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["dataset", id] });
+      queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    },
+    onError: (e: Error) => toastError("Refresh failed", e),
   });
   const profile = useQuery({
     queryKey: ["dataset", id, "profile"],
@@ -145,13 +168,20 @@ export default function DatasetDetailPage({ params }: PageProps) {
                   {dataset.data.status === "ready" && "✅ ready"}
                   {dataset.data.status === "ingesting" && "⏳ ingesting"}
                   {dataset.data.status === "failed" && "❌ failed"}
+                  {dataset.data.status === "awaiting_sheet_pick" && "📑 awaiting sheet"}
+                  {dataset.data.status === "awaiting_island_pick" && "📐 awaiting table"}
+                  {dataset.data.status &&
+                    !["ready", "ingesting", "failed", "awaiting_sheet_pick", "awaiting_island_pick"].includes(
+                      dataset.data.status,
+                    ) &&
+                    `❔ ${dataset.data.status}`}
                 </dd>
               </div>
             </dl>
             <div className="flex flex-col items-stretch gap-2">
               <Button
                 size="lg"
-                disabled={dataset.data.status !== "ready" || generateOverview.isPending || shaping || shapeInPipeline.isPending}
+                disabled={dataset.data.status !== "ready" || generateOverview.isPending || shapeInPipeline.isPending}
                 onClick={() => generateOverview.mutate()}
                 className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
                 title="Auto-build a 1–3-chart overview pipeline from this dataset's column profile and open it. Charts render live in seconds."
@@ -161,12 +191,24 @@ export default function DatasetDetailPage({ params }: PageProps) {
               <Button
                 size="sm"
                 variant="ghost"
-                disabled={dataset.data.status !== "ready" || shaping || shapeInPipeline.isPending || generateOverview.isPending}
-                onClick={() => { setShaping(true); shapeInPipeline.mutate(); }}
+                disabled={dataset.data.status !== "ready" || shapeInPipeline.isPending || generateOverview.isPending}
+                onClick={() => shapeInPipeline.mutate()}
                 className="text-xs"
                 title="Create an empty pipeline pre-attached to this dataset — start from scratch"
               >
-                {shaping || shapeInPipeline.isPending ? "✨ Opening…" : "✂️ Or start from scratch"}
+                {shapeInPipeline.isPending ? "✨ Opening…" : "✂️ Or start from scratch"}
+              </Button>
+              {/* Round-5 W3: re-ingest from the same source. Keeps the
+                  dataset_id stable so downstream pipelines stay attached. */}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={refreshM.isPending}
+                onClick={() => refreshM.mutate()}
+                className="text-xs"
+                title="Re-read the file (or URL) from disk. Use this when the source has changed."
+              >
+                {refreshM.isPending ? "🔄 Refreshing…" : "🔄 Refresh from source"}
               </Button>
             </div>
           </div>
@@ -180,9 +222,18 @@ export default function DatasetDetailPage({ params }: PageProps) {
       )}
 
       {dataset.data?.status === "failed" && (
-        <p className="text-sm text-destructive border border-destructive/20 bg-destructive/10 rounded-lg p-3">
-          ❌ {dataset.data.error ?? "Ingest failed."}
-        </p>
+        <div className="text-sm text-destructive border border-destructive/20 bg-destructive/10 rounded-lg p-3 flex items-start gap-3">
+          <span className="flex-1">❌ {dataset.data.error ?? "Ingest failed."}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={refreshM.isPending}
+            onClick={() => refreshM.mutate()}
+            title="Re-run the connector with the same options"
+          >
+            🔄 Retry
+          </Button>
+        </div>
       )}
 
       {dataset.data?.status === "ingesting" && (
@@ -243,7 +294,10 @@ export default function DatasetDetailPage({ params }: PageProps) {
  *  user dismissed the upload-time picker and is resuming from the
  *  datasets list. */
 function AwaitingSheetPick({ dataset, onPicked }: { dataset: Dataset; onPicked: () => void }) {
-  const [open, setOpen] = useState(true);
+  // Round-9 fix: previously defaulted to `true`, slamming a modal in
+  // the user's face the moment they navigated to a paused dataset.
+  // Show the inline banner first and let the user click "Pick sheet".
+  const [open, setOpen] = useState(false);
   const sheets = dataset.availableSheets ?? [];
   return (
     <>
@@ -273,7 +327,9 @@ function AwaitingSheetPick({ dataset, onPicked }: { dataset: Dataset; onPicked: 
 /** Same shape as AwaitingSheetPick but for the island-pick branch.
  *  Triggered when the chosen sheet contains 2+ disjoint data tables. */
 function AwaitingIslandPick({ dataset, onPicked }: { dataset: Dataset; onPicked: () => void }) {
-  const [open, setOpen] = useState(true);
+  // Round-9 fix: defer modal to explicit click (same rationale as
+  // AwaitingSheetPick above).
+  const [open, setOpen] = useState(false);
   const islands = dataset.availableIslands ?? [];
   return (
     <>

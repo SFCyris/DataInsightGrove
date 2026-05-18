@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -154,7 +154,7 @@ async def list_notifications(
 ) -> NotificationListOut:
     """List notifications, newest first. Pagination via limit/offset."""
     base_q = select(Notification)
-    count_q = select(Notification.id)
+    count_q = select(func.count()).select_from(Notification)
     if kind:
         base_q = base_q.where(Notification.kind == kind)
         count_q = count_q.where(Notification.kind == kind)
@@ -170,27 +170,33 @@ async def list_notifications(
     )
     items = [_to_out(n) for n in rows_res.scalars().all()]
 
-    # Total matches and unread (separate queries, both cheap with the
-    # indexes on created_at + dismissed_at).
-    total_res = await session.execute(count_q)
-    total = len(total_res.scalars().all())
-
-    unread_res = await session.execute(
-        select(Notification.id).where(Notification.dismissed_at.is_(None))
+    # Round-9 fix: COUNT(*) at SQL layer instead of loading every id
+    # into Python and len()ing it — same indexes, O(1) memory.
+    total = int((await session.execute(count_q)).scalar() or 0)
+    unread = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(Notification)
+                .where(Notification.dismissed_at.is_(None))
+            )
+        ).scalar()
+        or 0
     )
-    unread = len(unread_res.scalars().all())
 
     return NotificationListOut(items=items, total=total, unread=unread)
 
 
 @router.get("/unread-count")
 async def unread_count(session: AsyncSession = Depends(get_session)) -> dict[str, int]:
-    """Tiny endpoint for the header bell badge — avoids fetching a full
-    page of rows just to count them."""
+    """Tiny endpoint for the header bell badge — uses COUNT(*) at the
+    SQL layer (Round-9 fix: was loading every id and len()ing it)."""
     res = await session.execute(
-        select(Notification.id).where(Notification.dismissed_at.is_(None))
+        select(func.count())
+        .select_from(Notification)
+        .where(Notification.dismissed_at.is_(None))
     )
-    return {"unread": len(res.scalars().all())}
+    return {"unread": int(res.scalar() or 0)}
 
 
 @router.patch("/{notification_id}/dismiss", response_model=NotificationOut)

@@ -172,6 +172,9 @@ export function SankeyView({
     { idx: number; x: number; y: number } | null
   >(null);
   const [previousMetrics, setPreviousMetrics] = useState<Record<string, NodeRunMetrics> | null>(null);
+  // Round-8 UX: annotation editor modal state (replaces window.prompt).
+  const [annotEditor, setAnnotEditor] = useState<{ bandKey: string; value: string } | null>(null);
+
   // Tier 3: annotation pins — ephemeral, session-scoped notes the user
   // can drop on bands. Persisted in localStorage keyed by pipeline id
   // so notes survive a page refresh without polluting the saved doc.
@@ -185,10 +188,14 @@ export function SankeyView({
   const zoomGroupRef = useRef<SVGGElement | null>(null);
   const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
-  // Load annotations from localStorage on mount.
+  // Load annotations from localStorage on mount. Round-8 fix: skip the
+  // load/save entirely when the doc has no id — previously a "anon"
+  // sentinel was shared by every unsaved pipeline, so notes from one
+  // new pipeline leaked into another.
   useEffect(() => {
+    if (!doc.id) return;
     try {
-      const raw = localStorage.getItem(`dig:sankey-annotations:${doc.id ?? "anon"}`);
+      const raw = localStorage.getItem(`dig:sankey-annotations:${doc.id}`);
       if (raw) setAnnotations(JSON.parse(raw));
     } catch {
       // localStorage unavailable / corrupt — ignore, no notes is a fine default.
@@ -197,9 +204,10 @@ export function SankeyView({
 
   // Persist annotations on change.
   useEffect(() => {
+    if (!doc.id) return;
     try {
       localStorage.setItem(
-        `dig:sankey-annotations:${doc.id ?? "anon"}`,
+        `dig:sankey-annotations:${doc.id}`,
         JSON.stringify(annotations),
       );
     } catch {
@@ -343,19 +351,23 @@ export function SankeyView({
     });
   };
 
+  // Round-8 UX: replaced ``window.prompt`` (jarring native dialog,
+  // un-themed, breaks dark mode + reduced-motion) with a state-driven
+  // inline modal that uses the same sonner + motion patterns as the
+  // rest of the editor.
   const handleAnnotate = (bandKey: string) => {
-    const existing = annotations[bandKey] ?? "";
-    const next = window.prompt(
-      existing ? "Edit annotation (clear to remove):" : "Add annotation:",
-      existing,
-    );
-    if (next === null) return;
+    setAnnotEditor({ bandKey, value: annotations[bandKey] ?? "" });
+  };
+  const saveAnnot = () => {
+    if (!annotEditor) return;
+    const { bandKey, value } = annotEditor;
     setAnnotations((cur) => {
       const copy = { ...cur };
-      if (next.trim() === "") delete copy[bandKey];
-      else copy[bandKey] = next.trim();
+      if (value.trim() === "") delete copy[bandKey];
+      else copy[bandKey] = value.trim();
       return copy;
     });
+    setAnnotEditor(null);
   };
 
   const linkKey = (l: SankeyLinkOut): string => `${l.source.id}->${l.target.id}`;
@@ -1044,6 +1056,61 @@ export function SankeyView({
           })()}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {annotEditor && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setAnnotEditor(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit Sankey annotation"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 360, damping: 28 }}
+              className="bg-card rounded-lg border border-border shadow-2xl p-4 w-[420px] max-w-[92vw] space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-medium">
+                {annotations[annotEditor.bandKey] ? "Edit annotation" : "Add annotation"}
+              </p>
+              <textarea
+                autoFocus
+                value={annotEditor.value}
+                onChange={(e) => setAnnotEditor({ ...annotEditor, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") { e.preventDefault(); setAnnotEditor(null); }
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveAnnot(); }
+                }}
+                placeholder="Clear to remove the annotation"
+                className="w-full text-sm rounded-md border border-input bg-background px-3 py-2 min-h-[80px]"
+              />
+              <div className="flex items-center justify-end gap-2 pt-1 border-t border-border">
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded hover:bg-muted text-muted-foreground"
+                  onClick={() => setAnnotEditor(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded bg-foreground text-background hover:opacity-90"
+                  onClick={saveAnnot}
+                >
+                  Save
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

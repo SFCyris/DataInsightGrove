@@ -100,6 +100,35 @@ class TestFsExtensions:
         names = {r.name for r in discover_fs_extensions()}
         assert names == {"real"}
 
+    def test_reserved_route_names_skipped(self, tmp_data_dir):
+        # An extension named after a top-level DIG route (like ``runs`` or
+        # ``health``) would shadow the real endpoint when mounted at
+        # ``/ext/runs`` and confuse log searches. The loader must drop
+        # these even though the directory name itself is otherwise
+        # fs-safe. Round-3 pen-tester regression coverage.
+        from dig.extensions import discover_fs_extensions, extensions_dir
+        for reserved in ("runs", "health", "ext", "metrics"):
+            (extensions_dir() / reserved).mkdir()
+        (extensions_dir() / "ok_pack").mkdir()
+        names = {r.name for r in discover_fs_extensions()}
+        assert names == {"ok_pack"}, f"reserved-name leaked through: {names}"
+
+    def test_unicode_confusable_name_skipped(self, tmp_data_dir):
+        # Cyrillic ``р`` (U+0440) looks identical to Latin ``p``. Without
+        # the ASCII gate, ``runs`` (with one Cyrillic letter) would pass
+        # the reserved-name byte-exact check while still mounting at a URL
+        # path that visually shadows ``/runs``.
+        from dig.extensions import discover_fs_extensions, extensions_dir
+        bad = "ruпs"  # 'п' is U+043F (Cyrillic small letter pe)
+        try:
+            (extensions_dir() / bad).mkdir()
+        except OSError:
+            return  # filesystem refused the name; nothing to assert
+        (extensions_dir() / "plain_ascii").mkdir()
+        names = {r.name for r in discover_fs_extensions()}
+        assert bad not in names
+        assert "plain_ascii" in names
+
 
 # ── Entry-point channel ────────────────────────────────────────────────
 

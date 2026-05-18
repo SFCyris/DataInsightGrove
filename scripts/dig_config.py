@@ -35,20 +35,62 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULTS: dict[str, Any] = {
     "version": 1,
-    "api": {"host": "127.0.0.1", "port": 8090},
-    "web": {"host": "127.0.0.1", "port": 3000},
+    # ``port`` is HTTP. ``httpsPort`` is the parallel HTTPS listener,
+    # served by ``scripts/dig_tls_proxy.py`` which terminates TLS and
+    # forwards plain HTTP to ``port``. Both URLs reach the same service.
+    # Defaults keep the historical 8090 / 3000 as plain HTTP (no client
+    # surprises) and use the canonical ``+ 353`` offset (8443, 3443) for
+    # HTTPS — the standard "alt-https" port range.
+    "api": {"host": "127.0.0.1", "port": 8090, "httpsPort": 8443},
+    "web": {"host": "127.0.0.1", "port": 3000, "httpsPort": 3443},
     "dataDir": None,
-    "logDir": None,
+    # Default to the canonical Unix system log path. The start script
+    # bootstraps the dir with sudo on first run if it doesn't exist /
+    # isn't writable, and falls back to a per-user location
+    # (~/Library/Logs/DIG on macOS, ~/.local/state/DIG/logs on Linux)
+    # if the bootstrap fails or is declined.
+    "logDir": "/var/log/DIG",
+    "log": {
+        # 10 MB × 5 files per stream → 50 MB max for api, 50 MB for web.
+        # Rotation is size-based via Python's RotatingFileHandler. The
+        # active file is dig-{api,web}.log; rotated files are .1 (newest)
+        # through .5 (oldest). Tune via DIG_LOG_MAX_BYTES /
+        # DIG_LOG_BACKUP_COUNT, or `dig-config set log.maxBytes 52428800`.
+        "maxBytes": 10 * 1024 * 1024,
+        "backupCount": 5,
+    },
+    # Self-signed TLS for both API + web. Default on so the auth token
+    # is never exposed cleartext on the LAN. ``certFile``/``keyFile``
+    # default to None → resolved by scripts/dig_tls.py to
+    # ~/.config/dig/tls/dig.{crt,key}. ``autoTrust`` installs the cert
+    # into the system trust store on first start (sudo prompt) so
+    # browsers don't show "Not Secure." ``additionalSans`` lets you
+    # cover extra DNS names / IPs (e.g. a load-balancer hostname).
+    "tls": {
+        "enabled": True,
+        "certFile": None,
+        "keyFile": None,
+        "autoTrust": True,
+        "additionalSans": [],
+    },
     "browserPreviewSampleRows": 100_000,
 }
 
 ENV_MAP: dict[str, tuple[str, ...]] = {
     "DIG_API_HOST": ("api", "host"),
     "DIG_API_PORT": ("api", "port"),
+    "DIG_API_HTTPS_PORT": ("api", "httpsPort"),
     "DIG_WEB_HOST": ("web", "host"),
     "DIG_WEB_PORT": ("web", "port"),
+    "DIG_WEB_HTTPS_PORT": ("web", "httpsPort"),
     "DIG_DATA_DIR": ("dataDir",),
     "DIG_LOG_DIR": ("logDir",),
+    "DIG_LOG_MAX_BYTES": ("log", "maxBytes"),
+    "DIG_LOG_BACKUP_COUNT": ("log", "backupCount"),
+    "DIG_TLS_ENABLED": ("tls", "enabled"),
+    "DIG_TLS_CERT": ("tls", "certFile"),
+    "DIG_TLS_KEY": ("tls", "keyFile"),
+    "DIG_TLS_AUTO_TRUST": ("tls", "autoTrust"),
 }
 
 
@@ -119,15 +161,38 @@ def _get_path(d: dict[str, Any], path: tuple[str, ...]) -> Any:
     return cur
 
 
+def _strip_nulls(obj: Any) -> Any:
+    """Drop ``null`` values from a loaded config tree.
+
+    A ``null`` in the on-disk config means "no override — let the default
+    win." Without this, an old config file with ``"logDir": null`` would
+    silently zap a newly-introduced default. Recurses through nested
+    dicts so ``{"log": {"maxBytes": null}}`` falls back too.
+    """
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if v is None:
+                continue
+            cleaned = _strip_nulls(v)
+            if isinstance(cleaned, dict) and not cleaned:
+                # An empty sub-dict after stripping is also "no override".
+                continue
+            out[k] = cleaned
+        return out
+    return obj
+
+
 def load_config_file() -> dict[str, Any]:
     p = find_config_path()
     if not p:
         return {}
     try:
-        return json.loads(p.read_text())
+        raw = json.loads(p.read_text())
     except json.JSONDecodeError as e:
         print(f"warning: {p} is not valid JSON: {e}", file=sys.stderr)
         return {}
+    return _strip_nulls(raw) if isinstance(raw, dict) else {}
 
 
 def resolve(
@@ -141,8 +206,12 @@ def resolve(
         if val is None or val == "":
             continue
         coerced: Any = val
-        if path[-1] == "port" and val.isdigit():
+        # Numeric coercion: ports + log size/count are ints. Match on the
+        # leaf key so we don't accidentally int-coerce string fields.
+        if path[-1] in ("port", "httpsPort", "maxBytes", "backupCount") and val.isdigit():
             coerced = int(val)
+        elif path[-1] in ("enabled", "autoTrust"):
+            coerced = val.lower() in ("1", "true", "yes", "on")
         _set_path(cfg, path, coerced)
     if cli:
         cfg = _deep_merge(cfg, cli)
@@ -163,13 +232,27 @@ def cmd_export(args: argparse.Namespace) -> int:
     out: list[str] = [
         f"DIG_API_HOST={shlex.quote(str(cfg['api']['host']))}",
         f"DIG_API_PORT={cfg['api']['port']}",
+        f"DIG_API_HTTPS_PORT={cfg['api'].get('httpsPort', 8443)}",
         f"DIG_WEB_HOST={shlex.quote(str(cfg['web']['host']))}",
         f"DIG_WEB_PORT={cfg['web']['port']}",
+        f"DIG_WEB_HTTPS_PORT={cfg['web'].get('httpsPort', 3443)}",
     ]
     if cfg.get("dataDir"):
         out.append(f"DIG_DATA_DIR={shlex.quote(cfg['dataDir'])}")
     if cfg.get("logDir"):
         out.append(f"DIG_LOG_DIR={shlex.quote(cfg['logDir'])}")
+    log_cfg = cfg.get("log") or {}
+    if log_cfg.get("maxBytes") is not None:
+        out.append(f"DIG_LOG_MAX_BYTES={int(log_cfg['maxBytes'])}")
+    if log_cfg.get("backupCount") is not None:
+        out.append(f"DIG_LOG_BACKUP_COUNT={int(log_cfg['backupCount'])}")
+    tls_cfg = cfg.get("tls") or {}
+    out.append(f"DIG_TLS_ENABLED={'1' if tls_cfg.get('enabled') else '0'}")
+    if tls_cfg.get("certFile"):
+        out.append(f"DIG_TLS_CERT={shlex.quote(tls_cfg['certFile'])}")
+    if tls_cfg.get("keyFile"):
+        out.append(f"DIG_TLS_KEY={shlex.quote(tls_cfg['keyFile'])}")
+    out.append(f"DIG_TLS_AUTO_TRUST={'1' if tls_cfg.get('autoTrust') else '0'}")
     print("\n".join(out))
     return 0
 

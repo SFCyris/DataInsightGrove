@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { confirmAction } from "@/lib/confirm-toast";
 import {
   setSettings,
   useSettings,
@@ -25,6 +27,8 @@ import { NotificationsSection } from "@/components/settings/notifications-sectio
 import { NotificationRulesSection } from "@/components/settings/notification-rules-section";
 import { fmtInt } from "@/lib/format-number";
 import { fmtVersion } from "@/lib/format-version";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { PositiveLoaderInline } from "@/components/positive-loader";
 
 const THEMES: { id: Theme; emoji: string; label: string }[] = [
   { id: "system", emoji: "🖥️", label: "System" },
@@ -37,7 +41,7 @@ const SAMPLE_OPTIONS = [10_000, 50_000, 100_000, 500_000, 1_000_000];
 type SectionId =
   | "appearance" | "expertise" | "preview" | "storage" | "performance"
   | "ai" | "jdbc" | "webhooks" | "packs" | "notifications" | "notification-rules"
-  | "security" | "about";
+  | "security" | "server" | "about";
 
 const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "appearance",  emoji: "🎨", label: "Appearance",       help: "Theme + motion (per browser)" },
@@ -45,6 +49,7 @@ const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "preview",     emoji: "🦆", label: "Browser preview",  help: "DuckDB-WASM behavior" },
   { id: "storage",     emoji: "📁", label: "Storage & paths",  help: "Where data lives" },
   { id: "performance", emoji: "⚡", label: "Performance",      help: "Concurrency + threads" },
+  { id: "server",      emoji: "🔧", label: "Server & TLS",     help: "Ports, logs, HTTPS — needs restart" },
   { id: "ai",          emoji: "✨", label: "AI assistant",     help: "Local Ollama or BYOK provider" },
   { id: "jdbc",        emoji: "🔌", label: "JDBC drivers",     help: "Saved JAR + class registry" },
   { id: "webhooks",    emoji: "🔔", label: "Global webhooks",  help: "Fire on every run" },
@@ -56,8 +61,10 @@ const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
 ];
 
 export default function SettingsPage() {
+  useDocumentTitle('Settings');
   const reduce = useReducedMotion();
   const [section, setSection] = useState<SectionId>("appearance");
+  const [settingsQuery, setSettingsQuery] = useState("");
 
   // Hash-based deep-linking — /settings#jdbc lands on JDBC section.
   useEffect(() => {
@@ -81,9 +88,13 @@ export default function SettingsPage() {
       };
 
   return (
-    <main id="main" className="flex flex-1 min-h-0">
-      {/* Sidebar */}
-      <aside className="w-64 shrink-0 border-r border-border bg-card/30 flex flex-col">
+    <main id="main" className="flex flex-1 min-h-0 flex-col lg:flex-row">
+      {/* Sidebar — Round-4 UX#3: the ``w-64 shrink-0`` aside combined
+          with the ``max-w-4xl p-8`` content forced horizontal scroll on
+          viewports below ~880px. Stack the sidebar above the content
+          on narrow screens instead, with the nav running in a
+          scrollable horizontal strip so all sections stay reachable. */}
+      <aside className="lg:w-64 lg:shrink-0 border-r border-border bg-card/30 flex flex-col">
         {/* Top-left back/home — same convention as every other page. */}
         <div className="px-3 pt-3 pb-1">
           <Link href="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
@@ -97,8 +108,29 @@ export default function SettingsPage() {
             <h1 className="text-base font-semibold tracking-tight leading-none">Settings</h1>
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto py-2">
-          {NAV.map((n) => (
+        {/* Round-5 W5: in-page settings search. Fuzzy-matches the label
+            + help fields of each NAV entry and dims the rows that don't
+            match. Empty query keeps every row visible (default). */}
+        <div className="px-3 py-2 border-b border-border">
+          <input
+            type="search"
+            value={settingsQuery}
+            onChange={(e) => setSettingsQuery(e.target.value)}
+            placeholder="Search settings…"
+            aria-label="Search settings"
+            className="w-full px-2 py-1.5 text-xs rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring/40"
+          />
+        </div>
+        <nav className="flex-1 overflow-x-auto lg:overflow-y-auto py-2 flex lg:flex-col">
+          {NAV.filter((n) => {
+            const q = settingsQuery.trim().toLowerCase();
+            if (!q) return true;
+            return (
+              n.label.toLowerCase().includes(q) ||
+              n.help.toLowerCase().includes(q) ||
+              n.id.toLowerCase().includes(q)
+            );
+          }).map((n) => (
             <button
               key={n.id}
               type="button"
@@ -108,6 +140,7 @@ export default function SettingsPage() {
                   history.replaceState(null, "", `#${n.id}`);
                 }
               }}
+              aria-current={section === n.id ? "page" : undefined}
               className={[
                 "w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors",
                 section === n.id
@@ -132,6 +165,11 @@ export default function SettingsPage() {
         {section === "preview"     && <PreviewSection />}
         {section === "storage"     && <ServerSettingsSection filter={["input_dir", "output_dir", "run_history_days"]} title="📁 Storage & paths" />}
         {section === "performance" && <ServerSettingsSection filter={["default_sample_rows", "default_preview_limit", "max_concurrent_runs", "duckdb_threads", "log_level", "auto_detect_index", "auto_detect_timezone"]} title="⚡ Performance & detection" />}
+        {section === "server"      && <ServerSettingsSection
+          filter={["logDir", "log.maxBytes", "log.backupCount", "tls.enabled", "tls.autoTrust", "api.httpsPort", "web.httpsPort"]}
+          title="🔧 Server & TLS"
+          lede="Boot-time configuration — read by scripts/dig-start.sh + the TLS proxy. Changes here write to ~/.config/dig/config.json and take effect on the next restart."
+        />}
         {section === "ai"          && <AiSection />}
         {section === "jdbc"        && <JdbcSection />}
         {section === "webhooks"    && <WebhooksSection />}
@@ -282,23 +320,27 @@ function PreviewSection() {
 
 // ---- Section: Server-side settings (storage, performance) -----------------
 
-function ServerSettingsSection({ filter, title }: { filter: string[]; title: string }) {
+function ServerSettingsSection({ filter, title, lede }: { filter: string[]; title: string; lede?: string }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["settings"], queryFn: api.listSettings });
   const settings = (q.data ?? []).filter((s) => filter.includes(s.key));
   const saveSetting = async (key: string, value: unknown) => {
     try {
-      await api.setSetting(key, value);
+      const result = await api.setSetting(key, value);
       qc.invalidateQueries({ queryKey: ["settings"] });
-      toast.success("✅ Saved");
+      toast.success(
+        result?.requires_restart
+          ? "✅ Saved · restart DIG for it to take effect"
+          : "✅ Saved",
+      );
     } catch (e) {
       toast.error(`Save failed: ${(e as Error).message}`);
     }
   };
   return (
-    <Page title={title} lede="Server-side settings persist across all browsers and survive restarts. Stored in DIG's SQLite metadata DB.">
+    <Page title={title} lede={lede ?? "Server-side settings persist across all browsers and survive restarts. Stored in DIG's SQLite metadata DB."}>
       <Card>
-        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {q.isLoading && <PositiveLoaderInline variant="rendering" text="Loading…" size="sm" />}
         {q.isError && (
           <p className="text-sm text-destructive">
             Couldn't reach the API ({(q.error as Error).message}). Restart the backend if you just deployed new tables.
@@ -411,6 +453,14 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
           variant={isDirty || (isSecret && draft) ? "default" : "ghost"}
           disabled={!isDirty && !(isSecret && draft)}
           onClick={() => {
+            // Round-9 fix: a secret with an empty draft used to replace
+            // the stored secret with "" (silent wipe). Now if the user
+            // clicks Save on a secret with blank input, no-op — they
+            // can always use the explicit Clear button when one exists.
+            if (isSecret && !draft) {
+              toast.info("Secret unchanged — type a new value to replace it.");
+              return;
+            }
             const value =
               setting.type === "integer"
                 ? draft === "" ? null : Number(draft)
@@ -438,9 +488,14 @@ function AiSection() {
   // the rest of the server-side prefs. We render them with the same
   // SettingRow component used by Storage / Performance / etc.
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.listSettings });
+  // Round-6 UX#4: re-ordered so the api_key sits right after provider —
+  // BYOK providers (Anthropic / OpenAI) need the key BEFORE the /models
+  // fetch can populate the endpoint + model dropdowns. The previous
+  // order (endpoint → model → api_key) made first-run confusing
+  // because the user had to leave the key blank and come back.
   const aiKeys = [
-    "ai_enabled", "ai_provider", "ai_endpoint", "ai_model",
-    "ai_api_key", "ai_max_tokens", "ai_temperature", "ai_ping_interval_s",
+    "ai_enabled", "ai_provider", "ai_api_key", "ai_endpoint", "ai_model",
+    "ai_max_tokens", "ai_temperature", "ai_ping_interval_s",
   ];
   const aiSettings = (settingsQ.data ?? []).filter((s) => aiKeys.includes(s.key));
   aiSettings.sort((a, b) => aiKeys.indexOf(a.key) - aiKeys.indexOf(b.key));
@@ -504,7 +559,7 @@ function AiSection() {
     >
       <Card>
         {settingsQ.isLoading ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <PositiveLoaderInline variant="rendering" text="Loading settings…" size="sm" />
         ) : aiSettings.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             ⚠️ AI settings not found on the backend. Restart the backend after a recent upgrade.
@@ -557,8 +612,8 @@ function AiSection() {
           <ol className="text-xs text-muted-foreground space-y-1 list-decimal pl-4">
             <li>Install Ollama: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">brew install ollama</code> (macOS) or <a className="underline" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">ollama.com/download</a></li>
             <li>Start the server: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">ollama serve</code> (or just open the Ollama app)</li>
-            <li>Pull a model: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">ollama pull gemma4:e4b</code> (~7&nbsp;GB, 128K context, edge-optimized)</li>
-            <li>Above: provider = <strong>local</strong>, endpoint stays at the default, model = <span className="font-mono">gemma4:e4b</span>, enable, then Test connection</li>
+            <li>Pull a model: <code className="text-foreground/80 font-mono bg-muted px-1 rounded">ollama pull gemma3:4b</code> (~3&nbsp;GB, edge-optimized)</li>
+            <li>Above: provider = <strong>local</strong>, endpoint stays at the default, model = <span className="font-mono">gemma3:4b</span>, enable, then Test connection</li>
           </ol>
         </Field>
       </Card>
@@ -757,7 +812,12 @@ function JdbcSection() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Delete this driver entry? Pipelines that reference it by name will need to be re-pointed.")) return;
+    const ok = await confirmAction({
+      title: "Delete this JDBC driver entry?",
+      description: "Pipelines that reference it by name will need to be re-pointed.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.deleteJdbcDriver(id);
       qc.invalidateQueries({ queryKey: ["jdbc-drivers"] });
@@ -777,7 +837,7 @@ function JdbcSection() {
           <p className="text-sm text-muted-foreground">{q.data?.length ?? 0} registered</p>
           <Button size="sm" onClick={empty}>+ Add driver</Button>
         </div>
-        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {q.isLoading && <PositiveLoaderInline variant="rendering" text="Loading…" size="sm" />}
         {q.data && q.data.length === 0 && !draft && (
           <Empty
             title="No drivers yet"
@@ -991,7 +1051,12 @@ function WebhooksSection() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Delete this webhook? It will no longer fire for any future runs.")) return;
+    const ok = await confirmAction({
+      title: "Delete this webhook?",
+      description: "It will no longer fire for any future runs.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       await api.deleteGlobalWebhook(id);
       qc.invalidateQueries({ queryKey: ["global-webhooks"] });
@@ -1020,7 +1085,7 @@ function WebhooksSection() {
           <p className="text-sm text-muted-foreground">{q.data?.length ?? 0} configured</p>
           <Button size="sm" onClick={empty}>+ Add webhook</Button>
         </div>
-        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {q.isLoading && <PositiveLoaderInline variant="rendering" text="Loading…" size="sm" />}
         {q.data && q.data.length === 0 && !draft && (
           <Empty
             title="No global webhooks"
@@ -1148,6 +1213,10 @@ function AboutSection() {
   const conns = useQuery({ queryKey: ["connectors"], queryFn: api.listConnectorsTyped });
   const steps = useQuery({ queryKey: ["steps"], queryFn: api.listSteps });
   const apiBaseRendered = useApiBase();
+  // Round-9 fix: navigate via Next router instead of `window.location.href`
+  // so unsaved settings drafts on other sections aren't blown away by a
+  // full page reload.
+  const router = useRouter();
 
   return (
     <Page title="ℹ️ About this install" lede="DataInsightGrove™ — self-hosted data preparation.">
@@ -1190,16 +1259,23 @@ function AboutSection() {
       </Card>
 
       <Card>
-        <Field label="Replay onboarding" hint="Resets the home page tour and the column-menu first-time tooltip.">
+        <Field label="Replay onboarding" hint="Resets the home page tour, the editor tour, and the column-menu first-time tooltip.">
           <Button
             size="sm"
             variant="outline"
             onClick={() => {
               try {
+                // Round-3 operational finding: previously this reset only
+                // the home + column-chevron tours, missing dig.tour.editor.v1.
+                // Operators clicking "Reset onboarding" expected EVERY
+                // first-run hint to reappear; the editor tour silently stayed
+                // marked done.
                 localStorage.removeItem("dig.tour.home");
                 localStorage.removeItem("dig.tour.column_chevron");
+                localStorage.removeItem("dig.tour.editor.v1");
               } catch {/* ignore */}
-              window.location.href = "/";
+              toast.success("Onboarding reset — opening home");
+              router.push("/");
             }}
           >
             🔄 Reset onboarding

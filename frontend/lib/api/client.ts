@@ -24,18 +24,43 @@ import type { components, paths } from "./types";
  * returns the SSR-safe value on first render and swaps to the client-
  * derived value after hydration completes.
  */
+/**
+ * Resolved API base URL.
+ *
+ * In the browser we use the same-origin `/api` prefix that Next.js's
+ * rewrite (next.config.ts → ``rewrites()``) forwards server-side to
+ * uvicorn at http://127.0.0.1:8090. Same-origin matters because:
+ *
+ *   - the HTTPS page at https://localhost:3443 would otherwise need to
+ *     fetch a *different* origin (https://localhost:8443) carrying the
+ *     same self-signed cert, and browsers track cert-trust per origin
+ *     — clicking through on 3443 doesn't carry to 8443, so the fetch
+ *     gets silently dropped. The "unable to connect to the server"
+ *     banner you used to see.
+ *   - the HTTP page at http://localhost:3000 to http://localhost:8090
+ *     would be cross-origin → CORS preflight → another moving part to
+ *     get wrong.
+ *
+ * Both go away with same-origin. The Next dev server (or the TLS proxy
+ * in front of it on HTTPS) becomes the single ingress.
+ *
+ * Server-side (SSR + Node) the page-origin concept doesn't exist, so
+ * we use an absolute URL to the backend — DIG_API_INTERNAL_URL for
+ * containerised deploys where uvicorn lives at a different hostname,
+ * NEXT_PUBLIC_DIG_API as a build-time override otherwise.
+ */
 function _resolveApiBase(): string {
+  // 1. Runtime override (Mac .app injects this).
   if (typeof window !== "undefined") {
     const w = window as { __DIG_API__?: string };
     if (w.__DIG_API__) return w.__DIG_API__;
   }
+  // 2. Build-time override (operator deployed DIG behind a custom proxy).
   if (process.env.NEXT_PUBLIC_DIG_API) return process.env.NEXT_PUBLIC_DIG_API;
-  if (typeof window !== "undefined") {
-    const proto = window.location.protocol === "https:" ? "https:" : "http:";
-    // Default API port is 8090 — overridable via NEXT_PUBLIC_DIG_API.
-    return `${proto}//${window.location.hostname}:8090`;
-  }
-  return "http://127.0.0.1:8090";
+  // 3. In-browser: same-origin /api prefix.
+  if (typeof window !== "undefined") return "/api";
+  // 4. SSR: server-to-server, absolute URL.
+  return process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8090";
 }
 
 export const API_BASE = _resolveApiBase();
@@ -44,9 +69,13 @@ export const API_BASE = _resolveApiBase();
  * The "stable" form of API_BASE for rendering into HTML — never depends
  * on window, so server and client agree. Use it as a hook seed and
  * upgrade to the real value after mount via `useApiBase()`.
+ *
+ * On the client this resolves to the same ``/api`` prefix as the
+ * runtime API_BASE so the first paint doesn't issue cross-origin
+ * requests that the hydrated value would have made same-origin.
  */
 export const SSR_SAFE_API_BASE: string =
-  process.env.NEXT_PUBLIC_DIG_API || "http://127.0.0.1:8090";
+  process.env.NEXT_PUBLIC_DIG_API || "/api";
 
 /**
  * Bearer token for the DIG API.
@@ -139,6 +168,10 @@ export interface ParamSpec {
   required?: boolean;
   default?: unknown;
   enumValues?: (string | number)[];
+  /** Parallel array of human-readable hints, one per enum value. The
+   *  ParamForm renders them as "value — label" so option semantics are
+   *  visible BEFORE the user picks. */
+  enumLabels?: string[];
   columnFrom?: string;
   columnTypes?: string[];
   min?: number;
@@ -146,7 +179,7 @@ export interface ParamSpec {
   pattern?: string;
   items?: ParamSpec;
   properties?: Record<string, ParamSpec>;
-  visibleWhen?: Record<string, string | number | boolean>;
+  visibleWhen?: Record<string, string | number | boolean | Array<string | number | boolean>>;
   /** Optional UI widget hint — e.g. "filter_builder" for a no-SQL visual editor on an expression field. */
   widget?: string;
 }
@@ -540,12 +573,19 @@ export const api = {
       body: JSON.stringify({ range }),
     }),
 
-  uploadDataset: async (file: File, name?: string, connectorId = "csv", options: object = {}) => {
+  uploadDataset: async (
+    file: File,
+    name?: string,
+    connectorId = "csv",
+    options: object = {},
+    onNameConflict: "error" | "replace" | "allow" = "error",
+  ) => {
     const fd = new FormData();
     fd.append("file", file);
     if (name) fd.append("name", name);
     fd.append("connector_id", connectorId);
     fd.append("options", JSON.stringify(options));
+    fd.append("on_name_conflict", onNameConflict);
     // Multipart upload bypasses request() (which would set the wrong
      // Content-Type), so we hand-build the auth header here.
     const headers: Record<string, string> = {};
@@ -564,6 +604,12 @@ export const api = {
     }
     return (await res.json()) as Dataset;
   },
+
+  /** Round-5 W3: re-ingest a dataset in place from its existing
+   *  source_uri + options. Keeps the dataset_id stable so downstream
+   *  pipelines stay attached. */
+  refreshDataset: (datasetId: string) =>
+    request<Dataset>(`/datasets/${datasetId}/refresh`, { method: "POST" }),
 
   // ---- Steps ----
   listSteps: () => request<StepManifest[]>("/steps"),
@@ -842,6 +888,10 @@ export const api = {
   // (Phase A Layer 3 column lineage trace lives at line ~699 above —
   // `getColumnLineage` returning ColumnLineageGraph. Don't duplicate it.)
   getRun: (runId: string) => request<RunOut>(`/runs/${runId}`),
+  /** Round-5 W4: cancel a queued or running run. 200 with
+   *  ``status: "already terminal"`` when the run already finished. */
+  cancelRun: (runId: string) =>
+    request<{ ok: boolean; status: string }>(`/runs/${runId}/cancel`, { method: "POST" }),
   /** Phase-A-pro #5 — workspace-wide runs list. Compact summary
    *  shape; click into a row to fetch the full RunOut. */
   listAllRuns: (params: {
@@ -997,6 +1047,12 @@ export interface SettingDescriptor {
   help: string;
   type: "path" | "integer" | "enum" | "boolean" | "string" | "secret" | "float";
   options?: string[];
+  /** Boot-time settings (~/.config/dig/config.json) that need a service
+   *  restart for the new value to take effect. UI surfaces a "(restart
+   *  to apply)" hint when true. */
+  requires_restart?: boolean;
+  /** Coarse grouping for the settings nav. "boot" → Server & TLS tab. */
+  group?: string;
 }
 
 export interface FsBrowseEntry {
@@ -1552,10 +1608,34 @@ export interface NotificationRuleIn {
   cooldown_seconds?: number | null;
 }
 
+export interface NotificationRuleTestHit {
+  event_id: string;
+  event_kind: string;
+  created_at: string;
+  context: Record<string, unknown>;
+}
+
+export interface NotificationRuleTestOut {
+  sampled: number;
+  matched: number;
+  hits: NotificationRuleTestHit[];
+}
+
 export const notificationRulesApi = {
   list: () => request<NotificationRuleOut[]>("/notification-rules"),
   eventKinds: () =>
     request<{ kinds: string[] }>("/notification-rules/event-kinds"),
+  /** Round-5 W4: dry-run a rule against the last N events so the
+   *  user can see which historical events would have fired BEFORE saving. */
+  test: (body: { event_kind: string; filters?: Record<string, unknown> | null }, limit = 50) =>
+    request<NotificationRuleTestOut>(
+      `/notification-rules/test?limit=${limit}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
   create: (body: NotificationRuleIn) =>
     request<NotificationRuleOut>("/notification-rules", {
       method: "POST",

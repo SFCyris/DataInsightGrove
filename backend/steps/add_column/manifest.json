@@ -37,6 +37,7 @@
     "reference": {
       "type": "column_ref",
       "label": "Reference column",
+      "visibleWhen": { "position": ["before", "after"] },
       "help": "Only used when Position = before / after — ignored otherwise.",
       "columnFrom": "in"
     }

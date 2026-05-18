@@ -1,0 +1,25 @@
+{
+  "id": "map_match",
+  "version": "1.0.0",
+  "label": "🗺 Map-match (snap to nearest reference)",
+  "description": "Snap each lat/lon point to the nearest point in a reference table (a separate dataset of named known locations — bus stops, stations, sensor sites, store fronts, registered addresses). Returns the matched reference's id + label + the great-circle distance in metres. Lightweight alternative to road-network map-matching for cases where a point cloud of known locations is enough.",
+  "category": "combine",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 2, "max": 2, "ports": ["in", "reference"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "latColumn": { "type": "column_ref", "label": "Latitude column (input)",  "columnFrom": "in", "required": true },
+    "lonColumn": { "type": "column_ref", "label": "Longitude column (input)", "columnFrom": "in", "required": true },
+    "refLatColumn": { "type": "column_ref", "label": "Reference latitude column",  "columnFrom": "reference", "required": true },
+    "refLonColumn": { "type": "column_ref", "label": "Reference longitude column", "columnFrom": "reference", "required": true },
+    "refIdColumn":  { "type": "column_ref", "label": "Reference ID / name column",  "columnFrom": "reference", "required": true },
+    "matchedIdColumn":       { "type": "string", "label": "Matched ID output column",       "default": "matched_id" },
+    "matchedDistanceColumn": { "type": "string", "label": "Matched distance (m) column",   "default": "matched_distance_m" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "map-match", "snap", "join", "nearest"],
+  "aliases": ["snap to nearest", "nearest reference", "point match"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}]
+}

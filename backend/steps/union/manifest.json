@@ -16,7 +16,7 @@
       "default": false
     }
   },
-  "preview": { "rowImpact": "may_grow", "schemaImpact": "preserves" },
+  "preview": { "rowImpact": "may_grow", "schemaImpact": "modifies" },
   "tags": ["union", "concat"],
   "aliases": ["append", "concat", "stack", "concatenate"]
 }

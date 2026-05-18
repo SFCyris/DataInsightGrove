@@ -9,7 +9,7 @@
  * its own auto-layout pass.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -21,6 +21,8 @@ import "@xyflow/react/dist/style.css";
 import { motion } from "motion/react";
 
 import { catalogApi, searchApi, type CatalogNodeOut, type CatalogEdgeOut } from "@/lib/api/client";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { PositiveLoader } from "@/components/positive-loader";
 
 // ---- Pipeline node renderer --------------------------------------------
 
@@ -155,6 +157,7 @@ function autoLayout(
 // ---- Page --------------------------------------------------------------
 
 export default function CatalogPage() {
+  useDocumentTitle('Catalog');
   const [selected, setSelected] = useState<CatalogNodeOut | null>(null);
   // Phase-A-pro #3 — tag filter. Selected tags are intersected: a
   // pipeline must carry every selected tag to remain visible.
@@ -238,7 +241,10 @@ export default function CatalogPage() {
           ...(isSelfLoop ? { strokeDasharray: "5 3" } : {}),
         },
         labelStyle: { fontSize: 10, fontWeight: colCount > 0 ? 600 : 400 },
-        labelBgStyle: colCount > 0 ? { fill: "rgb(236 253 245)", fillOpacity: 0.95 } : undefined,
+        // Round-4 UX#3: hard-coded light emerald wash blew out in
+        // dark mode. Use the theme card background so the label stays
+        // legible in both palettes.
+        labelBgStyle: colCount > 0 ? { fill: "var(--color-card)", fillOpacity: 0.95 } : undefined,
         labelBgPadding: [4, 2] as [number, number],
         // Carry the original payload so the side panel can render the
         // column list when the user clicks an edge.
@@ -246,7 +252,12 @@ export default function CatalogPage() {
       };
     });
     return { rfNodes: nodes, rfEdges: edges };
-  }, [q.data]);
+    // Round-4 UX#3 finding: the dep array previously listed only
+    // ``q.data``, missing ``filteredData`` / ``activeTags``. The recompute
+    // happened today only because the parent passed a fresh ``key=``
+    // to the wrapper, masking the bug. Make the dep set explicit so
+    // tag-filter changes recompute the layout reliably.
+  }, [filteredData]);
 
   // Selected edge — drives the column-list side panel. We don't reach
   // for context here because xyflow's onEdgeClick already gives us the
@@ -260,11 +271,6 @@ export default function CatalogPage() {
       else next.add(t);
       return next;
     });
-
-  // Initial fitView on load.
-  useEffect(() => {
-    // fitView is wired via the `fitView` prop on ReactFlow; nothing to do here.
-  }, [q.data]);
 
   return (
     <main className="flex flex-col h-screen overflow-hidden">
@@ -330,8 +336,8 @@ export default function CatalogPage() {
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 relative">
           {q.isLoading && (
-            <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
-              Loading catalog…
+            <div className="absolute inset-0 grid place-items-center">
+              <PositiveLoader variant="rendering" primary="Loading catalog…" size="md" showTimer={false} />
             </div>
           )}
           {!q.isLoading && q.data && q.data.nodes.length === 0 && (

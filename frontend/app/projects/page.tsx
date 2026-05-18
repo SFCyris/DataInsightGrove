@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 export default function ProjectsPage() {
+  useDocumentTitle("Projects");
   const reduce = useReducedMotion();
   const fadeUp = reduce
     ? { initial: false, animate: { opacity: 1, y: 0 } }
@@ -31,9 +33,9 @@ export default function ProjectsPage() {
             <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           </div>
         </div>
-        <Button disabled>
-          <span className="mr-1.5">➕</span> New project
-        </Button>
+        <Link href="/pipelines" className={buttonVariants({ variant: "default" })}>
+          <span className="mr-1.5">🛤</span> Open Pipelines instead
+        </Link>
       </motion.header>
 
       <motion.section

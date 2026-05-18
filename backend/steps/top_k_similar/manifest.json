@@ -1,0 +1,64 @@
+{
+  "id": "top_k_similar",
+  "version": "1.0.0",
+  "label": "🧭 Top-K nearest",
+  "description": "Per-row top-K nearest-neighbour search over a vector column. For each row, find the K most similar other rows and add two array columns: top_k_indices (the matching row indices or labels) and top_k_scores (the similarity / distance values). Use as the reduction step after embed_text + vector_similarity to power RAG retrieval, recommendation, and document-deduplication workflows.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "vectorColumn": {
+      "type": "column_ref",
+      "label": "Vector column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "k": {
+      "type": "integer",
+      "label": "K (neighbours per row)",
+      "default": 5,
+      "min": 1,
+      "max": 100,
+      "required": true
+    },
+    "metric": {
+      "type": "enum",
+      "label": "Metric",
+      "enumValues": ["cosine", "euclidean", "dot"],
+      "default": "cosine",
+      "required": true,
+      "help": "cosine: angular similarity, best for embeddings (highest = most similar). euclidean: L2 distance (lowest = most similar). dot: inner product (highest = most similar; assumes normalised vectors)."
+    },
+    "labelColumn": {
+      "type": "column_ref",
+      "label": "Label column (optional)",
+      "columnFrom": "in",
+      "help": "Use this column's values to identify neighbours instead of integer row indices."
+    },
+    "includeSelf": {
+      "type": "boolean",
+      "label": "Include row itself as a neighbour",
+      "default": false,
+      "help": "By default each row's top-K excludes the row itself (cosine similarity 1.0 with self is uninteresting). Enable to keep self in the results."
+    },
+    "indicesColumn": {
+      "type": "string",
+      "label": "Indices output column",
+      "default": "top_k_indices",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "scoresColumn": {
+      "type": "string",
+      "label": "Scores output column",
+      "default": "top_k_scores",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["vector", "knn", "nearest", "top-k", "retrieval", "rag", "recommend"],
+  "requires": [{"kind": ["array", "vector"]}],
+  "aliases": ["nearest neighbours", "knn", "top k", "retrieval", "ranking"]
+}

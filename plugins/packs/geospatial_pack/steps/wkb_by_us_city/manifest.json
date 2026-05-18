@@ -1,0 +1,57 @@
+{
+  "id": "wkb_by_us_city",
+  "version": "1.0.0",
+  "label": "🏙 Boundary by US city",
+  "description": "Look up the WKB boundary of a US Place (Incorporated Place or Census Designated Place) from a city name, \"City, ST\" combo, or lat/lon point. The bundled boundary is APPROXIMATE — an equal-area circle around the centroid sized by the gazetteer's true land area. Use for marker-style city maps or rough choropleth; supplement with TIGER Place shapefiles for pixel-accurate boundaries.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "input_mode": {
+      "type": "enum",
+      "label": "Input mode",
+      "enumValues": ["text", "point", "auto"],
+      "enumLabels": [
+        "text · city name (or 'City, ST') column",
+        "point · separate lat + lon columns",
+        "auto · try text first, fall back to point"
+      ],
+      "default": "auto",
+      "required": true
+    },
+    "input_column": {
+      "type": "column_ref",
+      "label": "City column",
+      "help": "Column with a US city name (\"Boise\") or a \"City, ST\" combo (\"Boise, ID\"). Names are case-insensitive. Ambiguous names like \"Springfield\" return the largest match unless qualified with state.",
+      "columnFrom": "in",
+      "visibleWhen": { "input_mode": ["text", "auto"] }
+    },
+    "lat_column": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "lon_column": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "city_geometry",
+      "required": true,
+      "help": "Companion columns: <name>_name, <name>_state, <name>_place_type, <name>_centroid_lat, <name>_centroid_lon."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "boundary", "city", "place", "lookup", "wkb"],
+  "aliases": ["city geometry", "us city", "city polygon", "us place", "census place"]
+}

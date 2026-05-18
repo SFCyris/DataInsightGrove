@@ -1,0 +1,54 @@
+{
+  "id": "geohash_cell",
+  "version": "1.0.0",
+  "label": "🌐 Geohash / H3 cell",
+  "description": "Add a column with the spatial-index cell that contains each lat/lon point. Supports the geohash and H3 indexing systems. Use as a fast group_by key for spatial aggregation, or to bucket points into discrete cells before clustering / heatmap rendering.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "latColumn": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "lonColumn": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "system": {
+      "type": "enum",
+      "label": "Indexing system",
+      "enumValues": ["geohash", "h3"],
+      "default": "h3",
+      "required": true,
+      "help": "geohash: 32-character base-32 string. Cell size shrinks per character. h3: Uber's hexagonal grid; cells are roughly equal-area which is better for heatmaps. Both are widely supported by downstream tooling."
+    },
+    "precision": {
+      "type": "integer",
+      "label": "Precision",
+      "default": 7,
+      "min": 1,
+      "max": 15,
+      "required": true,
+      "help": "geohash: 1-12 (1 ≈ 5000km, 7 ≈ 76m, 12 ≈ 3.7cm). h3: 0-15 (0 ≈ continent-scale, 7 ≈ 1.2km hexes, 12 ≈ 5m hexes). Higher = more granular = more cells."
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "cell",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "geohash", "h3", "spatial-index", "bucket", "derive"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}],
+  "aliases": ["spatial bucket", "spatial index", "h3 cell", "geohash encode"]
+}

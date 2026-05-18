@@ -102,7 +102,7 @@
     },
     "node": {
       "type": "object",
-      "required": ["id", "step", "stepVersion", "inputs", "outputs"],
+      "required": ["id", "step", "inputs", "outputs"],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -118,7 +118,7 @@
         "stepVersion": {
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "description": "Pinned step version for reproducibility."
+          "description": "Pinned step version for reproducibility. Optional on the wire — when omitted, the server backfills the registry's live version for the named step at parse time. Persisted docs always carry an explicit version."
         },
         "inputs": {
           "type": "object",

@@ -55,6 +55,12 @@
         "ets",
         "naive"
       ],
+      "enumLabels": [
+        "auto · pick best for the data",
+        "holt-winters · trend + seasonality",
+        "ets · exponential smoothing",
+        "naive · last value carries forward"
+      ],
       "default": "auto",
       "help": "'auto' picks holt_winters when seasonality is plausible, else ets. 'naive' is last-observation-carried-forward."
     },

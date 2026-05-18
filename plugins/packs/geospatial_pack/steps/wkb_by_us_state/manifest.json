@@ -1,0 +1,57 @@
+{
+  "id": "wkb_by_us_state",
+  "version": "1.0.0",
+  "label": "🗺 Boundary by US state",
+  "description": "Look up the WKB MULTIPOLYGON boundary of a US state from a state code (USPS or FIPS), full name, or lat/lon point. Output is ready to pipe into export_to_map (mode=choropleth).",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "input_mode": {
+      "type": "enum",
+      "label": "Input mode",
+      "enumValues": ["text", "point", "auto"],
+      "enumLabels": [
+        "text · USPS / FIPS / state name column",
+        "point · separate lat + lon columns",
+        "auto · try text first, fall back to point"
+      ],
+      "default": "auto",
+      "required": true
+    },
+    "input_column": {
+      "type": "column_ref",
+      "label": "State column",
+      "help": "Column with a USPS 2-letter code (e.g. CA), a 2-digit FIPS code (06), or the state name (California). Case-insensitive.",
+      "columnFrom": "in",
+      "visibleWhen": { "input_mode": ["text", "auto"] }
+    },
+    "lat_column": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "lon_column": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "state_geometry",
+      "required": true,
+      "help": "Name of the WKB geometry column added to the output. Companion columns are <name>_name, <name>_code (USPS), <name>_fips, <name>_centroid_lat, <name>_centroid_lon."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "boundary", "choropleth", "state", "lookup", "wkb"],
+  "aliases": ["state geometry", "us state", "state polygon", "state shape", "choropleth state"]
+}

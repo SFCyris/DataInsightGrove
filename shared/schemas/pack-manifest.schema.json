@@ -93,6 +93,70 @@
       "type": "object",
       "additionalProperties": true,
       "description": "Namespaced extension fields. Vendors / enterprise / forks attach their own data under a top-level namespace key (e.g. extensions.acme.distributionChannel) so future first-party fields never collide."
+    },
+    "resources": {
+      "type": "object",
+      "description": "Bundled reference datasets shipped with the pack. The pack archive contains a single `archive` zip; on first use the loader verifies the archive's sha256, extracts it under data/cache/pack_data/<pack_id>/<version>/, and exposes the files via dig.extensions.pack_data.pack_data(pack_id, resource_id). The archive ships flat (no nested directories), one entry per file declared in `files`. Step code never accepts a raw filesystem path from pipeline params — only resource ids declared here — so unbundled files on disk cannot be read through a step.",
+      "required": ["archive", "sha256", "files"],
+      "additionalProperties": false,
+      "properties": {
+        "archive": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_.-]+\\.zip$",
+          "description": "Filename of the zip living at the pack's root (typically `data.zip`)."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Sha256 of the archive bytes. Verified before extraction."
+        },
+        "compressedBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size of the on-disk archive in bytes."
+        },
+        "extractedBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of file_size of every entry in the archive. Compared against the loader's hard cap (default 200 MB) before extraction starts."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "path", "license"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "Stable identifier the step code looks up via pack_data(pack_id, id)."
+              },
+              "path": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_.-]+$",
+                "description": "Filename inside the archive. Flat — no nested dirs. The pack-data loader rejects any path containing a slash to defeat zip-slip."
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "Optional per-file sha256, checked the first time pack_data() resolves this resource. Lets the loader detect corruption inside the extracted tree without re-hashing the whole archive."
+              },
+              "sizeBytes": { "type": "integer", "minimum": 0 },
+              "rowCount": { "type": "integer", "minimum": 0 },
+              "schemaVersion": { "type": "integer", "minimum": 1 },
+              "license": {
+                "type": "string",
+                "description": "SPDX identifier or short license name. Surfaced in Settings → Packs and in pipeline export attribution chains."
+              },
+              "attribution": { "type": "string", "description": "One-line credit string." },
+              "source": { "type": "string", "description": "Where the data came from — URL, dataset name, vendor, internal team contact." },
+              "description": { "type": "string", "maxLength": 500 }
+            }
+          }
+        }
+      }
     }
   }
 }

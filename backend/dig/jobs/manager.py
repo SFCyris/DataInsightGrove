@@ -44,9 +44,47 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Pen-tester round-3: storing `f"{type(e).__name__}: {e}"` directly leaked
+# the full Pydantic ``ValidationError`` body — which includes the user's
+# raw ``input_value`` for every failing field — into a Run row that any
+# authenticated caller can fetch via ``GET /runs/{id}``. For a pipeline
+# whose input was a 5 MB JSON document, that's a 5 MB error payload; for
+# a doc that contained file URIs / API keys / SQL fragments, that's
+# unbounded leakage.
+#
+# Cap the human-readable error to a single line + 500 chars; full traceback
+# stays in ``log.exception`` server-side where the operator can read it.
+_ERROR_DISPLAY_CAP = 500
+
+
+def _safe_error_message(exc: BaseException) -> str:
+    """Format an exception for the Run.error column / events / webhooks.
+
+    Single line, length-capped, no traceback. The full context is
+    available in the server log via ``log.exception``.
+    """
+    try:
+        msg = str(exc)
+    except Exception:  # noqa: BLE001
+        msg = "<unrenderable>"
+    # Collapse multi-line errors (e.g. Pydantic ValidationError) to one
+    # line so the column doesn't carry attacker-controlled newlines.
+    msg = msg.replace("\r", " ").replace("\n", " ").strip()
+    if len(msg) > _ERROR_DISPLAY_CAP:
+        msg = msg[: _ERROR_DISPLAY_CAP - 3] + "..."
+    return f"{type(exc).__name__}: {msg}" if msg else type(exc).__name__
+
+
 class JobManager:
     def __init__(self) -> None:
         self._tasks: dict[str, asyncio.Task] = {}
+        # Round-4 QA finding: ``shutdown()`` snapshots the in-flight task
+        # set once. A ``submit()`` arriving mid-cancel (e.g. a webhook
+        # round-trip racing the SIGTERM handler) would happily add a
+        # fresh task AFTER the snapshot, which then leaks past the API
+        # process exit with its Run row stuck at ``queued``. Gate every
+        # submission on this flag once shutdown begins.
+        self._shutting_down = False
 
     async def submit(self, pipeline: Pipeline, *, sample_rows: int | None = None) -> str:
         """Insert the Run row synchronously, then kick off the background task.
@@ -54,6 +92,11 @@ class JobManager:
         Returning before the row exists would race with API consumers who
         immediately poll /runs/{id}.
         """
+        if self._shutting_down:
+            # 503 maps to "service unavailable" — the right shape for
+            # "we're shutting down, retry later".
+            from fastapi import HTTPException
+            raise HTTPException(503, "DIG is shutting down; refusing new runs")
         global _main_loop
         if _main_loop is None:
             _main_loop = asyncio.get_running_loop()
@@ -140,6 +183,51 @@ class JobManager:
                 "rowCounts": result.rowCounts,
                 "artifacts": result.artifacts,
             })
+        except asyncio.CancelledError:
+            # Round-5 W4: a user-triggered cancel arrives as a
+            # ``CancelledError`` (``task.cancel()``). Mark the row
+            # ``cancelled`` so the UI and webhooks see a distinct
+            # terminal state separate from a real exception. Reraise
+            # afterwards so the cancellation propagates correctly to
+            # the supervising loop on shutdown.
+            log.info("run %s cancelled by user", run_id)
+            finished_at = _utcnow()
+            await self._set_status(
+                run_id,
+                "cancelled",
+                finished_at=finished_at,
+                error="cancelled by user",
+            )
+            try:
+                inc("dig_runs_total", labels={"status": "cancelled"})
+            except Exception:
+                pass
+            await hub.publish(f"run:{run_id}", {
+                "status": "cancelled",
+                "progress": None,
+                "error": "cancelled by user",
+            })
+            # Round-8: fire webhooks + emit run.cancelled so notification
+            # rules can match cancellations the same way they match
+            # failures. Without this, cancelled runs were silent to any
+            # external integration.
+            from dig.api.events import EventKinds, emit_event
+            await emit_event(
+                EventKinds.RUN_CANCELLED,
+                run_id=run_id,
+                pipeline_id=pipeline.id,
+                pipeline_name=pipeline.name,
+            )
+            await self._fire_webhooks(pipeline, {
+                "runId": run_id,
+                "pipelineId": pipeline.id,
+                "pipelineName": pipeline.name,
+                "status": "cancelled",
+                "startedAt": started_at.isoformat(),
+                "finishedAt": finished_at.isoformat(),
+                "error": "cancelled by user",
+            })
+            raise
         except Exception as e:
             # Log the full traceback server-side (operators need it for
             # debugging) but ONLY the type + message goes into the Run row.
@@ -155,11 +243,12 @@ class JobManager:
             # output directly.
             log.exception("run %s failed", run_id)
             finished_at = _utcnow()
+            err_display = _safe_error_message(e)
             await self._set_status(
                 run_id,
                 "failed",
                 finished_at=finished_at,
-                error=f"{type(e).__name__}: {e}",
+                error=err_display,
             )
             try:
                 inc("dig_runs_total", labels={"status": "failed"})
@@ -167,7 +256,7 @@ class JobManager:
                 pass
             await hub.publish(f"run:{run_id}", {
                 "status": "failed",
-                "error": f"{type(e).__name__}: {e}",
+                "error": err_display,
             })
             # Emit a run.failed event. Notification rules pick it up and
             # decide whether to create an in-app notification (and, in the
@@ -178,7 +267,7 @@ class JobManager:
                 run_id=run_id,
                 pipeline_id=pipeline.id,
                 pipeline_name=pipeline.name,
-                error=str(e),
+                error=err_display,
                 error_type=type(e).__name__,
             )
             await self._fire_webhooks(pipeline, {
@@ -188,7 +277,7 @@ class JobManager:
                 "status": "failed",
                 "startedAt": started_at.isoformat(),
                 "finishedAt": finished_at.isoformat(),
-                "error": f"{type(e).__name__}: {e}",
+                "error": err_display,
             })
 
     async def _emit_check_violations(
@@ -295,14 +384,39 @@ class JobManager:
             log.exception("webhook dispatch failed for run %s", payload.get("runId"))
 
     async def _set_status(self, run_id: str, status: str, **fields: Any) -> None:
+        """Atomically update a Run row's status + extra fields.
+
+        Round-8 fix: previously this was a read-modify-write
+        (``session.get`` → mutate → commit). Two concurrent writers
+        (e.g. the user-cancel endpoint + the task's own except branch)
+        could read the same starting row and silently clobber each
+        other on commit. We now issue a single UPDATE with a
+        ``status NOT IN (terminal states)`` predicate so only the
+        FIRST writer to a still-running row wins; subsequent writers
+        no-op (matched zero rows).
+        """
+        from sqlalchemy import update as _sa_update
+        _TERMINAL = ("succeeded", "failed", "cancelled")
         async with SessionLocal() as session:
-            row = await session.get(Run, run_id)
-            if row is None:
-                return
-            row.status = status
-            for k, v in fields.items():
-                setattr(row, k, v)
+            # Allow shutdown-aborted transitions only on still-running rows.
+            # When the new status is itself terminal we use the predicate;
+            # for non-terminal updates (rare — e.g. progress?) we skip it.
+            stmt = (
+                _sa_update(Run)
+                .where(Run.id == run_id)
+                .where(Run.status.notin_(_TERMINAL))
+                .values(status=status, **fields)
+            )
+            res = await session.execute(stmt)
             await session.commit()
+            if res.rowcount == 0:
+                # Either the row vanished or another writer already
+                # landed a terminal status. Log + bail; the caller
+                # treats this as a successful set.
+                log.debug(
+                    "run %s already in a terminal state; skipped status=%s",
+                    run_id, status,
+                )
 
     async def shutdown(self) -> None:
         """Cancel all in-flight runs and mark them aborted.
@@ -310,6 +424,9 @@ class JobManager:
         Called from the FastAPI lifespan on shutdown. Without this, SIGTERM /
         uvicorn reload leaves rows stuck at `running` forever.
         """
+        # Set the gate FIRST so new submissions can't slip in past the
+        # snapshot we take below (round-4 QA finding).
+        self._shutting_down = True
         if not self._tasks:
             return
         # Snapshot id → task pairs BEFORE cancelling. The done-callback
@@ -323,13 +440,19 @@ class JobManager:
         # Mark each genuinely-cancelled task as aborted. Skip tasks that
         # finished cleanly between submit and shutdown — without this guard,
         # we'd overwrite a successful run's status with "failed: aborted".
+        # Round-8: also skip rows whose status is already a terminal value
+        # (succeeded / failed / cancelled). The task's own except-branch may
+        # have written "cancelled" before we got here when the user-cancel
+        # endpoint and shutdown raced — without this check we'd overwrite a
+        # legitimate "cancelled" with "failed: aborted".
         for rid, task in snapshot:
             if not task.cancelled():
-                # Task finished on its own (success or already-failed) before
-                # we could cancel it. The _run() body already wrote the final
-                # status; don't clobber it.
                 continue
             try:
+                async with SessionLocal() as session:
+                    row = await session.get(Run, rid)
+                    if row is None or row.status in ("succeeded", "failed", "cancelled"):
+                        continue
                 await self._set_status(
                     rid, "failed",
                     finished_at=_utcnow(),

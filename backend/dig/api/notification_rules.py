@@ -137,17 +137,40 @@ def _filters_match(filters: dict[str, Any] | None, ctx: dict[str, Any]) -> bool:
 
     Special key `min_level`: if present, only fire when ctx['level'] is
     at least this severe (notification < warning < error).
+
+    Round-8 fix: a filter value of None used to compare equal to a
+    missing ctx key (because ``ctx.get(key)`` also returns None), so
+    a filter like ``{"node_id": None}`` silently matched every event
+    that lacked ``node_id``. We now distinguish "ctx is missing the
+    key" from "ctx[key] is None" and require the filter value to be
+    present in ctx. To explicitly match "missing or null", use the
+    sentinel string ``"__missing__"``.
     """
     if not filters:
         return True
     LEVEL_RANK = {"notification": 0, "warning": 1, "error": 2}
+    _MISSING = object()
     for key, expected in filters.items():
         if key == "min_level":
             actual_level = ctx.get("level", "notification")
-            if LEVEL_RANK.get(actual_level, 0) < LEVEL_RANK.get(expected, 0):
+            # Round-9 fix: unknown actual levels (e.g. ``critical`` from
+            # a future producer) used to fall through to rank 0 and get
+            # dropped by min_level=warning; treat unknown levels as
+            # MAX rank so they always pass.
+            actual_rank = LEVEL_RANK.get(actual_level, max(LEVEL_RANK.values()))
+            if actual_rank < LEVEL_RANK.get(expected, 0):
                 return False
             continue
-        actual = ctx.get(key)
+        actual = ctx.get(key, _MISSING)
+        if expected == "__missing__":
+            # Explicit opt-in: filter matches iff ctx is missing the key
+            # OR has it set to None. Lets users intentionally write
+            # "only when this field is absent".
+            if actual is _MISSING or actual is None:
+                continue
+            return False
+        if actual is _MISSING:
+            return False
         if actual != expected:
             return False
     return True
@@ -256,6 +279,14 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
             log.debug("rule %s cooldown blocks event %s", rule.id, event_kind)
             continue
 
+        # Round-9 fix: record the cooldown IMMEDIATELY after passing
+        # the guard, BEFORE awaiting record_notification. The old order
+        # let a burst of identical events all pass `_cooldown_blocks`
+        # before any of them stamped the cooldown, defeating the rate
+        # limit. The in-process cooldown bookkeeping is sync, so we can
+        # do it before the await safely.
+        _record_cooldown(rule, context, now)
+
         action = rule.action or {}
         title_t = action.get("title") or "{event_kind}"
         message_t = action.get("message")
@@ -276,17 +307,24 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
             context={**context, "rule_id": rule.id, "rule_name": rule.name, "event_kind": event_kind},
         )
 
-        # Stamp last_fired_at + bump fire_count + record cooldown.
+        # Stamp last_fired_at + bump fire_count atomically. Previous
+        # read-modify-write lost increments under concurrent events
+        # for the same rule (QA#1 #8). Use a single UPDATE with
+        # ``fire_count = fire_count + 1``.
         try:
+            from sqlalchemy import update as _sa_update
             async with SessionLocal() as session:
-                row = await session.get(NotificationRule, rule.id)
-                if row:
-                    row.last_fired_at = now
-                    row.fire_count = (row.fire_count or 0) + 1
-                    await session.commit()
+                await session.execute(
+                    _sa_update(NotificationRule)
+                    .where(NotificationRule.id == rule.id)
+                    .values(
+                        last_fired_at=now,
+                        fire_count=NotificationRule.fire_count + 1,
+                    )
+                )
+                await session.commit()
         except Exception:
             log.exception("failed to bump fire_count for rule %s", rule.id)
-        _record_cooldown(rule, context, now)
 
 
 # ---- Default rules (seeded on startup) ---------------------------------
@@ -421,6 +459,74 @@ async def list_event_kinds() -> dict[str, list[str]]:
     """Returns the canonical event-kind vocabulary so the UI can populate
     the rule form's event picker without hardcoding."""
     return {"kinds": list(ALL_EVENT_KINDS) + ["*", "run.*", "freshness.*", "auth.*", "resources.*", "system.*"]}
+
+
+class TestRuleIn(BaseModel):
+    event_kind: str
+    filters: dict[str, Any] | None = None
+
+
+class TestRuleHit(BaseModel):
+    event_id: str
+    event_kind: str
+    created_at: datetime
+    context: dict[str, Any]
+
+
+class TestRuleOut(BaseModel):
+    """Round-5 W4 finding: rule authoring is blind today — a user writes
+    filters + a template and has to wait for a real event in the wild to
+    see what fires. This endpoint scans recent events and returns which
+    would match, so the rule editor can preview before save."""
+    sampled: int
+    matched: int
+    hits: list[TestRuleHit]
+
+
+@router.post("/test", response_model=TestRuleOut)
+async def test_rule(
+    body: TestRuleIn,
+    limit: int = 100,
+    session: AsyncSession = Depends(get_session),
+) -> TestRuleOut:
+    """Replay the rule's event_kind + filters against recent notifications
+    and return matches. Doesn't fire any notifications, doesn't touch
+    the cooldown bookkeeping — pure dry-run.
+
+    Events aren't persisted as a separate table; instead, every fired
+    rule records a Notification with its source event's context (and
+    the originating ``event_kind`` stamped into context). We replay
+    against those rows so the user can sanity-check filter changes
+    against the recent live history."""
+    from dig.storage.models import Notification
+    from sqlalchemy import select, desc
+    # Cap N defensively; the UI uses 10–50.
+    limit = max(1, min(500, limit))
+    # Pull the last ``limit`` notifications. Filter by event_kind in
+    # Python (not SQL) because the kind is in the JSON context, not a
+    # top-level column.
+    q = (
+        select(Notification)
+        .order_by(desc(Notification.created_at))
+        .limit(limit)
+    )
+    rows = (await session.execute(q)).scalars().all()
+    sampled = len(rows)
+    hits: list[TestRuleHit] = []
+    for n in rows:
+        ctx = n.context or {}
+        ev_kind = ctx.get("event_kind") or n.kind
+        if not event_kind_matches(body.event_kind, ev_kind):
+            continue
+        if not _filters_match(body.filters, ctx):
+            continue
+        hits.append(TestRuleHit(
+            event_id=n.id,
+            event_kind=ev_kind,
+            created_at=n.created_at,
+            context=ctx,
+        ))
+    return TestRuleOut(sampled=sampled, matched=len(hits), hits=hits)
 
 
 @router.post("", response_model=RuleOut, status_code=201)

@@ -44,7 +44,10 @@ def _should_fire(hook: Webhook, status: str) -> bool:
     if hook.on == "triggered":
         return False
     if hook.on == "always":
-        return status in ("succeeded", "failed")
+        # Round-9 fix: cancelled is a terminal status that used to be
+        # silently skipped here, so an "always" webhook never fired on
+        # user-cancels. Now it's part of the terminal set.
+        return status in ("succeeded", "failed", "cancelled")
     return hook.on == status
 
 
@@ -66,11 +69,29 @@ async def _post_one(client: httpx.AsyncClient, hook: Webhook, body: bytes) -> No
         log.warning("webhook %s rejected: %s", hook.url, e)
         return
 
+    # Pen-tester round-3: hook.headers came from a user-supplied pipeline
+    # document and was spread into the outbound request without any check.
+    # A value containing "\r\n" would splice an extra header (or even a
+    # second request body) into the wire format. Reuse the REST connector's
+    # validator so both surfaces share one allow-list.
+    try:
+        from connectors.rest_api.connector import _validate_header_pair
+    except ImportError:
+        _validate_header_pair = None  # type: ignore[assignment]
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "DataInsightGrove-Webhook/1.0",
-        **hook.headers,
     }
+    for k, v in hook.headers.items():
+        if _validate_header_pair is not None:
+            try:
+                n, val = _validate_header_pair(str(k), str(v))
+            except ValueError as e:
+                log.warning("webhook %s rejected header %r: %s", hook.url, k, e)
+                return
+            headers[n] = val
+        else:
+            headers[str(k)] = str(v)
     if hook.secret:
         headers["X-DIG-Signature"] = _sign(body, hook.secret)
 
@@ -97,7 +118,16 @@ async def _post_one(client: httpx.AsyncClient, hook: Webhook, body: bytes) -> No
             if 200 <= resp.status_code < 300:
                 log.info("webhook %s → %s (attempt %d)", hook.url, resp.status_code, attempt)
                 return
-            last_err = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+            # Round-9 fix: only include response body in the logged
+            # error when the hook has NO secret + NO custom headers.
+            # An attacker-controlled receiver can echo our request
+            # headers (including the HMAC signature or operator-set
+            # tokens) back in the error body and leak them through
+            # this log line.
+            if hook.secret or hook.headers:
+                last_err = RuntimeError(f"HTTP {resp.status_code} (body redacted — hook uses secrets)")
+            else:
+                last_err = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             last_err = e
         if attempt == 1:

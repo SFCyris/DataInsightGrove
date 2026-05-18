@@ -943,18 +943,21 @@ async def import_pipeline(
       - or a bare pipeline document `{"schemaVersion": 1, ...}`
     """
     # Size cap: a pipeline doc above 2 MB is almost certainly a runaway
-    # import. Configurable via DIG_MAX_PIPELINE_KB. Use a fast structural
-    # estimate — counting nodes/datasets — and only re-serialize when that
-    # exceeds the cap, so we don't double-buffer the body on the happy path.
+    # import. Configurable via DIG_MAX_PIPELINE_KB.
+    #
+    # Round-9 fix: the old cheap-path check `len(str(body))` compared the
+    # Python `dict.__repr__` length, which differs from the actual JSON
+    # byte length — a unicode-heavy doc could pass `str()` cheap then fail
+    # to serialize. We now always compute the JSON byte length up front;
+    # for a 2 MB cap the cost is negligible vs the savings in
+    # rejecting/accepting deterministically.
     max_kb = int(os.environ.get("DIG_MAX_PIPELINE_KB", "2048"))
-    rough_count = len(body.get("nodes") or []) + len(body.get("datasets") or [])
-    if rough_count > 2000 or len(str(body)) > max_kb * 1024:
-        body_size = len(json.dumps(body).encode())
-        if body_size > max_kb * 1024:
-            raise HTTPException(
-                413,
-                f"pipeline document exceeds {max_kb} KB cap (got {body_size // 1024} KB)",
-            )
+    body_size = len(json.dumps(body).encode())
+    if body_size > max_kb * 1024:
+        raise HTTPException(
+            413,
+            f"pipeline document exceeds {max_kb} KB cap (got {body_size // 1024} KB)",
+        )
 
     if "$dig" in body and "document" in body:
         name = body.get("name") or body.get("document", {}).get("name") or "Imported pipeline"
@@ -1045,6 +1048,12 @@ async def create_from_template(
         raise HTTPException(400, "template path escapes the templates directory")
     if not src.is_file():
         raise HTTPException(404, f"template '{slug}' not found")
+    # Round-9 fix: cap template file size before reading. A planted
+    # or malformed template file could OOM the worker if read whole.
+    # 5 MB is generous for a JSON pipeline template (compare to the
+    # 2 MB pipeline-document cap).
+    if src.stat().st_size > 5 * 1024 * 1024:
+        raise HTTPException(413, f"template '{slug}' exceeds 5 MB cap")
     tmpl = json.loads(src.read_text())
     doc = tmpl.get("document") or {}
 
@@ -1138,28 +1147,49 @@ async def create_from_template(
 # serialises within the FastAPI process. Multi-process deployments
 # would need a database-level advisory lock; DIG ships single-process
 # today.
-_seed_demo_lock = asyncio.Lock()
+#
+# Round-9 fix: create the lock lazily inside the endpoint so it binds
+# to the currently-running event loop, not whatever loop happened to
+# be active at module import time. Under uvicorn --reload (or any
+# multi-process / multi-loop setup) the old module-time lock raised
+# "RuntimeError: lock is bound to a different event loop" on the
+# first /seed-demo call after a reload.
+_seed_demo_lock: asyncio.Lock | None = None
+
+
+def _get_seed_demo_lock() -> asyncio.Lock:
+    global _seed_demo_lock
+    if _seed_demo_lock is None:
+        _seed_demo_lock = asyncio.Lock()
+    return _seed_demo_lock
 
 
 @router.post("/seed-demo", status_code=201)
 async def seed_demo_bundle(
     overwrite: bool = False,
+    additive: bool = False,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Seed the four demo pipelines used by the home page's "🌱 Try with
-    sample data" button: a one-click overview, a 30-step healthcare
-    clinical-analysis pipeline, a housing pipeline that ends in an
-    interactive ``export_to_map`` output, and a timestamped-report
-    pipeline showcasing the variable-templating surface.
+    """Seed the bundled demo pipelines used by the home page's "🌱 Try
+    with sample data" button:
+
+      - one-click customers overview
+      - 30-step healthcare clinical-analysis
+      - housing pipeline ending in an interactive ``export_to_map``
+      - timestamped-report demo showcasing variable templating
+      - EU GDP country choropleth (geospatial_pack showcase)
+      - SF Bay Area cities map (geospatial_pack auto-resolution showcase)
+
+    The exact set lives in ``demo_seeds.DEMO_PIPELINE_NAMES``.
 
     Idempotent on datasets (looked up by name) but pipelines are recreated
     each time. The ``overwrite`` flag controls what happens when any of the
-    four demo pipelines already exists:
+    demo pipelines already exists:
 
       - ``overwrite=false`` (default) → 409 with ``{ existing: [name, ...] }``
         so the frontend can show a confirm dialog.
       - ``overwrite=true`` → existing demo pipelines are deleted first, then
-        all three are recreated fresh.
+        the full set is recreated fresh.
 
     Returns the same shape regardless of overwrite:
 
@@ -1173,13 +1203,25 @@ async def seed_demo_bundle(
         detect_existing_demo_pipelines,
         delete_demo_pipelines,
         seed_all_demos,
+        seed_missing_demos,
     )
 
     # Lock the entire detect → delete → seed sequence so two concurrent
     # callers can't interleave (which would create duplicate demo
     # pipelines). The lock is process-local; see comment on
     # ``_seed_demo_lock`` for the multi-process caveat.
-    async with _seed_demo_lock:
+    async with _get_seed_demo_lock():
+        # Cross-version compat: an rc1 user has 3 demos seeded. After
+        # upgrading to rc2, additive=true picks up just the new
+        # `📅 demo · variables` pipeline without nuking the existing
+        # 3. Mutually exclusive with overwrite=true.
+        if additive and overwrite:
+            raise HTTPException(400, "additive and overwrite are mutually exclusive")
+        if additive:
+            try:
+                return await seed_missing_demos(session)
+            except FileNotFoundError as e:
+                raise HTTPException(500, str(e)) from e
         if not overwrite:
             existing = await detect_existing_demo_pipelines(session)
             if existing:
@@ -1190,7 +1232,8 @@ async def seed_demo_bundle(
                         "existing": existing,
                         "message": (
                             f"{len(existing)} demo pipeline{'' if len(existing) == 1 else 's'} "
-                            "already exist. Pass overwrite=true to recreate."
+                            "already exist. Pass overwrite=true to recreate, "
+                            "or additive=true to add only the missing ones."
                         ),
                     },
                 )
@@ -1213,7 +1256,7 @@ async def seed_demo_bundle(
             raise HTTPException(500, str(e)) from e
 
         # Seed succeeded — now safe to clean up the old set. Note: there
-        # is a brief window where 6 demo pipelines exist (3 old + 3 new
+        # is a brief window where 8 demo pipelines exist (4 old + 4 new
         # with duplicate names). The frontend redirects to the NEW
         # primary so the user UX is correct; the old set vanishes after
         # this call returns.
@@ -1302,11 +1345,21 @@ async def create_overview_from_dataset(
     # data" → auto-overview-pipeline run.
     ds_alias = f"ds_{d.id.lower()}"
 
+    # Round-5 follow-up: read the live manifest version so this
+    # auto-pipeline path doesn't pin 1.0.0 forever (export_to_image is
+    # at 1.1.0 today). Same fix shape as ``demo_seeds._live_step_version``.
+    from dig.engine.registry import steps as _steps_reg
+    def _live_v(step_id: str) -> str:
+        try:
+            return getattr(_steps_reg().get(step_id), "version", None) or "1.0.0"
+        except Exception:  # noqa: BLE001
+            return "1.0.0"
+
     def _add_chart(node_id: str, kind: str, x_col: str, label_emoji: str, x_offset: int) -> None:
         nodes.append({
             "id": node_id,
             "step": "export_to_image",
-            "stepVersion": "1.0.0",
+            "stepVersion": _live_v("export_to_image"),
             "inputs": {"in": {"port": "out", "ref": ds_alias}},
             "outputs": ["out"],
             "params": {
@@ -1574,6 +1627,13 @@ async def preview_step_rows(
     from dig.engine.step import PolarsContext
     from dig.storage.files import data_dir as _data_dir
 
+    # Defensive: reject a pipeline_id that doesn't match the strict ULID
+    # pattern before we interpolate it into a filesystem path below. The
+    # downstream ``session.get`` would already return None for malformed
+    # ids (so the 404 fires) but the validation here is belt-and-braces
+    # against any future refactor that drops the DB check.
+    if not _PIPELINE_ID_RE.match(pipeline_id):
+        raise HTTPException(400, "invalid pipeline id")
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
@@ -1779,6 +1839,13 @@ async def preview_step(
     from dig.engine.step import PolarsContext
     from dig.storage.files import data_dir as _data_dir
 
+    # Defensive: reject a pipeline_id that doesn't match the strict ULID
+    # pattern before we interpolate it into a filesystem path below. The
+    # downstream ``session.get`` would already return None for malformed
+    # ids (so the 404 fires) but the validation here is belt-and-braces
+    # against any future refactor that drops the DB check.
+    if not _PIPELINE_ID_RE.match(pipeline_id):
+        raise HTTPException(400, "invalid pipeline id")
     row = await session.get(PipelineRow, pipeline_id)
     if row is None:
         raise HTTPException(404, "pipeline not found")
@@ -2094,7 +2161,7 @@ async def get_pipeline_freshness(
     # prior state (first observation) — too noisy at startup and on
     # first-page-load.
     await _emit_freshness_transitions(
-        pipeline_id, doc, states, group_states,
+        pipeline_id, row.name, doc, states, group_states,
         last_run_at, declared, group_declared,
     )
 
@@ -2157,6 +2224,7 @@ _FRESHNESS_LAST_SEEN: _FreshnessLRU = _FreshnessLRU(
 
 async def _emit_freshness_transitions(
     pipeline_id: str,
+    pipeline_name: str | None,
     doc: dict[str, Any],
     node_states: dict[str, str],
     group_states: dict[str, str],
@@ -2216,7 +2284,7 @@ async def _emit_freshness_transitions(
             # round-3 QA finding. The scheduled freshness scanner already
             # threaded this; the opportunistic /freshness endpoint did
             # not.
-            pipeline_name=row.name or doc.get("name") or pipeline_id,
+            pipeline_name=pipeline_name or doc.get("name") or pipeline_id,
             **({"node_id": target_id} if target_kind == "node" else {"group_id": target_id}),
             target_label=target_label,
             target_kind=target_kind,
@@ -2452,7 +2520,52 @@ async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> 
     return _run_out(r)
 
 
+@runs_router.post("/{run_id}/cancel")
+async def cancel_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Cancel a queued or running run. Round-5 W4 finding: the long-run
+    abort path used to be reachable only on backend shutdown. This
+    exposes the same ``task.cancel()`` mechanism so a user can stop a
+    runaway pipeline from the editor toolbar.
+
+    No-op when the run is already terminal — returns 200 with a
+    ``status="already terminal"`` body so the UI can show a friendly
+    toast without distinguishing the two paths.
+    """
+    r = await session.get(Run, run_id)
+    if r is None:
+        raise HTTPException(404, "run not found")
+    if r.status not in ("queued", "running"):
+        return {"ok": True, "status": "already terminal", "runStatus": r.status}
+    # The in-process job manager keeps `_tasks[run_id] = asyncio.Task`.
+    # Cancel via that handle; the run's ``except CancelledError`` path
+    # in ``_run`` flips the status to ``cancelled`` and emits the same
+    # webhook + event surface as any other terminal transition.
+    from dig.jobs.manager import jobs as _jobs
+    task = _jobs._tasks.get(run_id)
+    if task is None:
+        # Task already finished while the row hadn't flipped yet —
+        # mark the row aborted so the UI reflects truth. Route the
+        # write through `_set_status` so the terminal-status guard
+        # applies and we never overwrite a row the task itself already
+        # flipped to succeeded/failed in the meantime (round-9 fix).
+        await _jobs._set_status(
+            run_id, "cancelled",
+            finished_at=datetime.now(timezone.utc),
+            error="cancelled by user (task already detached)",
+        )
+        return {"ok": True, "status": "detached"}
+    task.cancel()
+    return {"ok": True, "status": "cancelling"}
+
+
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+# Pipelines accept up to 64 chars per the Pipeline pydantic model.
+# Don't reuse the run id pattern — round-9 found pipelines saved at the
+# 41+ char range got rejected by the path-validation guards.
+_PIPELINE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @runs_router.get("/{run_id}/artifact")
@@ -2792,6 +2905,20 @@ async def get_run_output(
             if stem == output_id:
                 target = path
                 break
+    # Round-9 fix: verify the target is contained in data_dir() before
+    # reading it. ``r.output_paths`` is normally executor-controlled but
+    # a connector that wrote outside the data dir (Postgres COPY TO, a
+    # custom sink that ignores path safety) could plant an arbitrary
+    # path in the row. Same guard as /runs/{id}/artifact.
+    from dig.storage.files import data_dir as _data_dir
+    target_p = Path(target).resolve()
+    try:
+        target_p.relative_to(_data_dir().resolve())
+    except ValueError:
+        raise HTTPException(400, "output path escapes data directory")
+    # Cap limit so a caller can't stall the event loop with an unbounded
+    # iter_rows materialisation (QA#1 #25).
+    limit = max(1, min(int(limit), 1000))
     # Push parquet I/O off the event loop so other API calls don't stall.
     df = await asyncio.to_thread(
         lambda: pl.scan_parquet(target).slice(offset, limit).collect()

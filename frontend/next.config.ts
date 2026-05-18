@@ -66,6 +66,47 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // Same-origin API access — forward unmatched paths to the DIG backend so
+  // the page at https://localhost:3443 can fetch /pipelines, /runs, /health,
+  // etc. without triggering a second per-origin self-signed-cert prompt at
+  // https://localhost:8443. Browsers track click-through trust per-origin,
+  // so cross-origin fetches to an untrusted-cert host get silently dropped
+  // even after the user has clicked through on the page origin.
+  //
+  // The TLS proxy handles HTTPS termination on port 3443 and forwards plain
+  // HTTP to next dev on 3000; Next's `fallback` rewrites then forward those
+  // same-origin API requests server-side (no CORS, no cert) to uvicorn on
+  // 8090. WebSocket upgrades go through the same rewrite (Next 12+).
+  //
+  // ``fallback`` rewrites only run when the path matches neither a Next
+  // page nor any file in /public — so /, /pipelines, /pipelines/<ulid>,
+  // /_next/*, etc. continue to serve the React app as normal.
+  // Same-origin API access via a /api/* prefix that the dev server
+  // rewrites server-side to uvicorn. This decouples the page origin
+  // from the API origin so:
+  //
+  //   - the HTTPS page at https://localhost:3443 fetches
+  //     https://localhost:3443/api/pipelines — same origin, no
+  //     second per-origin cert prompt
+  //   - the HTTP page at http://localhost:3000 fetches
+  //     http://localhost:3000/api/pipelines — no cross-origin CORS hop
+  //
+  // The /api/ prefix is mandatory because frontend pages and API
+  // endpoints share the same name namespace (both have /pipelines).
+  // Without a prefix, the fallback rewrite would either steal page
+  // routes or never fire (since the page matched first).
+  //
+  // The capture `:path*` is interpolated into the destination so
+  // `/api/pipelines/01ABC` → backend's `/pipelines/01ABC` — the prefix
+  // is stripped, not forwarded. WebSocket upgrades are proxied through
+  // the same rule automatically (Next 12+).
+  async rewrites() {
+    const target = (process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8090").replace(/\/$/, "");
+    return [
+      { source: "/api/:path*", destination: `${target}/:path*` },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -14,9 +14,9 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     <button
       type="button"
       onClick={() => setSettings({ theme: next })}
-      className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 flex items-center gap-1.5 hover:bg-muted/40 transition-colors"
+      className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-md px-2 py-1 flex items-center gap-1.5 hover:bg-muted/40 transition-colors min-h-[28px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
       title={`Theme: ${LABELS[settings.theme]} → click for ${LABELS[next]}`}
-      aria-label={`Theme: ${LABELS[settings.theme]}`}
+      aria-label={`Theme: ${LABELS[settings.theme]}. Activate to switch to ${LABELS[next]}.`}
     >
       <span aria-hidden>{ICONS[settings.theme]}</span>
       {!compact && <span>{LABELS[settings.theme]}</span>}

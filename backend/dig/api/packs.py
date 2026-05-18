@@ -263,10 +263,19 @@ async def uninstall_pack(
     pack_id: str,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Remove an installed pack from disk and drop its registry row."""
+    """Remove an installed pack from disk and drop its registry row.
+
+    Returns 404 when the pack is absent from BOTH disk and the registry —
+    the previous shape returned 200 OK in that case, which made it
+    impossible for a UI / script to tell whether their delete actually
+    matched anything.
+    """
     row = (await session.execute(
         sa_select(StepPack).where(StepPack.id == pack_id),
     )).scalar_one_or_none()
+    on_disk = (pack_mod.PACKS_DIR / pack_id).exists()
+    if row is None and not on_disk:
+        raise HTTPException(404, f"pack '{pack_id}' is not installed")
     try:
         pack_mod.uninstall_pack(pack_id)
     except pack_mod.PackError as e:

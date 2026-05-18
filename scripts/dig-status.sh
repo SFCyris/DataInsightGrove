@@ -45,13 +45,26 @@ PYEOF
   fi
 fi
 
+# Try HTTPS first, fall back to HTTP — works whether or not the running
+# instance has TLS enabled. ``-k`` accepts self-signed certs the local
+# trust store might not have. Whichever scheme actually responds is the
+# one we report.
 api_alive=0
 web_alive=0
-curl -sf "http://$API_HOST:$API_PORT/health" >/dev/null 2>&1 && api_alive=1
+SCHEME="http"
+if curl -sfk "https://$API_HOST:$API_PORT/health" >/dev/null 2>&1; then
+  api_alive=1; SCHEME="https"
+elif curl -sf "http://$API_HOST:$API_PORT/health" >/dev/null 2>&1; then
+  api_alive=1
+fi
 # Note the redirect of stderr — round-2 finding flagged that this line
 # previously used `2>&1` (merge to stdout) instead of `>/dev/null 2>&1`,
 # leaking libcurl chatter into the user-visible status output.
-curl -sf -o /dev/null "http://$WEB_HOST:$WEB_PORT/" >/dev/null 2>&1 && web_alive=1
+if curl -sfk -o /dev/null "https://$WEB_HOST:$WEB_PORT/" >/dev/null 2>&1; then
+  web_alive=1; SCHEME="https"
+elif curl -sf -o /dev/null "http://$WEB_HOST:$WEB_PORT/" >/dev/null 2>&1; then
+  web_alive=1
+fi
 
 # Plain-text first ("up"/"down"), emoji as decoration. Cron / monit setups
 # grep the human-readable line; in `LANG=C` shells the emoji become `?`,
@@ -61,8 +74,8 @@ web_status="down ❌"; [[ "$web_alive" -eq 1 ]] && web_status="up ✅"
 
 cat <<EOF
 DIG status
-  api  $api_status   http://$API_HOST:$API_PORT
-  web  $web_status   http://$WEB_HOST:$WEB_PORT
+  api  $api_status   $SCHEME://$API_HOST:$API_PORT
+  web  $web_status   $SCHEME://$WEB_HOST:$WEB_PORT
   cfg  $("$PY" "$SCRIPT_DIR/dig_config.py" path 2>/dev/null || echo '(defaults only)')
 EOF
 

@@ -26,9 +26,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 
 import { api, type RunOut, API_BASE, API_TOKEN } from "@/lib/api/client";
-import { fmtInt } from "@/lib/format-number";
+import { fmtDuration, fmtInt } from "@/lib/format-number";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { PositiveLoader } from "@/components/positive-loader";
 
 const STATUS_META: Record<string, { emoji: string; tone: string; label: string; bg: string }> = {
   succeeded: { emoji: "✅", tone: "text-emerald-700 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-950/40", label: "Succeeded" },
@@ -39,14 +42,6 @@ const STATUS_META: Record<string, { emoji: string; tone: string; label: string; 
 };
 function statusMeta(s: string) {
   return STATUS_META[s] ?? { emoji: "❔", tone: "text-zinc-500", bg: "bg-zinc-50", label: s };
-}
-
-function fmtDuration(ms: number | null): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`;
-  if (ms < 3_600_000) return `${Math.round(ms / 1000 / 60)}m ${Math.round((ms / 1000) % 60)}s`;
-  return `${Math.round(ms / 1000 / 3600)}h ${Math.round((ms / 1000 % 3600) / 60)}m`;
 }
 
 function parseUtcMs(iso: string | null): number | null {
@@ -99,18 +94,39 @@ export default function RunDetailPage() {
   const doc = pipelineQ.data?.document as
     | { name?: string; nodes?: Array<{ id: string; step: string; ui?: { label?: string } }>; datasets?: Array<{ id: string; label?: string; uri?: string; connector?: string }>; outputs?: Array<{ id: string; name: string; from?: { ref: string } }> }
     | undefined;
+  useDocumentTitle(
+    doc?.name
+      ? `Run · ${doc.name} · ${run?.status ?? "loading"}`
+      : run
+        ? `Run · ${run.status}`
+        : "Run",
+  );
 
   if (runQ.isLoading) {
     return (
-      <main className="h-screen grid place-items-center text-sm text-muted-foreground italic">
-        Loading run…
+      <main className="h-screen grid place-items-center">
+        <PositiveLoader variant="rendering" primary="Loading run…" size="md" showTimer={false} />
       </main>
     );
   }
   if (!run) {
     return (
-      <main className="h-screen grid place-items-center text-sm text-rose-600 dark:text-rose-400">
-        Run not found.
+      <main id="main" className="h-screen grid place-items-center p-6">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="text-5xl" aria-hidden>🔎</div>
+          <h1 className="text-lg font-semibold">Run not found</h1>
+          <p className="text-sm text-muted-foreground">
+            This run may have been deleted, or the link may be from a different workspace.
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <Link href="/runs" className="text-xs px-3 py-1.5 rounded-md border border-border bg-card hover:bg-muted">
+              ← Back to runs
+            </Link>
+            <Link href="/" className="text-xs px-3 py-1.5 rounded-md hover:bg-muted text-muted-foreground">
+              Home
+            </Link>
+          </div>
+        </div>
       </main>
     );
   }
@@ -122,7 +138,7 @@ export default function RunDetailPage() {
     startedMs && finishedMs ? Math.max(0, finishedMs - startedMs) : null;
 
   return (
-    <main className="flex flex-col h-screen overflow-hidden">
+    <main id="main" className="flex flex-col h-screen overflow-hidden">
       {/* Header */}
       <header className="px-6 py-3 border-b border-border flex items-center gap-3 shrink-0">
         <Link
@@ -140,9 +156,22 @@ export default function RunDetailPage() {
         <h1 className="text-base font-medium tracking-tight truncate">
           {doc?.name ?? run.pipelineId}
         </h1>
-        <span className="text-[10px] font-mono text-muted-foreground/60 tabular-nums">
-          run {run.id.slice(0, 12)}…
-        </span>
+        <button
+          type="button"
+          title={`Copy run id · ${run.id}`}
+          aria-label={`Copy full run id ${run.id}`}
+          onClick={() => {
+            try {
+              navigator.clipboard.writeText(run.id);
+              toast.success("Run id copied");
+            } catch {
+              toast.error("Clipboard unavailable");
+            }
+          }}
+          className="text-[10px] font-mono text-muted-foreground/60 tabular-nums hover:text-foreground inline-flex items-center gap-1 transition-colors"
+        >
+          run {run.id.slice(0, 12)}… <span aria-hidden>📋</span>
+        </button>
         <span className="flex-1" />
         <Link
           href={`/pipelines/${run.pipelineId}`}
@@ -152,7 +181,7 @@ export default function RunDetailPage() {
         </Link>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto relative" id="run-scroll">
         {/* Width scales: max-w-5xl on standard laptop screens, expanding
             to max-w-7xl on 1440px+ (xl) and removing the cap on 1920px+
             (2xl) so the chart artifacts get the breathing room they deserve
@@ -160,8 +189,11 @@ export default function RunDetailPage() {
             previous fixed max-w-5xl wasted ~30–47% horizontal space at
             ≥ 1920px. */}
         <div className="max-w-5xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto px-6 py-6 space-y-6">
-          {/* Stats strip */}
-          <section className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Stats strip — Round-4 UX#3: ``grid-cols-2 md:grid-cols-5``
+              left a gap at the sm breakpoint where two columns of
+              long timestamps wrapped onto separate lines. Add an
+              intermediate 3-column step so 640..1023px renders cleanly. */}
+          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <Stat label="Started" value={startedMs ? new Date(startedMs).toLocaleString() : "—"} />
             <Stat label="Finished" value={finishedMs ? new Date(finishedMs).toLocaleString() : "—"} />
             <Stat label="Duration" value={fmtDuration(durationMs)} mono />
@@ -180,7 +212,10 @@ export default function RunDetailPage() {
             //   "polars step 'n_chart_map' (export_to_map) failed: ..."
             //   "step 'n_xyz' is not a Polars-engine step ..."
             //   "node 'n_abc' missing input ..."
-            const nodeMatch = run.error.match(/(?:polars step|step|node)\s+['"]([A-Za-z0-9_]+)['"]/);
+            // Round-9 fix: include `-` in the character class so node ids
+            // like ``n-abc-123`` link correctly. (User-friendly labels in
+            // step.ui.label can also be referenced.)
+            const nodeMatch = run.error.match(/(?:polars step|step|node)\s+['"]([A-Za-z0-9_-]+)['"]/);
             const failedNodeId = nodeMatch?.[1] ?? null;
             const failedNodeLabel = failedNodeId
               ? (() => {
@@ -190,7 +225,13 @@ export default function RunDetailPage() {
               : null;
             // Pull the first sentence (up to ":" or newline) as the
             // headline; the full error stays visible in the <details>.
-            const headline = run.error.split(/[\n:]/)[0].slice(0, 200);
+            // Round-4 UX#3: previously the headline was a hard 200-char
+            // cut with no ellipsis — visible truncations looked like
+            // bugs. Append "…" when we actually truncated.
+            const firstSentence = run.error.split(/[\n:]/)[0];
+            const headline = firstSentence.length > 200
+              ? firstSentence.slice(0, 197) + "…"
+              : firstSentence;
             return (
               <section className={`rounded-xl border p-4 ${m.bg} border-rose-300/40 dark:border-rose-900/60`}>
                 <div className="flex items-start justify-between gap-3 mb-2">
@@ -336,15 +377,66 @@ export default function RunDetailPage() {
                 </span>
               </h2>
               <div className="space-y-2">
-                {Object.entries(run.artifacts).map(([key, items]) => (
-                  <ArtifactGroup key={key} groupKey={key} items={items} runId={runId} />
+                {Object.entries(run.artifacts).map(([key, items], i) => (
+                  <ArtifactGroup
+                    key={key}
+                    groupKey={key}
+                    items={items}
+                    runId={runId}
+                    // Round-6 UX#3: pass the doc's outputs so the group
+                    // can render the human-readable OutputSpec name
+                    // (e.g. "listings_map") instead of leaking the
+                    // raw output_id ULID.
+                    outputs={doc?.outputs}
+                    // Round-9 fix: open only the first 2 groups by
+                    // default. Previously every group was open which
+                    // force-rendered N nested fetches simultaneously
+                    // and defeated the IntersectionObserver lazy-load.
+                    defaultOpen={i < 2}
+                  />
                 ))}
               </div>
             </section>
           )}
         </div>
+        {/* Round-6 UX#3: back-to-top FAB on long runs. Threshold of
+            720px window scroll inside the container is roughly two
+            viewports, when the user has reasonably committed to
+            scrolling and might want to jump up. */}
+        <BackToTop containerId="run-scroll" />
       </div>
     </main>
+  );
+}
+
+function BackToTop({ containerId }: { containerId: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const onScroll = () => setVisible(el.scrollTop > 720);
+    el.addEventListener("scroll", onScroll);
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [containerId]);
+  if (!visible) return null;
+  // Round-9 fix: honor prefers-reduced-motion for both the smooth-scroll
+  // animation AND the hover:scale transform.
+  const reduceMotion = typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const el = document.getElementById(containerId);
+        el?.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+      }}
+      title="Back to top"
+      aria-label="Scroll back to top"
+      className={`fixed bottom-6 right-6 z-30 h-10 w-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-lg flex items-center justify-center transition-transform ${reduceMotion ? "" : "hover:scale-105"}`}
+    >
+      <span aria-hidden className="text-lg">↑</span>
+    </button>
   );
 }
 
@@ -451,11 +543,31 @@ function PreviewRows({ runId, outputId }: { runId: string; outputId: string }) {
         <tbody>
           {data.rows.slice(0, 25).map((r, i) => (
             <tr key={i} className="border-t border-border/40">
-              {cols.map((c) => (
-                <td key={c} className="px-3 py-1 whitespace-nowrap font-mono text-muted-foreground">
-                  {String((r as Record<string, unknown>)[c] ?? "—").slice(0, 60)}
-                </td>
-              ))}
+              {cols.map((c) => {
+                const raw = String((r as Record<string, unknown>)[c] ?? "—");
+                const truncated = raw.length > 60;
+                return (
+                  <td
+                    key={c}
+                    className="px-3 py-1 whitespace-nowrap font-mono text-muted-foreground"
+                    // Round-6 UX#3: ``slice(0, 60)`` used to hide the
+                    // tail of long values with no way to see the full
+                    // string. The full value lives in the ``title=``
+                    // tooltip + a click copies it to the clipboard.
+                    title={truncated ? `${raw}\n\n(click to copy)` : raw}
+                    onClick={() => {
+                      if (!truncated) return;
+                      try {
+                        navigator.clipboard.writeText(raw);
+                        toast.success("Cell value copied");
+                      } catch { /* clipboard blocked */ }
+                    }}
+                    style={truncated ? { cursor: "pointer" } : undefined}
+                  >
+                    {truncated ? raw.slice(0, 60) + "…" : raw}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -566,10 +678,14 @@ function ArtifactGroup({
   groupKey,
   items,
   runId,
+  outputs,
+  defaultOpen = false,
 }: {
   groupKey: string;
   items: Array<Record<string, unknown>>;
   runId: string;
+  outputs?: Array<{ id: string; name: string }>;
+  defaultOpen?: boolean;
 }) {
   // Keys come in three shapes:
   //   - `output_id` (sink + image artifacts for the matching output)
@@ -584,11 +700,14 @@ function ArtifactGroup({
     label = `Intermediate · ${groupKey.replace("_intermediate:", "")}`;
     emoji = "📁";
   } else {
-    label = `Output · ${groupKey}`;
+    // Round-6 UX#3: prefer the OutputSpec's user-chosen name to the
+    // raw ULID; fall back to the ULID if the doc no longer carries it.
+    const specName = outputs?.find((o) => o.id === groupKey)?.name;
+    label = specName ? `Output · ${specName}` : `Output · ${groupKey}`;
     emoji = "📤";
   }
   return (
-    <details className="rounded-lg border border-border bg-card" open>
+    <details className="rounded-lg border border-border bg-card" {...(defaultOpen ? { open: true } : {})}>
       <summary className="cursor-pointer px-4 py-2 text-xs flex items-center gap-2">
         <span aria-hidden>{emoji}</span>
         <span className="font-medium">{label}</span>
@@ -786,10 +905,22 @@ function ArtifactHtmlIframe({
   return (
     <div className="bg-muted/20 rounded p-2 flex flex-col items-stretch gap-1">
       <div className="text-[10px] text-muted-foreground font-mono truncate" title={title}>{title}</div>
+      {/*
+        Round-3 regression: this iframe still carried `allow-same-origin`
+        even though step-image-preview.tsx had it dropped in rc1 hardening.
+        With both `allow-scripts` and `allow-same-origin`, scripts running
+        inside the srcDoc share the parent origin (DIG's API origin) and
+        can fetch DIG endpoints (auth cookies attached) to exfiltrate
+        pipelines, runs, settings — including the AI api_key. The map
+        artifact is static HTML/JS produced by `export_to_map` from
+        user-controlled column values, so a malicious cell could inject
+        a script. Drop `allow-same-origin` so the iframe is treated as a
+        unique opaque origin and can't reach back into DIG.
+      */}
       <iframe
         title={title}
         srcDoc={q.data}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
         className="w-full aspect-video min-h-[280px] max-h-[60vh] rounded border border-border bg-white"
       />
     </div>

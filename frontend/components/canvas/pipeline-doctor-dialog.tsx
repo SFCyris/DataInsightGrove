@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
 import type { Diagnosis } from "@/lib/pipeline-doctor";
@@ -65,6 +65,27 @@ export function PipelineDoctorDialog({
     });
   };
 
+  // Round-6 UX#2: modal a11y — focus the primary action on open + ESC
+  // dismisses + the dialog's surface gets `aria-modal` (added below).
+  // Without these, Tab leaked into the page beneath the backdrop and
+  // screen-reader users got no announcement that a dialog opened.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const primary = dialogRef.current?.querySelector<HTMLButtonElement>(
+      "[data-doctor-primary]",
+    );
+    primary?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onSkip();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onSkip]);
+
   return (
     <AnimatePresence>
       {open && (
@@ -76,6 +97,7 @@ export function PipelineDoctorDialog({
             exit={{ opacity: 0 }}
             onClick={onSkip}
             className="fixed inset-0 z-40 bg-black/30"
+            aria-hidden="true"
           />
           <motion.div
             key="doctor-dialog"
@@ -84,7 +106,9 @@ export function PipelineDoctorDialog({
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 360, damping: 32 }}
             role="dialog"
-            aria-label="Pipeline tune-up"
+            aria-modal="true"
+            aria-labelledby="pipeline-doctor-title"
+            ref={dialogRef}
             className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[600px] max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
           >
             <header className="flex items-start gap-3 mb-4">
@@ -93,7 +117,7 @@ export function PipelineDoctorDialog({
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
                   Pipeline composition
                 </p>
-                <h2 className="text-base font-semibold leading-tight">
+                <h2 id="pipeline-doctor-title" className="text-base font-semibold leading-tight">
                   Pipeline tune-up
                 </h2>
                 <p className="text-[12px] text-muted-foreground mt-1 leading-relaxed">
@@ -186,6 +210,7 @@ export function PipelineDoctorDialog({
                 size="sm"
                 disabled={selected.length === 0}
                 onClick={() => onApply(selected)}
+                data-doctor-primary
               >
                 🩺 Apply{" "}
                 {selected.length === 0

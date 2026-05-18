@@ -1,8 +1,8 @@
 {
   "id": "export_to_map",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "🗺 Export to map",
-  "description": "Render geographical points on an interactive world map. Pick one column with the location (lat,lon string, separate lat/lon columns, or WKT POINT). Optional name + comment columns control the hover tooltip.",
+  "description": "Render geographic data on an interactive world map. Four modes: points (markers), choropleth (color-coded polygons), heat (kernel-density overlay), arc (origin → destination lines). Optional polygon overlay layer combines any base mode with district / zone outlines. Output is interactive Leaflet HTML or static matplotlib PNG.",
   "category": "visualize",
   "engine": { "primary": "polars", "browser": "none", "deterministic": true },
   "io": {
@@ -10,6 +10,20 @@
     "outputs": { "min": 1, "max": 1, "ports": ["out"] }
   },
   "params": {
+    "mode": {
+      "type": "enum",
+      "label": "Map mode",
+      "enumValues": ["points", "choropleth", "heat", "arc"],
+      "enumLabels": [
+        "one marker per row (needs lat/lon)",
+        "color polygons by value (needs WKB/WKT polygon column + value)",
+        "kernel-density overlay (needs lat/lon)",
+        "origin → destination lines (needs 4 lat/lon columns)"
+      ],
+      "default": "points",
+      "required": true,
+      "help": "points: one marker per row at lat/lon (default). choropleth: color polygon regions by a numeric value (needs a parsed geometry column + value column). heat: kernel-density heat overlay from lat/lon. arc: origin → destination lines (needs origin lat/lon + destination lat/lon)."
+    },
     "format": {
       "type": "enum",
       "label": "Location format",
@@ -47,6 +61,66 @@
       "label": "Comment column (optional)",
       "columnFrom": "in",
       "help": "Column rendered underneath the headline. Free-form text."
+    },
+    "geometry_col": {
+      "type": "column_ref",
+      "label": "Polygon geometry column",
+      "columnFrom": "in",
+      "help": "WKB-bytes column from parse_geometry. Required for choropleth mode and for the polygon-overlay layer.",
+      "visibleWhen": { "mode": "choropleth" }
+    },
+    "value_col": {
+      "type": "column_ref",
+      "label": "Value column (choropleth / heat)",
+      "columnFrom": "in",
+      "help": "Numeric column. Choropleth: colors each polygon. Heat: weights the kernel density.",
+      "visibleWhen": { "mode": ["choropleth", "heat"] }
+    },
+    "origin_lat_col": {
+      "type": "column_ref",
+      "label": "Origin latitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "mode": "arc" }
+    },
+    "origin_lon_col": {
+      "type": "column_ref",
+      "label": "Origin longitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "mode": "arc" }
+    },
+    "dest_lat_col": {
+      "type": "column_ref",
+      "label": "Destination latitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "mode": "arc" }
+    },
+    "dest_lon_col": {
+      "type": "column_ref",
+      "label": "Destination longitude column",
+      "columnFrom": "in",
+      "visibleWhen": { "mode": "arc" }
+    },
+    "color_scale": {
+      "type": "enum",
+      "label": "Color scale (choropleth / heat)",
+      "enumValues": ["viridis", "magma", "cividis", "plasma", "Greens", "Blues", "Reds", "OrRd", "YlGnBu"],
+      "default": "viridis",
+      "help": "Sequential color ramp used to map the value column to polygon fills (choropleth) or heat intensity (heat)."
+    },
+    "graduate_below_px": {
+      "type": "integer",
+      "label": "Graduated symbol size (px)",
+      "default": 6,
+      "min": 0,
+      "max": 40,
+      "visibleWhen": { "mode": "choropleth" },
+      "help": "When a polygon's bbox would render below this many pixels on screen, draw a same-colored dot at its centroid instead. Standard cartographic technique for sub-pixel features (microstates, tiny ZCTAs). Set to 0 to disable. HTML output re-evaluates on zoom — dots swap back to polygons when you zoom in enough."
+    },
+    "overlay_polygon_col": {
+      "type": "column_ref",
+      "label": "Overlay polygons (multi-layer)",
+      "columnFrom": "in",
+      "help": "Optional WKB-bytes geometry column drawn as outlined polygons on top of the base mode. Use to place markers / heat / arcs over named zones."
     },
     "title": { "type": "string", "label": "Title" },
     "marker_color": {

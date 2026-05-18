@@ -286,6 +286,10 @@ def _emit_html(
         return s.replace("</", "<\\/").replace("<!--", "<\\!--")
 
     payload = _js_safe_json(points)
+    # Overlay polygons (multi-layer): rendered as an outlined geo-JSON
+    # layer underneath the markers. Empty list → empty FeatureCollection,
+    # cheap to inline.
+    overlay_geojson = _polygons_to_geojson(overlay_polygons or []).replace("</", "<\\/")
     tile = _TILE_LAYERS.get(tile_provider) or _TILE_LAYERS["carto-light"]
     tile_url = tile["url"]
     tile_attr = tile["attribution"]
@@ -426,6 +430,22 @@ def _emit_html(
     detectRetina: true,
   }}).addTo(map);
 
+  // Overlay polygons (drawn under the markers) — e.g. named zones the
+  // user wants the markers placed inside. Empty FeatureCollection is
+  // a no-op.
+  var OVERLAY = {overlay_geojson};
+  if (OVERLAY && OVERLAY.features && OVERLAY.features.length) {{
+    L.geoJSON(OVERLAY, {{
+      style: {{
+        color: '#374151',
+        weight: 1.2,
+        fillColor: MARKER_COLOR,
+        fillOpacity: 0.10,
+      }},
+      interactive: false,
+    }}).addTo(map);
+  }}
+
   var bounds = [];
   POINTS.forEach(function (p) {{
     var marker = L.circleMarker([p.lat, p.lon], {{
@@ -469,6 +489,16 @@ def _emit_html(
   // jammed against the edge.
   function refit() {{
     map.invalidateSize();
+    // If a parent frame pre-seeded a viewport (DIG preview iframe
+    // restoring the user's pan/zoom across a param edit), honour it
+    // instead of refitting to the auto-bounds. The flag is consumed
+    // after first use so a real window resize still re-fits.
+    if (window.__DIG_INITIAL_VIEW__) {{
+      var v = window.__DIG_INITIAL_VIEW__;
+      window.__DIG_INITIAL_VIEW__ = null;
+      map.setView([v.lat, v.lng], v.zoom);
+      return;
+    }}
     var shellEl = document.getElementById('dig-map-shell');
     var w = shellEl ? shellEl.clientWidth : 600;
     var h = shellEl ? shellEl.clientHeight : 400;
@@ -481,6 +511,19 @@ def _emit_html(
     }}
   }}
   refit();
+  // Push viewport changes to the host iframe so it can restore on the
+  // next srcDoc swap. Standalone exports silently no-op.
+  function _digPostViewport() {{
+    if (window.parent === window) return;
+    var c = map.getCenter();
+    try {{
+      window.parent.postMessage({{
+        type: 'dig:map:viewport', lat: c.lat, lng: c.lng, zoom: map.getZoom(),
+      }}, '*');
+    }} catch (e) {{}}
+  }}
+  map.on('moveend', _digPostViewport);
+  map.on('zoomend', _digPostViewport);
   // Belt-and-braces refit after a frame: Leaflet reads container size
   // synchronously during construction, but the iframe's layout often
   // settles a frame later (especially under aspect-ratio CSS). Without
@@ -761,8 +804,18 @@ def _emit_png(
 
     bbox = _bbox_with_padding(points, pad_frac=0.10)
     basemap, extent = _stitch_basemap(bbox, int(fig_w * dpi), int(fig_h * dpi), tile_provider)
+    # extent is (lon_min, lon_max, lat_min, lat_max) in raw degrees, but
+    # the stitched tiles are Web-Mercator projected. We re-project the
+    # axes' y-axis into Mercator-y so polygon overlays + scatter points
+    # land in the right pixel rows over the basemap (the choropleth PNG
+    # renderer uses the identical trick).
+    merc_extent = (
+        extent[0], extent[1],
+        _lat_to_merc_y(extent[2]), _lat_to_merc_y(extent[3]),
+    ) if basemap is not None else extent
+
     if basemap is not None:
-        ax.imshow(np.asarray(basemap), extent=extent, aspect="auto", origin="upper", zorder=0)
+        ax.imshow(np.asarray(basemap), extent=merc_extent, aspect="auto", origin="upper", zorder=0)
     else:
         # Graticule-only fallback — softer than nothing, still recognisable.
         ax.set_facecolor("#eef2f7")
@@ -771,25 +824,56 @@ def _emit_png(
         for lat in range(-90, 91, 30):
             ax.axhline(lat, color="#cbd5e1", linewidth=0.4, zorder=0)
 
+    # Overlay polygons (multi-layer): outlined fills drawn under the
+    # markers but above the basemap. Uses the Mercator-projected drawer
+    # when we have a basemap so the polygons align with the tiles.
+    if overlay_polygons:
+        if basemap is not None:
+            _draw_polygons_on_axes_mercator(
+                ax, overlay_polygons, edge_color="#374151",
+                face_color=marker_color, face_alpha=0.10,
+                line_width=0.8, zorder=1,
+            )
+        else:
+            _draw_polygons_on_axes(
+                ax, overlay_polygons, edge_color="#374151",
+                face_color=marker_color, face_alpha=0.10,
+                line_width=0.8, zorder=1,
+            )
+
     if points:
         lats = np.array([p["lat"] for p in points])
         lons = np.array([p["lon"] for p in points])
+        ys = np.array([_lat_to_merc_y(lat) for lat in lats]) if basemap is not None else lats
         ax.scatter(
-            lons, lats,
+            lons, ys,
             c=marker_color, s=max(8, marker_radius * 6), alpha=0.85,
             edgecolors="white", linewidths=0.8, zorder=2,
         )
 
     # Auto-fit axes to the bbox we picked (tiles are flush to the bbox edges).
     ax.set_xlim(bbox[0], bbox[2])
-    ax.set_ylim(bbox[1], bbox[3])
+    if basemap is not None:
+        ax.set_ylim(_lat_to_merc_y(bbox[1]), _lat_to_merc_y(bbox[3]))
+        # Re-label the y-axis with real latitudes (project Mercator-y back
+        # to degrees) so users see "37.8°" not "0.72" radians.
+        import math as _m
+        from matplotlib.ticker import FuncFormatter
+
+        def _merc_y_to_lat(y, _pos=None) -> str:
+            try:
+                lat = _m.degrees(2 * _m.atan(_m.exp(y)) - _m.pi / 2)
+                return f"{lat:.1f}"
+            except (ValueError, OverflowError):
+                return ""
+
+        ax.yaxis.set_major_formatter(FuncFormatter(_merc_y_to_lat))
+    else:
+        ax.set_ylim(bbox[1], bbox[3])
 
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     ax.set_title(title or "Map")
-    # Equal aspect would distort labels at high latitudes (web mercator
-    # already stretches things) — leave aspect free; the basemap extent
-    # carries the visual proportions.
     ax.tick_params(labelsize=9)
 
     fig.tight_layout()
@@ -799,12 +883,43 @@ def _emit_png(
 
 # ---- Mode-specific extractors --------------------------------------------
 
+def _coerce_geometry_value(g: Any) -> bytes | None:
+    """Normalise a single geometry cell to WKB bytes.
+
+    Accepts either raw WKB bytes (the canonical shape) or a WKT string —
+    auto-detected from the type. This lets users plug in a CSV-loaded
+    text column without first running a separate 'parse_geometry' step.
+    None / blank / unparseable values return None so the caller can
+    skip them.
+    """
+    if g is None:
+        return None
+    if isinstance(g, (bytes, bytearray)):
+        return bytes(g)
+    if isinstance(g, str):
+        s = g.strip()
+        if not s:
+            return None
+        try:
+            from shapely import from_wkt, to_wkb
+            return to_wkb(from_wkt(s))
+        except Exception:  # noqa: BLE001 — parse failure → skip the row
+            return None
+    return None
+
+
 def _extract_polygons(df: pl.DataFrame, geom_col: str) -> list[bytes]:
     """Pull WKB-bytes geometry blobs out of a polygon column. Skips
-    None entries silently."""
+    None entries silently. WKT-string columns are auto-converted via
+    `_coerce_geometry_value`."""
     if geom_col not in df.columns:
         return []
-    return [b for b in df.get_column(geom_col).to_list() if b is not None]
+    out: list[bytes] = []
+    for g in df.get_column(geom_col).to_list():
+        wkb = _coerce_geometry_value(g)
+        if wkb is not None:
+            out.append(wkb)
+    return out
 
 
 def _extract_polygons_with_values(
@@ -812,8 +927,20 @@ def _extract_polygons_with_values(
 ) -> list[tuple[bytes, float | None]]:
     """For choropleth: paired (polygon WKB, numeric value)."""
     if not geom_col or geom_col not in df.columns:
+        # Round-5 follow-up: give the user a complete picture instead of
+        # just "geometry_col is required". Users who try choropleth on a
+        # lat/lon dataset have nothing useful to pick in the column
+        # dropdown — they need to know the data shape is wrong, not that
+        # they forgot a click. Include the available columns + a
+        # concrete recovery path.
+        cols = ", ".join(df.columns[:12])
+        more = f" (+{len(df.columns) - 12} more)" if len(df.columns) > 12 else ""
         raise ValueError(
-            "export_to_map (choropleth): geometry_col is required",
+            "export_to_map (choropleth): geometry_col is required — pick a "
+            "column containing WKB-encoded polygons (typically produced by a "
+            "'parse_geometry' step). If the upstream data has lat/lon points "
+            "and no polygon shapes, switch the mode to 'points' or 'heat' "
+            f"instead. Available columns: {cols}{more}.",
         )
     geoms = df.get_column(geom_col).to_list()
     if value_col and value_col in df.columns:
@@ -822,12 +949,16 @@ def _extract_polygons_with_values(
         vals = [None] * len(geoms)
     out: list[tuple[bytes, float | None]] = []
     for g, v in zip(geoms, vals):
-        if g is None:
+        # Round-5 follow-up: accept WKT strings AND WKB bytes by routing
+        # every cell through _coerce_geometry_value. Unparseable cells
+        # are silently dropped.
+        wkb = _coerce_geometry_value(g)
+        if wkb is None:
             continue
         try:
-            out.append((g, float(v) if v is not None else None))
+            out.append((wkb, float(v) if v is not None else None))
         except (TypeError, ValueError):
-            out.append((g, None))
+            out.append((wkb, None))
     return out
 
 
@@ -838,12 +969,34 @@ def _extract_arcs(
 ) -> list[tuple[float, float, float, float]]:
     """For arc mode: (origin_lat, origin_lon, dest_lat, dest_lon) tuples,
     skipping rows with missing coords."""
+    missing: list[str] = []
+    bad_ref: list[str] = []
     for name, col in (("origin_lat_col", o_lat), ("origin_lon_col", o_lon),
                        ("dest_lat_col", d_lat), ("dest_lon_col", d_lon)):
         if not col:
-            raise ValueError(f"export_to_map (arc): {name} is required")
-        if col not in df.columns:
-            raise ValueError(f"export_to_map (arc): column {col!r} not found")
+            missing.append(name)
+        elif col not in df.columns:
+            bad_ref.append(f"{name}={col!r}")
+    if missing or bad_ref:
+        # Round-5 follow-up: same upgrade as the choropleth branch above.
+        # Arc mode needs 4 separate columns (origin + destination
+        # lat/lon). A dataset that only has a single location won't
+        # support this; tell the user the requirement, the missing
+        # fields, and a recovery path.
+        cols = ", ".join(df.columns[:12])
+        more = f" (+{len(df.columns) - 12} more)" if len(df.columns) > 12 else ""
+        parts: list[str] = []
+        if missing:
+            parts.append(f"missing: {', '.join(missing)}")
+        if bad_ref:
+            parts.append(f"not in upstream: {', '.join(bad_ref)}")
+        raise ValueError(
+            "export_to_map (arc): " + " · ".join(parts) +
+            " — arc mode draws origin → destination lines, so each row needs "
+            "four lat/lon columns. If the data only has a single location, "
+            "switch the mode to 'points' or 'heat' instead. Available "
+            f"columns: {cols}{more}.",
+        )
     olats = df.get_column(o_lat).to_list()
     olons = df.get_column(o_lon).to_list()
     dlats = df.get_column(d_lat).to_list()
@@ -884,14 +1037,29 @@ def _geom_to_geojson_str(geom) -> str:
     return to_geojson(geom)
 
 
-def _draw_polygons_on_axes(ax, polys: list[bytes], color: str = "#374151") -> None:
-    """Draw outlined polygons on a matplotlib axes (for PNG output).
-    color defaults to slate-700 so overlays read on light + dark basemaps."""
+def _draw_polygons_on_axes(
+    ax,
+    polys: list[bytes],
+    color: str = "#374151",
+    *,
+    edge_color: str | None = None,
+    face_color: str | None = None,
+    face_alpha: float = 0.0,
+    line_width: float = 1.2,
+    zorder: float | None = None,
+) -> None:
+    """Draw polygons on a matplotlib axes (for PNG output).
+
+    Defaults: outlined only (slate-700 edge, no fill) — matches the
+    choropleth/heat overlay style. Pass ``face_color`` + ``face_alpha``
+    to get a translucent fill (used by points-mode overlays to lightly
+    tint the named zones the markers sit inside)."""
     if not polys:
         return
     from shapely import from_wkb
     from matplotlib.patches import Polygon as MplPolygon
     from matplotlib.collections import PatchCollection
+    edge = edge_color or color
     patches = []
     for blob in polys:
         try:
@@ -906,9 +1074,70 @@ def _draw_polygons_on_axes(ax, polys: list[bytes], color: str = "#374151") -> No
             xy = list(g.exterior.coords)
             patches.append(MplPolygon(xy, closed=True))
     if patches:
-        coll = PatchCollection(
-            patches, facecolor="none", edgecolor=color, linewidth=1.2,
-        )
+        from matplotlib.colors import to_rgba
+        if face_color and face_alpha > 0:
+            face = to_rgba(face_color, face_alpha)
+        else:
+            face = "none"
+        coll_kwargs: dict[str, Any] = {
+            "facecolor": face,
+            "edgecolor": edge,
+            "linewidth": line_width,
+        }
+        if zorder is not None:
+            coll_kwargs["zorder"] = zorder
+        coll = PatchCollection(patches, **coll_kwargs)
+        ax.add_collection(coll)
+
+
+def _draw_polygons_on_axes_mercator(
+    ax,
+    polys: list[bytes],
+    color: str = "#374151",
+    *,
+    edge_color: str | None = None,
+    face_color: str | None = None,
+    face_alpha: float = 0.0,
+    line_width: float = 1.2,
+    zorder: float | None = None,
+) -> None:
+    """Same as ``_draw_polygons_on_axes`` but projects every vertex's
+    lat to Web Mercator y. Use this on axes whose y-extent is in
+    Mercator space (the choropleth PNG renderer with basemap, and the
+    points PNG renderer when an overlay is requested over a tiled
+    basemap)."""
+    if not polys:
+        return
+    from shapely import from_wkb
+    from matplotlib.patches import Polygon as MplPolygon
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import to_rgba
+    edge = edge_color or color
+    patches = []
+    for blob in polys:
+        try:
+            geom = from_wkb(blob)
+        except Exception:
+            continue
+        geoms = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+        for g in geoms:
+            if g.exterior is None:
+                continue
+            xy = [(x, _lat_to_merc_y(y)) for x, y in g.exterior.coords]
+            patches.append(MplPolygon(xy, closed=True))
+    if patches:
+        if face_color and face_alpha > 0:
+            face = to_rgba(face_color, face_alpha)
+        else:
+            face = "none"
+        coll_kwargs: dict[str, Any] = {
+            "facecolor": face,
+            "edgecolor": edge,
+            "linewidth": line_width,
+        }
+        if zorder is not None:
+            coll_kwargs["zorder"] = zorder
+        coll = PatchCollection(patches, **coll_kwargs)
         ax.add_collection(coll)
 
 
@@ -936,10 +1165,21 @@ def _emit_html_choropleth(
     polygons_with_values: list[tuple[bytes, float | None]],
     title: str, width: int, height: int, color_scale: str, tile_provider: str,
     overlay_polygons: list[bytes] | None = None,
+    graduate_below_px: int = 6,
 ) -> str:
-    """Color-coded polygon map. The polygon's value column drives the
-    fill color via a 5-stop sequential ramp; missing values render
-    grey. All data embedded inline."""
+    """Color-coded polygon map.
+
+    The polygon's value column drives the fill color via a 5-stop
+    sequential ramp; missing values render grey. All data embedded
+    inline.
+
+    Dot-proxy: features whose pixel bbox at the current zoom would be
+    smaller than ``graduate_below_px`` are drawn as same-colored dots
+    at their centroid. The substitution re-evaluates on every zoom
+    change — zooming in past the threshold restores the polygon.
+    Tooltip content is shared between polygon and dot form, so the
+    user sees the same hover text either way.
+    """
     from shapely import from_wkb, to_geojson
     features = []
     values = [v for _, v in polygons_with_values if v is not None]
@@ -961,6 +1201,7 @@ def _emit_html_choropleth(
         "features": features,
         "vmin": vmin, "vmax": vmax,
         "ramp": _color_scale_to_leaflet(color_scale),
+        "graduateBelowPx": int(graduate_below_px),
     }
     safe = json.dumps(payload).replace("</", "<\\/")
     overlay_geojson = (
@@ -985,20 +1226,130 @@ function colorFor(v) {{
   const idx = Math.min(data.ramp.length - 1, Math.floor(t * data.ramp.length));
   return data.ramp[idx];
 }}
+function tooltipHtml(v) {{
+  if (v === null || v === undefined) return '<i>no value</i>';
+  return 'value: ' + (typeof v === 'number' ? v.toLocaleString() : v);
+}}
 const layer = L.geoJSON(data, {{
   style: f => ({{ fillColor: colorFor(f.properties.value), weight: 1, color: '#374151', fillOpacity: 0.7 }}),
-  onEachFeature: (f, l) => l.bindTooltip(`value: ${{f.properties.value}}`)
+  onEachFeature: (f, l) => l.bindTooltip(tooltipHtml(f.properties.value))
 }}).addTo(map);
 if (overlayData.features && overlayData.features.length) {{
   L.geoJSON(overlayData, {{ style: {{ fillOpacity: 0, color: '#374151', weight: 1.2 }} }}).addTo(map);
 }}
-const b = layer.getBounds();
-if (b.isValid()) map.fitBounds(b, {{padding:[20,20]}});
-else map.setView([20, 0], 2);
+
+// ---- Dot-proxy for sub-pixel features ----
+// At low zoom, microstates render below 1 pixel and effectively
+// disappear from the choropleth. We compute each feature's pixel bbox
+// at the current zoom, hide polygons that would render below
+// `graduateBelowPx`, and place a same-colored dot at their centroid
+// instead. Re-evaluates on every zoom — zooming in past the threshold
+// restores the real polygon. Disabled when graduateBelowPx === 0.
+const proxyMarkers = new Map();   // feature layer-id → L.circleMarker
+function updateDotProxy() {{
+  if (!data.graduateBelowPx || data.graduateBelowPx <= 0) return;
+  const z = map.getZoom();
+  layer.eachLayer(featureLayer => {{
+    const lid = layer.getLayerId(featureLayer);
+    const bounds = featureLayer.getBounds && featureLayer.getBounds();
+    if (!bounds || !bounds.isValid()) return;
+    const nw = map.project(bounds.getNorthWest(), z);
+    const se = map.project(bounds.getSouthEast(), z);
+    const pxDiag = Math.hypot(se.x - nw.x, se.y - nw.y);
+    const value = featureLayer.feature.properties.value;
+    if (pxDiag < data.graduateBelowPx) {{
+      // Hide polygon (transparent stroke + fill, keep layer interactive
+      // for tooltip access fallback) and ensure a marker exists.
+      featureLayer.setStyle({{ opacity: 0, fillOpacity: 0 }});
+      if (!proxyMarkers.has(lid)) {{
+        const centroid = bounds.getCenter();
+        const marker = L.circleMarker(centroid, {{
+          radius: Math.max(3, Math.round(data.graduateBelowPx * 0.55)),
+          fillColor: colorFor(value),
+          color: '#374151', weight: 1, fillOpacity: 0.95,
+        }}).addTo(map);
+        marker.bindTooltip(tooltipHtml(value));
+        proxyMarkers.set(lid, marker);
+      }}
+    }} else {{
+      // Show polygon, remove marker if present.
+      featureLayer.setStyle({{
+        opacity: 1, weight: 1, color: '#374151', fillOpacity: 0.7,
+        fillColor: colorFor(value),
+      }});
+      if (proxyMarkers.has(lid)) {{
+        map.removeLayer(proxyMarkers.get(lid));
+        proxyMarkers.delete(lid);
+      }}
+    }}
+  }});
+}}
+map.on('zoomend', updateDotProxy);
+
+// Initial viewport: honour parent-seeded view (preview iframe restoring
+// pan/zoom across param edits), otherwise auto-fit. After the viewport
+// is set, run updateDotProxy once so dot/polygon state matches the
+// initial zoom level.
+if (window.__DIG_INITIAL_VIEW__) {{
+  const v = window.__DIG_INITIAL_VIEW__;
+  map.setView([v.lat, v.lng], v.zoom);
+}} else {{
+  const b = layer.getBounds();
+  if (b.isValid()) map.fitBounds(b, {{padding:[20,20]}});
+  else map.setView([20, 0], 2);
+}}
+updateDotProxy();
 const lg = L.control({{position:'bottomright'}});
-lg.onAdd = () => {{ const d = L.DomUtil.create('div','legend'); d.innerHTML = '<b>{_escape(title)}</b><br/>min: ' + data.vmin.toFixed(2) + ' &nbsp; max: ' + data.vmax.toFixed(2); return d; }};
+lg.onAdd = () => {{
+  const d = L.DomUtil.create('div','legend');
+  let html = '<b>{_escape(title)}</b><br/>min: ' + data.vmin.toFixed(2) +
+             ' &nbsp; max: ' + data.vmax.toFixed(2);
+  if (data.graduateBelowPx > 0) {{
+    html += '<br/><span style="font-size:10px;color:#6b7280;">Small regions shown as dots at low zoom</span>';
+  }}
+  d.innerHTML = html;
+  return d;
+}};
 lg.addTo(map);
+// Push viewport changes back to the parent (preview iframe host) so it
+// can restore them on the next srcDoc swap. Standalone exports — where
+// there's no listening parent — silently no-op.
+function _digPostViewport() {{
+  if (window.parent === window) return;
+  const c = map.getCenter();
+  try {{
+    window.parent.postMessage({{
+      type: 'dig:map:viewport', lat: c.lat, lng: c.lng, zoom: map.getZoom(),
+    }}, '*');
+  }} catch (e) {{ /* sandboxed cross-origin — ignore */ }}
+}}
+map.on('moveend', _digPostViewport);
+map.on('zoomend', _digPostViewport);
 </script></body></html>"""
+
+
+def _lat_to_merc_y(lat: float) -> float:
+    """Project WGS84 latitude (degrees) to Web Mercator Y in radians.
+
+    The slippy-map tiles served by every common provider (OSM, Carto,
+    Stamen, etc.) are in Web Mercator (EPSG:3857). Tile pixels are
+    LINEAR in Mercator-y, NOT linear in latitude — a one-pixel step is
+    a larger lat-delta near the equator than near the poles. When we
+    drop the stitched tile image into matplotlib via ``imshow``, we
+    have two choices: either re-warp the image to plate carrée
+    (expensive + lossy), or project our polygons into the same
+    Mercator-y space the image is already in. We do the latter.
+
+    Returns the projection in radians (matplotlib's axis scale is
+    arbitrary so the absolute unit doesn't matter — what matters is
+    that the polygons AND the extent use the same projection so they
+    land on the same pixels).
+    """
+    import math as _math
+    # Clamp to Web Mercator's valid range; outside this latitudes go to
+    # ±infinity which would break the extent calculation.
+    lat = max(-85.05112878, min(85.05112878, lat))
+    return _math.log(_math.tan(_math.pi / 4 + _math.radians(lat) / 2))
 
 
 def _emit_png_choropleth(
@@ -1006,9 +1357,27 @@ def _emit_png_choropleth(
     out_path: Path, title: str, width: int, height: int,
     color_scale: str, tile_provider: str,
     overlay_polygons: list[bytes] | None = None,
+    graduate_below_px: int = 6,
 ) -> None:
-    """Static PNG choropleth via matplotlib. Polygons are filled with
-    the chosen sequential colormap; bbox auto-fits."""
+    """Static PNG choropleth via matplotlib.
+
+    Renders the slippy-map basemap as an imshow underlay (matching the
+    points-mode renderer + the HTML choropleth's Leaflet tile layer)
+    and overlays the filled polygons on top with the chosen sequential
+    colormap. Bbox auto-fits the polygon extents.
+
+    Projection: every polygon's lat coordinates are projected into
+    Web Mercator y so they align with the tile image (which is
+    natively in EPSG:3857). Without this, polygons drawn at high
+    latitudes drift north relative to their basemap counterparts —
+    e.g. Washington state lands ~1° north of its actual outline.
+
+    Dot-proxy: when a feature's bbox would render below
+    ``graduate_below_px`` pixels on screen, we draw a same-colored
+    dot at its centroid instead of the polygon. Standard cartographic
+    technique for sub-pixel features (microstates, tiny ZCTAs). Set
+    ``graduate_below_px=0`` to disable.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1018,54 +1387,199 @@ def _emit_png_choropleth(
     import numpy as np
     from shapely import from_wkb
 
-    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    dpi = 144
+    fig_w = max(width / dpi, 4.0)
+    fig_h = max(height / dpi, 3.0)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
     if not polygons_with_values:
         ax.text(0.5, 0.5, "(no polygons)", ha="center", va="center")
         fig.savefig(out_path, bbox_inches="tight")
         plt.close(fig)
         return
-    patches: list[MplPolygon] = []
-    fill_values: list[float] = []
+
+    # Per-FEATURE accounting (one row per upstream WKB blob, even when
+    # the blob is a MultiPolygon). Lets us decide dot-proxy on the
+    # feature's combined bbox, not per polygon part. Per-feature lat
+    # span is also computed from the underlying geometry directly,
+    # NOT the post-projection patch, so the threshold reasoning stays
+    # in geographic units.
+    feature_patches: list[list[MplPolygon]] = []   # list of patches per feature
+    feature_values: list[float] = []
+    feature_bbox_lon_span: list[float] = []        # in degrees
+    feature_bbox_lat_span: list[float] = []        # in degrees
+    feature_centroid_lon: list[float] = []
+    feature_centroid_lat: list[float] = []
     bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
     for blob, v in polygons_with_values:
         try:
             geom = from_wkb(blob)
         except Exception:
             continue
+        feat_patches: list[MplPolygon] = []
+        feat_bbox = [float("inf"), float("inf"), float("-inf"), float("-inf")]
         geoms = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
         for g in geoms:
             if g.exterior is None:
                 continue
-            xy = list(g.exterior.coords)
-            patches.append(MplPolygon(xy, closed=True))
-            fill_values.append(v if v is not None else float("nan"))
+            xy = [(x, _lat_to_merc_y(y)) for x, y in g.exterior.coords]
+            feat_patches.append(MplPolygon(xy, closed=True))
             minx, miny, maxx, maxy = g.bounds
-            bbox[0] = min(bbox[0], minx); bbox[1] = min(bbox[1], miny)
-            bbox[2] = max(bbox[2], maxx); bbox[3] = max(bbox[3], maxy)
+            feat_bbox[0] = min(feat_bbox[0], minx); feat_bbox[1] = min(feat_bbox[1], miny)
+            feat_bbox[2] = max(feat_bbox[2], maxx); feat_bbox[3] = max(feat_bbox[3], maxy)
+        if not feat_patches:
+            continue
+        feature_patches.append(feat_patches)
+        feature_values.append(v if v is not None else float("nan"))
+        feature_bbox_lon_span.append(feat_bbox[2] - feat_bbox[0])
+        feature_bbox_lat_span.append(feat_bbox[3] - feat_bbox[1])
+        feature_centroid_lon.append((feat_bbox[0] + feat_bbox[2]) / 2.0)
+        feature_centroid_lat.append((feat_bbox[1] + feat_bbox[3]) / 2.0)
+        bbox[0] = min(bbox[0], feat_bbox[0]); bbox[1] = min(bbox[1], feat_bbox[1])
+        bbox[2] = max(bbox[2], feat_bbox[2]); bbox[3] = max(bbox[3], feat_bbox[3])
+
+    # Pad the bbox by 4% — tight enough that polygons fill the frame
+    # (matches the Leaflet HTML's fitBounds padding=[20,20]) without
+    # leaving distracting whitespace at the edges.
+    if bbox[0] != float("inf"):
+        span_lon = max(0.5, (bbox[2] - bbox[0]))
+        span_lat = max(0.5, (bbox[3] - bbox[1]))
+        padded = (
+            bbox[0] - span_lon * 0.04,
+            bbox[1] - span_lat * 0.04,
+            bbox[2] + span_lon * 0.04,
+            bbox[3] + span_lat * 0.04,
+        )
+    else:
+        padded = (-180.0, -85.0, 180.0, 85.0)
+
+    # Stitch the basemap underlay BEFORE the polygons so it sits at
+    # zorder 0. _stitch_basemap returns (PIL image, extent_latlon) or
+    # (None, bbox) if the network fetch fails.
+    basemap, extent_latlon = _stitch_basemap(
+        padded, int(fig_w * dpi), int(fig_h * dpi), tile_provider,
+    )
+    if basemap is not None:
+        # Re-project the extent's y bounds to Web Mercator so the
+        # image's pixel rows (which are linear in Mercator y) map
+        # correctly to our axes. The x bounds pass through — Mercator
+        # is identity in longitude.
+        left_lon, right_lon, bottom_lat, top_lat = extent_latlon
+        merc_extent = (
+            left_lon, right_lon,
+            _lat_to_merc_y(bottom_lat), _lat_to_merc_y(top_lat),
+        )
+        ax.imshow(np.asarray(basemap), extent=merc_extent, aspect="auto", origin="upper", zorder=0)
+    else:
+        ax.set_facecolor("#eef2f7")
+        for lon in range(-180, 181, 30):
+            ax.axvline(lon, color="#cbd5e1", linewidth=0.4, zorder=0)
+        for lat in range(-90, 91, 30):
+            ax.axhline(_lat_to_merc_y(lat), color="#cbd5e1", linewidth=0.4, zorder=0)
+
     cmap = cm.get_cmap(color_scale)
-    arr = np.array(fill_values, dtype=float)
+    arr = np.array(feature_values, dtype=float)
     valid = ~np.isnan(arr)
     if valid.any():
         vmin, vmax = float(np.nanmin(arr)), float(np.nanmax(arr))
         norm = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
     else:
         norm = matplotlib.colors.Normalize(vmin=0, vmax=1)
-    coll = PatchCollection(patches, cmap=cmap, edgecolor="#374151", linewidth=0.5)
-    coll.set_array(arr)
-    coll.set_norm(norm)
-    ax.add_collection(coll)
-    _draw_polygons_on_axes(ax, overlay_polygons or [])
-    if bbox[0] != float("inf"):
-        pad_x = max(0.5, (bbox[2] - bbox[0]) * 0.05)
-        pad_y = max(0.5, (bbox[3] - bbox[1]) * 0.05)
-        ax.set_xlim(bbox[0] - pad_x, bbox[2] + pad_x)
-        ax.set_ylim(bbox[1] - pad_y, bbox[3] + pad_y)
-    ax.set_aspect("equal")
-    ax.set_title(title)
-    ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
-    if valid.any():
-        fig.colorbar(coll, ax=ax, shrink=0.7)
-    fig.savefig(out_path, bbox_inches="tight")
+
+    # Compute pixels-per-degree at the render resolution. Used to
+    # decide which features fall below the dot-proxy threshold.
+    px_per_deg_lon = (fig_w * dpi) / max(1e-6, (padded[2] - padded[0]))
+    # Lat is non-linear (Mercator), so we approximate using the mid-
+    # latitude's local px-per-degree. Good enough for the threshold
+    # check; the actual rendering uses the projected y throughout.
+    mid_merc_span = _lat_to_merc_y(padded[3]) - _lat_to_merc_y(padded[1])
+    px_per_merc_unit = (fig_h * dpi) / max(1e-6, mid_merc_span)
+    # Convert each feature's geographic bbox into a pixel bbox.
+    polygon_patches: list[MplPolygon] = []
+    polygon_values: list[float] = []
+    dot_x: list[float] = []
+    dot_y: list[float] = []
+    dot_values: list[float] = []
+    dot_count = 0
+    for i, patches in enumerate(feature_patches):
+        # Pixel size at this zoom: lon → px directly; lat → use the
+        # Mercator-y delta covered by the feature's lat bbox.
+        merc_top = _lat_to_merc_y(feature_centroid_lat[i] + feature_bbox_lat_span[i] / 2)
+        merc_bot = _lat_to_merc_y(feature_centroid_lat[i] - feature_bbox_lat_span[i] / 2)
+        px_w = feature_bbox_lon_span[i] * px_per_deg_lon
+        px_h = abs(merc_top - merc_bot) * px_per_merc_unit
+        # Diagonal — single threshold against the feature's larger
+        # screen extent. A thin tall sliver might pass even at low px_w.
+        px_diag = (px_w ** 2 + px_h ** 2) ** 0.5
+        if graduate_below_px > 0 and px_diag < graduate_below_px:
+            dot_x.append(feature_centroid_lon[i])
+            dot_y.append(_lat_to_merc_y(feature_centroid_lat[i]))
+            dot_values.append(feature_values[i])
+            dot_count += 1
+        else:
+            polygon_patches.extend(patches)
+            polygon_values.extend([feature_values[i]] * len(patches))
+
+    # Draw the polygon features as before.
+    if polygon_patches:
+        poly_arr = np.array(polygon_values, dtype=float)
+        coll = PatchCollection(
+            polygon_patches, cmap=cmap, edgecolor="#374151", linewidth=0.75, alpha=0.85,
+        )
+        coll.set_array(poly_arr)
+        coll.set_norm(norm)
+        coll.set_zorder(2)
+        ax.add_collection(coll)
+        cbar_source = coll
+    else:
+        cbar_source = None
+
+    # Dot-proxies for sub-pixel features. Same colormap + norm so the
+    # encoding stays uniform across polygon + dot features.
+    if dot_x:
+        # Render dots slightly larger than the threshold so they're
+        # clearly visible (the threshold is a "below this you can't see
+        # the polygon"; the dot needs to actually register on screen).
+        dot_marker_size = max(graduate_below_px, 6) ** 2  # matplotlib `s` is area in pt^2
+        dot_arr = np.array(dot_values, dtype=float)
+        # Filter out NaN values so cmap doesn't crash; render those as
+        # neutral grey for honesty.
+        dot_arr_safe = np.where(np.isnan(dot_arr), vmin if valid.any() else 0, dot_arr)
+        sc = ax.scatter(
+            dot_x, dot_y, c=dot_arr_safe, cmap=cmap, norm=norm,
+            s=dot_marker_size, edgecolor="#374151", linewidths=0.75,
+            alpha=0.95, zorder=3,
+        )
+        if cbar_source is None:
+            cbar_source = sc
+
+    # Overlay polygons (zone outlines etc.) are also in lat/lon and must
+    # be re-projected to Mercator y before drawing — otherwise they
+    # would land at the wrong vertical position relative to the basemap
+    # while the choropleth polygons land correctly.
+    _draw_polygons_on_axes_mercator(ax, overlay_polygons or [])
+    ax.set_xlim(padded[0], padded[2])
+    ax.set_ylim(_lat_to_merc_y(padded[1]), _lat_to_merc_y(padded[3]))
+    ax.set_title(title or "Map", fontsize=12, pad=8)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.grid(False)
+    if valid.any() and cbar_source is not None:
+        cbar = fig.colorbar(cbar_source, ax=ax, shrink=0.7, pad=0.02)
+        cbar.outline.set_visible(False)
+    # Caption: when dot-proxies were used, note it so the reader knows
+    # the small dots are real data, not decoration.
+    if dot_count > 0:
+        fig.text(
+            0.99, 0.01,
+            f"{dot_count} small {'region' if dot_count == 1 else 'regions'} "
+            "shown as dots",
+            ha="right", va="bottom",
+            fontsize=8, color="#6b7280", style="italic",
+        )
+    fig.tight_layout()
+    fig.savefig(out_path, format="png", dpi=dpi, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -1103,10 +1617,24 @@ const heat = L.heatLayer(pts, {{ radius: 25, blur: 15, gradient: {grad_json} }})
 if (overlayData.features && overlayData.features.length) {{
   L.geoJSON(overlayData, {{ style: {{ fillOpacity: 0, color: '#374151', weight: 1.2 }} }}).addTo(map);
 }}
-if (pts.length) {{
+if (window.__DIG_INITIAL_VIEW__) {{
+  const v = window.__DIG_INITIAL_VIEW__;
+  map.setView([v.lat, v.lng], v.zoom);
+}} else if (pts.length) {{
   const lats = pts.map(p => p[0]); const lons = pts.map(p => p[1]);
   map.fitBounds([[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]], {{padding:[20,20]}});
 }} else {{ map.setView([20, 0], 2); }}
+function _digPostViewport() {{
+  if (window.parent === window) return;
+  const c = map.getCenter();
+  try {{
+    window.parent.postMessage({{
+      type: 'dig:map:viewport', lat: c.lat, lng: c.lng, zoom: map.getZoom(),
+    }}, '*');
+  }} catch (e) {{}}
+}}
+map.on('moveend', _digPostViewport);
+map.on('zoomend', _digPostViewport);
 </script></body></html>"""
 
 
@@ -1250,6 +1778,11 @@ class ExportToMapStep(Step):
         dest_lon_col = (params.get("dest_lon_col") or "").strip() or None
         color_scale = (params.get("color_scale") or "viridis").strip()
         overlay_polygon_col = (params.get("overlay_polygon_col") or "").strip() or None
+        # Choropleth-only: pixel threshold below which a polygon is
+        # drawn as a same-colored dot at its centroid instead. Cartographic
+        # technique to surface sub-pixel features (microstates, tiny ZCTAs)
+        # at world zoom. 0 disables.
+        graduate_below_px = max(0, int(params.get("graduate_below_px") or 6))
 
         max_points = int(params.get("max_points") or 20_000)
         sample_df = df
@@ -1351,10 +1884,12 @@ class ExportToMapStep(Step):
             html_content = _emit_html_choropleth(
                 polygons_with_values, title, width, height, color_scale, tile_provider,
                 overlay_polygons=overlay_polygons,
+                graduate_below_px=graduate_below_px,
             )
             png_render = lambda path: _emit_png_choropleth(
                 polygons_with_values, path, title, width, height, color_scale, tile_provider,
                 overlay_polygons=overlay_polygons,
+                graduate_below_px=graduate_below_px,
             )
         elif mode == "heat":
             html_content = _emit_html_heat(

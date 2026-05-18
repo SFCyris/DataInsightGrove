@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -17,8 +17,12 @@ import {
   filterAndSortLibrary,
   useLibraryView,
 } from "@/components/library-toolbar";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { ThinkingLabel } from "@/components/positive-loader";
+import { toastError } from "@/lib/toast-error";
 
 export default function PipelinesPage() {
+  useDocumentTitle('Pipelines');
   const reduce = useReducedMotion();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -26,6 +30,21 @@ export default function PipelinesPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const list = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines });
+  // Round-6 UX#4: poll for in-flight runs so each pipeline card can
+  // show a 🔄 running pill instead of the static ready/missing-data
+  // badge when something is currently executing for that pipeline
+  // (scheduled or manually-triggered, foreground or background).
+  const runningRunsQ = useQuery({
+    queryKey: ["running-runs"],
+    queryFn: () => api.listAllRuns({ status: "running,queued", limit: 100 }),
+    refetchInterval: 5_000,
+    staleTime: 0,
+  });
+  const runningPipelineIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of runningRunsQ.data?.items ?? []) s.add(r.pipelineId);
+    return s;
+  }, [runningRunsQ.data]);
   const libView = useLibraryView("dig.pipelines.libraryView");
   const visiblePipelines = list.data
     ? filterAndSortLibrary(list.data, libView)
@@ -38,7 +57,7 @@ export default function PipelinesPage() {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       router.push(`/pipelines/${p.id}`);
     },
-    onError: (e: Error) => toast.error(`Create failed: ${e.message}`),
+    onError: (e: Error) => toastError("Create failed", e),
   });
 
   const importMut = useMutation({
@@ -57,7 +76,7 @@ export default function PipelinesPage() {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       router.push(`/pipelines/${p.id}`);
     },
-    onError: (e: Error) => toast.error(`Import failed: ${e.message}`),
+    onError: (e: Error) => toastError("Import failed", e),
   });
 
   const onDrop = useCallback(
@@ -135,7 +154,7 @@ export default function PipelinesPage() {
             disabled={!name.trim() || create.isPending}
             onClick={() => create.mutate(name.trim())}
           >
-            {create.isPending ? "⏳ Creating…" : "➕ Blank"}
+            {create.isPending ? <ThinkingLabel text="Creating…" /> : "➕ Blank"}
           </Button>
         </div>
 
@@ -223,7 +242,12 @@ export default function PipelinesPage() {
         {list.data && visiblePipelines.length > 0 && (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 list-none">
             {visiblePipelines.map((p, i) => (
-              <PipelineCard key={p.id} p={p} index={i} />
+              <PipelineCard
+                key={p.id}
+                p={p}
+                index={i}
+                running={runningPipelineIds.has(p.id)}
+              />
             ))}
           </ul>
         )}

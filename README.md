@@ -4,16 +4,16 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 1.0.0-rc1](https://img.shields.io/badge/version-1.0.0--rc1-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 1.0.0-rc2](https://img.shields.io/badge/version-1.0.0--rc2-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 
-> 🧪 **Release candidate (v1.0.0-rc1).** The architecture, schemas, protocols, and IP posture are locked. This release-candidate cycle is for final polish, soak-testing, and community feedback before the 1.0.0 tag — the API contract that goes live then is described in [`docs/API_STABILITY.md`](docs/API_STABILITY.md). **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🧪 **Release candidate (v1.0.0-rc2).** The architecture, schemas, protocols, and IP posture are locked. This release-candidate cycle is for final polish, soak-testing, and community feedback before the 1.0.0 tag — the API contract that goes live then is described in [`docs/API_STABILITY.md`](docs/API_STABILITY.md). **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
 Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
 
-![DIG home — DataInsight Grove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0-rc1 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
+![DIG home — DataInsightGrove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0-rc2 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
 
 
 <table>
@@ -53,8 +53,8 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## What's in DIG
 
-- **51 built-in steps** + **160+ optional pack steps** across 11 categories — the built-ins live under `backend/steps/` (always available); pack steps land under `plugins/packs/<pack>/steps/` and are installable via `.dpack` archives. The full auto-generated catalog (200+ steps total — see [`docs/STEPS.md`](docs/STEPS.md)) covers shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
-- **16 connectors**:
+- **65 built-in steps** + **28 pack steps** across 11 categories (5 bundled packs: business_charts · dates_pack · stats_pro · statspack · time_series_pro) — the built-ins live under `backend/steps/` (always available); pack steps land under `plugins/packs/<pack>/steps/` and are installable via `.dpack` archives. The full auto-generated catalog (see [`docs/STEPS.md`](docs/STEPS.md)) covers shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
+- **20 connectors**:
   - *Text*: csv (with delimiter sniffing for `.dat` / `.data` / `.tab` / `.psv`) · excel (multi-sheet + multi-data-island detection) · json · parquet · feather.
   - *Scientific binary* (under the optional `[science]` extra): NumPy (`.npy` / `.npz`) · HDF5 · MATLAB · NetCDF · FITS.
   - *Network + database*: https · rest_api (auth + JSONPath + pagination) · sqlite · postgres · mysql · jdbc.
@@ -67,7 +67,9 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 - **Schedules** — cron-driven recurring runs from the Schedules page (or `dig-schedule.sh` from the CLI).
 - **Pipeline export / import** as portable `.dig.json` files; whole-page drop zone on `/pipelines`.
 - **Templates library** — worked starter pipelines that auto-import the demo dataset (incl. spatial-distance and vector-similarity demos).
-- **Command palette (⌘K)** + keyboard cheatsheet (`?`).
+- **Command palette (⌘K)** with per-pipeline verbs (run · duplicate · schedule · export · copy link), a recent-items group at the top, and a global `/` shortcut to focus the search.
+- **G-chord navigation** — `g h` Home · `g p` Pipelines · `g d` Datasets · `g r` Runs · `g c` Catalog · `g s` Settings.
+- **Keyboard cheatsheet** (`?`). Full reference in [`docs/KEYBOARD_SHORTCUTS.md`](docs/KEYBOARD_SHORTCUTS.md).
 - **Dark mode**, **settings page** (`/settings`), **column annotations** that travel with the dataset.
 - **Mac `.app` wrapper** (WKWebView, ad-hoc signed) and **Linux `.desktop`** integration that both wrap the same shell scripts.
 - **Backend parity tests** verify byte-identical output between backend DuckDB and DuckDB-WASM target for every transform step.
@@ -155,6 +157,7 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - 🎓 [First-steps tutorials](docs/tutorials.md) — three short walkthroughs (image / CSV / Parquet output)
 - ⏳ [Time-series killer demos](docs/tutorials/11-time-series-killer-demos.md) — 8 worked examples (retail forecast · IoT anomaly · finance · healthcare × 3 · housing × 2)
 - 📚 [Step library](docs/STEPS.md) — every step DIG ships with, auto-generated from manifests
+- 📊 [Visualization catalog](docs/VISUALIZATIONS.md) — every chart-producing step (built-in + packs), the columns it needs, and the data shapes for non-standard chart types (choropleth WKB, OHLC, etc.)
 - 🏷 [Data types](docs/DATA_TYPES.md) — the 29 base + meta-types (including currency-as-DECIMAL, vector embeddings, JSON, and polar/Cartesian/geographic coordinates) with constraints, ranges, storage, and use cases
 - 💾 [Save and version history](docs/SAVE_AND_VERSIONS.md) — Save vs Save As vs autosave; labelled checkpoints
 - 🪆 [Sub-pipelines](docs/SUB_PIPELINES.md) — publish a pipeline as a reusable step + pinning + cycle detection
@@ -167,6 +170,7 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - 🔒 [Security policy](SECURITY.md) — threat model + disclosure process + supported versions
 - 📋 [API stability](docs/API_STABILITY.md) — pre-1.0 contract + post-1.0 SemVer + deprecation policy
 - ⚙️ [Configuration reference](docs/CONFIG.md) — every `DIG_*` env var, what it does, what's safe to leave default
+- 🛠 [Administration](docs/ADMINISTRATION.md) — config-file schema, product tree, on-disk folder layout, log rotation, backup boundaries (start here if you're operating an install)
 - ⚠️ [Error codes](docs/ERROR_CODES.md) — the `DIG_E_NNNN` taxonomy that surfaces in logs + API errors (auto-generated)
 - 📰 [Changelog](CHANGELOG.md) — what changed between releases
 - ♻️ [Lifecycle reference](docs/lifecycle.md) — start/stop/status/config + Mac app + Linux desktop

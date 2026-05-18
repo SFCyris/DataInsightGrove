@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,9 +24,11 @@ import { SuggestFix } from "@/components/canvas/suggest-fix";
 import { StepImageOrFallback } from "@/components/canvas/step-image-preview";
 import { ChartDensityWarning } from "@/components/canvas/chart-density-warning";
 import { usePersistedState } from "@/lib/use-persisted-state";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { recordAction } from "@/lib/settings";
 import { Tour, type TourStep } from "@/components/tour/tour";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ReferenceFileModal } from "@/components/reference-file-modal";
 import { LiveGrid } from "@/components/grid/live-grid";
 import { GraphCanvas } from "@/components/canvas/graph-canvas";
 import {
@@ -569,6 +571,70 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     queryKey: ["pipeline", pipelineId],
     queryFn: () => api.getPipeline(pipelineId),
   });
+  useDocumentTitle(
+    pipeline.data?.document?.name
+      ? `${pipeline.data.document.name} · Pipeline`
+      : "Pipeline",
+  );
+
+  // Round-5 W5: every successful pipeline load touches the recent-items
+  // store so the command palette + home page can surface it later.
+  useEffect(() => {
+    const doc = pipeline.data?.document as { name?: string; id?: string } | undefined;
+    const name = doc?.name;
+    const pid = pipeline.data?.id;
+    if (pid && typeof name === "string") {
+      import("@/lib/recent-items").then(({ touchRecent }) => {
+        touchRecent("pipeline", pid, name);
+      });
+    }
+  }, [pipeline.data?.id, pipeline.data?.document]);
+
+  // Round-5 W2: warn before nav-away when there are unsaved keystrokes.
+  // The 500ms autosave normally absorbs them, but a fast ⌘W after a
+  // keystroke would lose them silently. Only attaches when actually dirty.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      // We can't access state directly here because of closure — but the
+      // hook below tracks the `dirty` flag via state. The handler reads
+      // a window-scoped escape hatch so we don't have to re-bind every
+      // keystroke.
+      const w = window as { __DIG_DIRTY__?: boolean };
+      if (w.__DIG_DIRTY__) {
+        e.preventDefault();
+        // Modern Chrome ignores the custom message but does show the
+        // generic confirm; assigning returnValue is the spec-correct
+        // way to opt in.
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // Round-5 W5: multi-tab claim heartbeat. Broadcasts on every editor
+  // mount; the GlobalShortcuts listener turns simultaneous claims for
+  // the same pipelineId into a "open in another tab" toast.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const tabId = (() => {
+      const w = window as { __DIG_TAB_ID__?: string };
+      if (!w.__DIG_TAB_ID__) {
+        w.__DIG_TAB_ID__ = Math.random().toString(36).slice(2);
+      }
+      return w.__DIG_TAB_ID__!;
+    })();
+    const ch = new BroadcastChannel("dig.multi-tab.v1");
+    ch.postMessage({ kind: "pipeline-claim", tabId, path: window.location.pathname });
+    const interval = window.setInterval(() => {
+      ch.postMessage({ kind: "pipeline-claim", tabId, path: window.location.pathname });
+    }, 30_000);
+    return () => {
+      window.clearInterval(interval);
+      ch.close();
+    };
+  }, [pipelineId]);
   const stepsQ = useQuery({ queryKey: ["steps"], queryFn: api.listSteps, staleTime: 60_000 });
   const datasetsQ = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets });
 
@@ -758,6 +824,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       return next;
     });
     setDirty(true);
+    (window as { __DIG_DIRTY__?: boolean }).__DIG_DIRTY__ = true;
   }, []);
 
   const undo = useCallback(() => {
@@ -840,6 +907,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     onSuccess: (resp, variables) => {
       setEtag(resp.etag);
       setDirty(false);
+      // Sync the window-scoped dirty flag the beforeunload handler reads.
+      (window as { __DIG_DIRTY__?: boolean }).__DIG_DIRTY__ = false;
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       // Adaptive UI: bump action counter — heavier weight for step add,
       // lighter for param edits. Auto-promotes Beginner → Builder at threshold.
@@ -1379,14 +1448,48 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         updateDoc(next);
         setFocusedId(nodeId);
         setTab("params");
-        toast.success(`Added ${manifest.label}`);
+        // Round-5 W1: when a step has required params with no defaults
+        // (e.g. join needs `keys`), tell the user where to look. Without
+        // this hint the freshly-added step previews red and the user
+        // doesn't know what to fill in.
+        const missingRequired = Object.entries(manifest.params)
+          .filter(([n, spec]) => spec.required && params[n] === undefined)
+          .map(([n]) => n);
+        if (missingRequired.length > 0) {
+          toast.success(
+            `Added ${manifest.label} — fill in ${missingRequired.join(", ")} on the right`,
+            { duration: 5000 },
+          );
+        } else {
+          toast.success(`Added ${manifest.label}`);
+        }
       } catch (e) {
         toast.error((e as Error).message);
       }
       setQuickAdd(null);
     },
-    [doc, updateDoc, pipelineId],
+    [doc, updateDoc, pipelineId, focusedId],
   );
+
+  // Round-5 W1: cmdk fires a `dig:cmdk:add-step` window event when the
+  // user picks a step result while inside the pipeline editor. The
+  // event carries the step id; we resolve to the manifest and insert
+  // via the existing onPickStep path so the workflow matches a normal
+  // drawer-pick.
+  useEffect(() => {
+    const onAddStep = (evt: Event) => {
+      const detail = (evt as CustomEvent).detail as { stepId?: string };
+      if (!detail?.stepId) return;
+      const manifest = stepsQ.data?.find((s) => s.id === detail.stepId);
+      if (!manifest) {
+        toast.error(`Step '${detail.stepId}' not found in registry`);
+        return;
+      }
+      onPickStep(manifest);
+    };
+    window.addEventListener("dig:cmdk:add-step", onAddStep as EventListener);
+    return () => window.removeEventListener("dig:cmdk:add-step", onAddStep as EventListener);
+  }, [stepsQ.data, onPickStep]);
 
   // ---- Column actions: turn a column action into a pipeline step ----
   const currentSchema = useMemo(() => {
@@ -1725,6 +1828,10 @@ function Editor({ pipelineId }: { pipelineId: string }) {
 
   // ---- Add dataset ----
   const [datasetPickerOpen, setDatasetPickerOpen] = useState(false);
+  // Modal state for the "📁 Reference existing file…" footer entry of the
+  // add-dataset dropdown. Distinct from the picker so the picker can stay
+  // closed while the modal is open.
+  const [referenceModalOpen, setReferenceModalOpen] = useState(false);
   const datasetPickerRef = useRef<HTMLDivElement>(null);
   // Close on click-outside + Escape so the picker doesn't trap interactions.
   useEffect(() => {
@@ -1778,8 +1885,20 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const [runHistoryRefresh, setRunHistoryRefresh] = useState(0);
   useEffect(() => () => wsTeardown.current?.(), []);
 
+  // Round-5 W4 + Round-6: dedicated state for the sample-size choice
+  // on the Run button. This is per-run, NOT persisted into the doc —
+  // the doc's `metadata.sampling` remains the editor preview default.
+  // Persisted to localStorage per-pipeline so the user's "1k" choice
+  // survives a tab close + reload, matching every other editor
+  // preference (focused step, current tab, canvas view).
+  const [runSampleRows, setRunSampleRows] = usePersistedState<number | null>(
+    `dig.editor.runSampleRows.${pipelineId}`,
+    null,
+  );
+
   const runMutation = useMutation({
-    mutationFn: async () => api.startRun(pipelineId),
+    mutationFn: async () =>
+      api.startRun(pipelineId, runSampleRows ?? undefined),
     onSuccess: (r) => {
       setRun(r);
       setRunProgress({ status: r.status });
@@ -1787,7 +1906,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       setRunHistoryRefresh((n) => n + 1);
       // Adaptive UI: a run is +3 toward Builder promotion.
       recordAction(3);
-      toast.success(`▶️ Run queued (${r.id.slice(-8)})`);
+      const sampleNote = runSampleRows ? ` · ${runSampleRows.toLocaleString()}-row sample` : "";
+      toast.success(`▶️ Run queued (${r.id.slice(-8)}${sampleNote})`);
       wsTeardown.current?.();
       wsTeardown.current = subscribe(
         `/ws/runs/${r.id}`,
@@ -1802,12 +1922,84 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           } else if (p.status === "failed") {
             setRunHistoryRefresh((n) => n + 1);
             toast.error(`❌ Run failed`);
+          } else if (p.status === "cancelled") {
+            setRunHistoryRefresh((n) => n + 1);
+            toast(`🛑 Run cancelled`);
           }
         },
       );
     },
     onError: (e: Error) => toast.error(`Run failed: ${e.message}`),
   });
+
+  // Round-5 W4: cancel an in-flight run via the new POST /runs/{id}/cancel.
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      if (!run?.id) throw new Error("no run to cancel");
+      return api.cancelRun(run.id);
+    },
+    onSuccess: (res) => {
+      if (res.status === "already terminal") {
+        toast(`Run already ${res.status}`);
+      } else {
+        toast(`🛑 Cancelling…`);
+      }
+    },
+    onError: (e: Error) => toast.error(`Cancel failed: ${e.message}`),
+  });
+
+  // Round-5 W4: on page load, check whether the URL carries `?focus=<id>`
+  // — the run-detail page builds that link when a step fails so the
+  // user lands directly on the broken node. Consume it once.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const focusFromUrl = searchParams?.get("focus");
+    if (focusFromUrl && doc?.nodes?.some((n) => n.id === focusFromUrl)) {
+      setFocusedId(focusFromUrl);
+      // Clear the param so a later mount doesn't repeat the focus jump.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("focus");
+      window.history.replaceState({}, "", url.toString());
+    }
+    // doc.nodes lookup is keyed by id; we only want to react once on
+    // the first load — re-running on every doc edit would steal focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.id]);
+
+  // Round-5 W4: reattach the WS subscription on mount when a queued /
+  // running run already exists for this pipeline. Without this, ⌘R
+  // mid-run blanks the live progress strip.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const runs = await api.listRuns(pipelineId);
+        const inflight = runs.find((r) => r.status === "queued" || r.status === "running");
+        if (!inflight || cancelled) return;
+        setRun(inflight);
+        setRunProgress({ status: inflight.status });
+        wsTeardown.current?.();
+        wsTeardown.current = subscribe(
+          `/ws/runs/${inflight.id}`,
+          async (msg) => {
+            const p = msg.payload as { status?: string; stage?: string };
+            setRunProgress(p);
+            if (p.status === "succeeded") {
+              const out = await api.getRunOutput(inflight.id, 0, 200);
+              setOutputPage(out);
+              setRunHistoryRefresh((n) => n + 1);
+            } else if (p.status === "failed" || p.status === "cancelled") {
+              setRunHistoryRefresh((n) => n + 1);
+            }
+          },
+        );
+      } catch {
+        /* listRuns failed — nothing to reattach */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineId]);
 
   // ---- Selected node for params tab ----
   const selectedNode = useMemo(
@@ -2253,11 +2445,12 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           {datasetPickerOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-[calc(100%+4px)] w-[280px] max-h-[320px] overflow-auto z-[60] rounded-md border border-border bg-popover shadow-lg p-1"
+              className="absolute right-0 top-[calc(100%+4px)] w-[300px] max-h-[360px] overflow-auto z-[60] rounded-md border border-border bg-popover shadow-lg p-1 flex flex-col"
             >
               {(datasetsQ.data ?? []).length === 0 ? (
                 <div className="text-xs text-muted-foreground p-3 text-center">
-                  No datasets yet — <Link className="underline" href="/datasets">upload one</Link>.
+                  No datasets yet — drop a file in the box below, or use{" "}
+                  <Link className="underline" href="/datasets">📚 Datasets</Link>.
                 </div>
               ) : (
                 (datasetsQ.data ?? []).map((d) => (
@@ -2275,9 +2468,32 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                   </button>
                 ))
               )}
+              {/* Footer: design-time reference shortcut. Closes the picker
+                  and opens the path-+-browser modal; on success the new
+                  reference auto-attaches into THIS pipeline so the user
+                  doesn't have to find it in the dropdown afterwards. */}
+              <div className="border-t border-border mt-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDatasetPickerOpen(false);
+                    setReferenceModalOpen(true);
+                  }}
+                  className="w-full text-left px-2 py-1.5 rounded text-sm hover:bg-muted/60 flex items-center gap-2 text-emerald-700 dark:text-emerald-400"
+                  title="Add a reference to a file already on the DIG server. The file is never copied or modified."
+                >
+                  <span aria-hidden>📁</span>
+                  <span>Reference existing file…</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
+        <ReferenceFileModal
+          open={referenceModalOpen}
+          onClose={() => setReferenceModalOpen(false)}
+          onCreated={(d) => handleAddDataset(d)}
+        />
 
         {/* Lineage opt-in: when checked, the pipeline doc's
             metadata.trackLineage flips on, and the executor records each
@@ -2329,17 +2545,59 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           🪆 {doc.metadata?.publishedAsStep ? "Published" : "Publish"}
         </Button>
 
-        <Button
-          data-tour="editor-run"
-          onClick={() => runMutation.mutate()}
-          disabled={runMutation.isPending || doc.nodes.length === 0}
-          title="Run the full pipeline on the backend (writes to disk)"
-          className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
-        >
-          {runMutation.isPending || runProgress.status === "queued" || runProgress.status === "running"
-            ? "⏳ Running…"
-            : "▶️ Run on backend"}
-        </Button>
+        {(runProgress.status === "queued" || runProgress.status === "running") && run?.id ? (
+          // Round-5 W4: while a run is in flight, the Run button
+          // becomes a Stop button so the user can abort without
+          // navigating away. The visual emerald reverses to amber.
+          <Button
+            onClick={() => cancelMutation.mutate()}
+            disabled={cancelMutation.isPending}
+            title="Cancel the currently-running run"
+            className="!bg-amber-500 !text-amber-950 hover:!bg-amber-400"
+          >
+            {cancelMutation.isPending ? "⏳ Cancelling…" : "🛑 Stop"}
+          </Button>
+        ) : (
+          <div className="flex items-stretch gap-0">
+            <Button
+              data-tour="editor-run"
+              onClick={() => runMutation.mutate()}
+              disabled={runMutation.isPending || doc.nodes.length === 0}
+              title={
+                runSampleRows
+                  ? `Run on a ${runSampleRows.toLocaleString()}-row sample (one-off, doesn't change the pipeline doc)`
+                  : "Run the full pipeline against the whole dataset (writes outputs to disk)"
+              }
+              className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400 !rounded-r-none"
+            >
+              {runMutation.isPending
+                ? "⏳ Running…"
+                : runSampleRows
+                ? `▶️ Run on ${runSampleRows.toLocaleString()}-row sample`
+                : "▶️ Run pipeline"}
+            </Button>
+            {/* Round-5 W4: split-button sample picker — sits flush with the
+                Run button so changing the size for a one-off doesn't dirty
+                the pipeline doc the way the standalone 🧪 picker did. */}
+            <select
+              value={runSampleRows ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRunSampleRows(v === "" ? null : parseInt(v, 10));
+              }}
+              disabled={runMutation.isPending || doc.nodes.length === 0}
+              title="Pick a sample size for this run only"
+              aria-label="Sample size for this run"
+              className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400 disabled:opacity-50 text-xs font-medium px-2 rounded-r-lg border-l border-emerald-700/30 cursor-pointer"
+            >
+              <option value="">full</option>
+              <option value="1000">1k</option>
+              <option value="10000">10k</option>
+              <option value="100000">100k</option>
+              <option value="1000000">1M</option>
+            </select>
+          </div>
+        )}
 
         <RunHistory
           pipelineId={pipelineId}
@@ -2433,7 +2691,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             title="View compiled SQL (⌘⇧S)"
             aria-label="View compiled SQL"
           >
-            { } SQL
+            <span aria-hidden className="mr-1">{"{}"}</span> SQL
           </Button>
         )}
         <ExportMenu pipelineId={pipelineId} />
@@ -2655,69 +2913,50 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                           pipelineId={pipelineId}
                           nodeId={fNode.id}
                           etag={etag ?? 0}
-                          // The fallback receives the actual /preview-step
-                          // error (when there is one) so we can pick the
-                          // right surface:
-                          //  - chart-config error (e.g. "scatter3d needs
-                          //    x, y and z") → humanized hint with the
-                          //    columns the user can pick from. The
-                          //    humanizer recognises these patterns
-                          //    (export_to_image kinds + funnel/pareto/
-                          //    waterfall) and produces an actionable
-                          //    one-liner instead of a generic CTA.
-                          //  - genuine "needs backend hop" — keep the
-                          //    "▶ Run on backend" affordance.
+                          // Round-5 follow-up: the previous fallback had a
+                          // "Backend run needed for this chart — click ▶ Run"
+                          // CTA. That was a regression. ``/preview-step``
+                          // ALREADY runs on the backend (read the endpoint
+                          // body in `backend/dig/api/pipelines.py` — it
+                          // executes the chart step with sampled upstream
+                          // on the server). When it fails, the full
+                          // pipeline run would fail the exact same way for
+                          // the exact same reason (e.g. a missing
+                          // `geometry_col` param doesn't disappear when
+                          // run on more data).
+                          //
+                          // Per the transparent-processing rule, the user
+                          // should never see "click here to run on the
+                          // backend" — execution surface is automatic. Show
+                          // the actionable error instead; the humanizer
+                          // handles the common shapes (missing X/Y, wrong
+                          // chart kind, "param X is required") so the user
+                          // knows what to fix in the params panel.
                           fallback={(err) => {
                             const upRef = Object.values(fNode.inputs)[0]?.ref;
                             const cols = upRef ? Object.keys(schemas[upRef] ?? {}) : [];
                             const h = err ? humanizeSqlError(err.message, cols) : null;
-                            if (h && h.recognised && !h.originatesUpstream) {
-                              // Per-chart-kind config error — show the
-                              // humanized title + hint. No "Run on
-                              // backend" button: clicking that won't fix
-                              // a missing X/Y/Z param, and surfacing a
-                              // wrong CTA misleads the user.
-                              return (
-                                <div className="max-w-md text-center select-none">
-                                  <div className="text-5xl mb-2">⚠️</div>
-                                  <p className="text-sm font-medium text-foreground mb-1">
-                                    {h.title}
-                                  </p>
-                                  {h.hint && (
-                                    <p className="text-[12px] text-muted-foreground leading-relaxed">
-                                      {h.hint}
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            }
-                            // Default: backend-hop needed (the upstream
-                            // chain wasn't sampleable in-memory, or any
-                            // unrecognised error shape). One click runs
-                            // it on the backend.
                             return (
-                              <div className="max-w-sm text-center select-none">
-                                <div className="text-5xl mb-3">🎬</div>
+                              <div className="max-w-md text-center select-none">
+                                <div className="text-5xl mb-2">⚠️</div>
                                 <p className="text-sm font-medium text-foreground mb-1">
-                                  Backend run needed for this chart
+                                  {h?.title ?? "This chart can't render yet."}
                                 </p>
-                                <p className="text-[12px] text-muted-foreground leading-relaxed mb-3">
-                                  The live preview can&apos;t render this chain in
-                                  the browser (an upstream step needs the
-                                  backend&apos;s Polars engine). One click below
-                                  produces the full-fidelity chart.
-                                </p>
-                                <Button
-                                  size="sm"
-                                  onClick={() => runMutation.mutate()}
-                                  disabled={runMutation.isPending}
-                                  className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400"
-                                >
-                                  {runMutation.isPending ? "⏳ Running…" : "▶ Run on backend"}
-                                </Button>
-                                <p className="text-[10px] text-muted-foreground/70 mt-2 leading-snug">
-                                  Output lands in the run history & shows here on success.
-                                </p>
+                                {h?.hint ? (
+                                  <p className="text-[12px] text-muted-foreground leading-relaxed">
+                                    {h.hint}
+                                  </p>
+                                ) : err ? (
+                                  <p className="text-[12px] text-muted-foreground leading-relaxed font-mono">
+                                    {err.message}
+                                  </p>
+                                ) : (
+                                  <p className="text-[12px] text-muted-foreground leading-relaxed">
+                                    Edit the step&apos;s params on the right to
+                                    fix the issue, then the chart updates
+                                    automatically.
+                                  </p>
+                                )}
                               </div>
                             );
                           }}
@@ -2968,18 +3207,38 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             )}
           </div>
           {/* Sticky floating Run for long pipelines — the toolbar Run is
-              offscreen on small viewports once you have ~10 steps. */}
+              offscreen on small viewports once you have ~10 steps.
+              Round-6 UX#2: mirror the toolbar's Run/Stop swap and
+              surface the sample-size choice so the user keeps the
+              cancel affordance + sample context while scrolled. */}
           {doc.nodes.length >= 8 && (
-            <Button
-              onClick={() => runMutation.mutate()}
-              disabled={runMutation.isPending || doc.nodes.length === 0}
-              title="Run on backend"
-              className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400 fixed bottom-6 right-[360px] z-20 shadow-lg"
-            >
-              {runMutation.isPending || runProgress.status === "queued" || runProgress.status === "running"
-                ? "⏳ Running…"
-                : "▶️ Run"}
-            </Button>
+            (runProgress.status === "queued" || runProgress.status === "running") && run?.id ? (
+              <Button
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+                title="Cancel the in-flight run"
+                className="!bg-amber-500 !text-amber-950 hover:!bg-amber-400 fixed bottom-6 right-6 z-20 shadow-lg"
+              >
+                {cancelMutation.isPending ? "⏳ Cancelling…" : "🛑 Stop"}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => runMutation.mutate()}
+                disabled={runMutation.isPending || doc.nodes.length === 0}
+                title={
+                  runSampleRows
+                    ? `Run on ${runSampleRows.toLocaleString()}-row sample`
+                    : "Run pipeline"
+                }
+                className="!bg-emerald-500 !text-emerald-950 hover:!bg-emerald-400 fixed bottom-6 right-6 z-20 shadow-lg"
+              >
+                {runMutation.isPending
+                  ? "⏳ Running…"
+                  : runSampleRows
+                  ? `▶️ Run · ${runSampleRows.toLocaleString()}`
+                  : "▶️ Run"}
+              </Button>
+            )
           )}
         </section>
 
@@ -3619,11 +3878,11 @@ const EDITOR_TOUR_STEPS: TourStep[] = [
     placement: "bottom",
   },
   {
-    title: "▶ Run on backend",
+    title: "▶ Run pipeline",
     body: (
       <>
-        When you're happy with the preview, click here to run the full pipeline
-        on the backend over the whole dataset. Outputs land as Parquet and any
+        When you&apos;re happy with the preview, click here to run the full
+        pipeline against the whole dataset. Outputs land as Parquet and any
         configured charts/files appear in the artifacts panel.
       </>
     ),

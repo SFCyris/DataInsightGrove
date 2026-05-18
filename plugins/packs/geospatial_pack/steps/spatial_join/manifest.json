@@ -1,0 +1,51 @@
+{
+  "id": "spatial_join",
+  "version": "1.0.0",
+  "label": "🔗 Spatial join",
+  "description": "Join two inputs on a spatial predicate. Each row from the left is matched with rows from the right whose geometry satisfies the predicate (within / contains / intersects / touches). Use parse_geometry first to convert WKT or GeoJSON text into the geometry columns.",
+  "category": "combine",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 2, "max": 2, "ports": ["left", "right"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "leftGeometry": {
+      "type": "column_ref",
+      "label": "Left geometry column",
+      "columnFrom": "left",
+      "required": true
+    },
+    "rightGeometry": {
+      "type": "column_ref",
+      "label": "Right geometry column",
+      "columnFrom": "right",
+      "required": true
+    },
+    "predicate": {
+      "type": "enum",
+      "label": "Spatial predicate",
+      "enumValues": ["within", "contains", "intersects", "touches", "covers", "covered_by"],
+      "default": "within",
+      "required": true,
+      "help": "within: left geometry inside right (point-in-polygon). contains: right inside left. intersects: any overlap. touches: share a boundary but no interior. covers / covered_by: like contains/within but boundary points count as inside."
+    },
+    "joinType": {
+      "type": "enum",
+      "label": "Join type",
+      "enumValues": ["inner", "left_outer"],
+      "default": "inner",
+      "required": true,
+      "help": "inner: only emit rows where the predicate matched. left_outer: keep every left row; right columns are NULL when no match."
+    },
+    "rightSuffix": {
+      "type": "string",
+      "label": "Suffix for right-side column collisions",
+      "default": "_r"
+    }
+  },
+  "preview": { "rowImpact": "may_grow", "schemaImpact": "rebuilds" },
+  "tags": ["spatial", "join", "point-in-polygon", "geo", "geometry", "intersect"],
+  "requires": [{"kind": "spatial"}, {"kind": "spatial"}],
+  "aliases": ["geospatial join", "PIP", "ST_Within", "ST_Contains", "ST_Intersects"]
+}

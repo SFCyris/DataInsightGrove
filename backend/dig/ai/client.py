@@ -84,16 +84,24 @@ def _normalize_endpoint(endpoint: str) -> str:
     so `file:///etc/passwd` or `gopher://...` reached httpx (which would
     block file:// today, but a future transport pivot is one version
     bump from RCE). Restrict to http(s) up front.
+
+    Round-3 follow-up: validate scheme + host BEFORE any string
+    manipulation. The previous order (rstrip → parse → check) ran
+    rstrip/append-`/v1` on inputs that were about to be rejected, which
+    made the rejected error path return a value that didn't match what
+    the caller passed in — confusing in logs and brittle to refactor.
     """
-    e = endpoint.rstrip("/")
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        raise AiError("AI endpoint must be a non-empty string")
     from urllib.parse import urlparse as _urlparse
-    parsed = _urlparse(e)
+    parsed = _urlparse(endpoint.strip())
     if parsed.scheme not in ("http", "https"):
         raise AiError(
             f"AI endpoint scheme must be http or https; got {parsed.scheme!r}",
         )
     if not parsed.netloc:
-        raise AiError(f"AI endpoint must include a host; got {e!r}")
+        raise AiError(f"AI endpoint must include a host; got {endpoint!r}")
+    e = endpoint.strip().rstrip("/")
     if not e.endswith("/v1"):
         # Best-effort: if the user pasted a bare host, append /v1.
         # OpenAI proper (api.openai.com/v1) and Anthropic compat

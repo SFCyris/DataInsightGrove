@@ -21,7 +21,7 @@
     "pct":  { "type": "number", "label": "Percent", "default": 10, "min": 0.01, "max": 100,
               "visibleWhen": { "kind": "random_pct" } },
     "seed": { "type": "integer", "label": "Random seed", "default": 42,
-              "visibleWhen": { "kind": "random_n" } }
+              "visibleWhen": { "kind": ["random_n", "random_pct"] } }
   },
   "preview": { "rowImpact": "may_reduce", "schemaImpact": "preserves" },
   "tags": ["sample", "random", "head"],

@@ -51,11 +51,20 @@ done
 # can't introspect the installed package.
 
 current_version() {
+  # Round-4 QA finding: previously this used a regex that took the FIRST
+  # line matching ``^version = "..."`` in pyproject.toml. A dependent
+  # tool section (e.g. ``[tool.x]\nversion = "9.99"``) would then
+  # shadow the real ``[project].version``. Parse properly via tomllib
+  # (Python 3.11+, ships in stdlib) so the value is unambiguous.
   python3 - <<'PY'
-import re, pathlib
-src = pathlib.Path("backend/pyproject.toml").read_text(encoding="utf-8")
-m = re.search(r'^version\s*=\s*"([^"]+)"', src, re.MULTILINE)
-print(m.group(1) if m else "0.0.0+unknown")
+import pathlib, sys
+try:
+    import tomllib
+except ImportError:  # Python < 3.11 fallback
+    import tomli as tomllib  # type: ignore
+data = tomllib.loads(pathlib.Path("backend/pyproject.toml").read_text(encoding="utf-8"))
+project = data.get("project") or {}
+print(project.get("version") or "0.0.0+unknown")
 PY
 }
 
@@ -149,6 +158,16 @@ fi
 
 info "checking out $TARGET…"
 git checkout "$TARGET"
+
+# Round-3 operational finding: `git checkout v1.2.3` lands on a
+# DETACHED HEAD. Most users won't notice until they try `git pull` later
+# and get "You are not currently on a branch" — by then they're confused
+# about whether the upgrade worked. Surface it now with a one-line
+# explanation so they know what state the repo is in.
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  info "(repo is now in detached-HEAD state at $TARGET — this is normal for a tag checkout;"
+  info " run \`git checkout main\` if you want to move back to the rolling tip later.)"
+fi
 
 # -- reinstall the Python package + frontend deps ---------------------------
 if [[ -d backend/.venv ]]; then

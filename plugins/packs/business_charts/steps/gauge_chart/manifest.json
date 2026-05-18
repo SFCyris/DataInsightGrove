@@ -1,0 +1,27 @@
+{
+  "id": "gauge_chart",
+  "version": "1.0.0",
+  "label": "🌡 Gauge chart",
+  "description": "Speedometer-style single-metric gauge. The needle points to the actual value within a min-to-max range; colored arcs (red / amber / green by default) show good/bad zones. One row per row in the input.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "labelColumn": { "type": "column_ref", "label": "Label column", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"] },
+    "minValue": { "type": "number", "label": "Min", "default": 0.0 },
+    "maxValue": { "type": "number", "label": "Max", "default": 100.0 },
+    "redMax":   { "type": "number", "label": "Red zone upper bound (optional)", "help": "Defaults to 30% of (max-min)." },
+    "amberMax": { "type": "number", "label": "Amber zone upper bound (optional)", "help": "Defaults to 70% of (max-min)." },
+    "title": { "type": "string", "label": "Title", "default": "Gauge" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "business", "kpi", "gauge", "speedometer"],
+  "aliases": ["speedometer", "dial chart"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}]
+}

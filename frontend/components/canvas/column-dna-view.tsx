@@ -802,6 +802,9 @@ export function ColumnDNAView({ pipelineId, nodeId, column, onClose }: Props) {
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="column-dna-title"
         initial={{ opacity: 0, y: 12, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -812,14 +815,16 @@ export function ColumnDNAView({ pipelineId, nodeId, column, onClose }: Props) {
         <header className="px-4 py-3 border-b border-border flex items-center gap-3">
           <span aria-hidden className="text-xl">🧬</span>
           <div>
-            <p className="text-sm font-semibold leading-tight">Column DNA — computation graph</p>
+            <p id="column-dna-title" className="text-sm font-semibold leading-tight">Column DNA — computation graph</p>
             <p className="text-[11px] text-muted-foreground font-mono">
               {nodeId} · {column}
             </p>
           </div>
           <span className="flex-1" />
-          <span className="text-[11px] text-muted-foreground hidden md:inline">
-            Hover or click any node · Esc to close
+          <span className="text-[11px] text-muted-foreground">
+            <span className="hidden md:inline">Hover or click any node · </span>
+            <span className="md:hidden">Tap nodes · </span>
+            Esc to close
           </span>
           <button
             type="button"
@@ -840,7 +845,8 @@ export function ColumnDNAView({ pipelineId, nodeId, column, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="text-xs px-2.5 py-1 rounded hover:bg-muted text-foreground/80"
+            aria-label="Close column DNA"
+            className="text-xs px-2.5 py-1 rounded hover:bg-muted text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             ✕
           </button>

@@ -49,6 +49,20 @@ const _CHART_HEATMAP_RE = /^heatmap\s+needs\s+x,\s+y\s+and\s+value$/i;
 const _CHART_SCATTER3D_RE = /^scatter3d\s+needs\s+x,\s+y\s+and\s+z$/i;
 const _CHART_UNKNOWN_KIND_RE = /export_to_image:\s+unknown\s+kind\s+'([^']+)'/i;
 
+// ── Generic "<step> (<mode>): <param> is required" shape. Several Polars
+// steps raise this from inside `execute_polars` when the user picks a
+// mode that needs an additional column / param. Example seen on the
+// housing demo:
+//   "export_to_map (choropleth): geometry_col is required"
+//   "join (right): right_on is required"
+// We treat this as a focused-step config error so the user fixes it in
+// the params panel rather than seeing an internal exception verbatim.
+// Round-5 follow-up: was previously falling through to the bogus
+// "Backend run needed for this chart" CTA, which suggested a manual
+// pipeline run would help. It wouldn't — the full run hits the exact
+// same exception.
+const _STEP_PARAM_REQUIRED_RE = /^([a-z_][a-z0-9_]*)\s*\(([^)]+)\):\s*([A-Za-z_][A-Za-z0-9_]*)\s+is\s+required/i;
+
 // ── Chart-pack steps from plugins/packs/business_charts (funnel, pareto,
 // waterfall). They share the "no non-null rows" guard at the start of
 // `execute_polars`. The chart's input was either empty or every row had
@@ -216,6 +230,26 @@ export function humanizeSqlError(
     return {
       title: `Unknown chart kind “${m[1]}”.`,
       hint: "Pick one of: histogram, bar_counts, scatter, line, hexbin, heatmap, scatter3d. Or set 'auto' to let DIG choose by column types.",
+      recognised: true,
+    };
+  }
+
+  m = raw.match(_STEP_PARAM_REQUIRED_RE);
+  if (m) {
+    const [, , mode, param] = m;
+    // Round-5 follow-up: when the backend message carries an em-dash, it
+    // already contains the recovery path + available-column list. Pass
+    // that body through as the hint so the user sees the full picture,
+    // not just "fill in the dropdown" advice. Plain short messages
+    // (older code paths) still get the original generic hint.
+    const dashIdx = raw.indexOf(" — ");
+    const rich = dashIdx >= 0 ? raw.slice(dashIdx + 3).trim() : null;
+    return {
+      title: `Set “${param}” to render this chart.`,
+      hint:
+        rich ??
+        `The current mode (${mode}) needs the “${param}” param filled in. ` +
+          `Open the params panel on the right and pick a value.`,
       recognised: true,
     };
   }

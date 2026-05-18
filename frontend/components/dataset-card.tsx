@@ -8,6 +8,8 @@ import { api, type Dataset } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmtInt } from "@/lib/format-number";
+import { confirmAction } from "@/lib/confirm-toast";
+import { toastError } from "@/lib/toast-error";
 
 const STATUS_EMOJI: Record<string, string> = {
   ready: "✅",
@@ -39,7 +41,7 @@ export function DatasetCard({ d, index }: { d: Dataset; index: number }) {
       queryClient.invalidateQueries({ queryKey: ["datasets"] });
       toast.success(`🗑 Removed "${d.name}"`);
     },
-    onError: (e: Error) => toast.error(`Delete failed: ${e.message}`),
+    onError: (e: Error) => toastError("Delete failed", e),
   });
 
   return (
@@ -107,11 +109,17 @@ export function DatasetCard({ d, index }: { d: Dataset; index: number }) {
           size="xs"
           variant="ghost"
           disabled={del.isPending}
-          onClick={(e) => {
+          aria-label={del.isPending ? "Removing dataset" : "Remove dataset"}
+          onClick={async (e) => {
             e.preventDefault();
-            if (confirm(`Remove "${d.name}"? This deletes the cached data.`)) {
-              del.mutate();
-            }
+            const ok = await confirmAction({
+              title: `Remove "${d.name}"?`,
+              description:
+                "This deletes the cached data + source file. " +
+                "Any pipeline that references this dataset by ID will need to be re-pointed.",
+              confirmLabel: "Remove",
+            });
+            if (ok) del.mutate();
           }}
         >
           {del.isPending ? "⏳" : "🗑"} Remove

@@ -244,11 +244,19 @@ def _scan_and_coerce_nan(
             if api_loop is not None and api_loop.is_running():
                 asyncio.run_coroutine_threadsafe(_emit_all(), api_loop)
             else:
-                try:
-                    asyncio.run(_emit_all())
-                except RuntimeError:
-                    # Best-effort: skip if we're already inside a running loop.
-                    pass
+                # Round 8: previously this called ``asyncio.run(_emit_all())``
+                # from a worker thread, which spins up a fresh event loop
+                # against the main-loop-bound DB engine and intermittently
+                # blew up with "loop is closed" / "different loop" errors.
+                # When no main loop is captured we skip emission entirely —
+                # the metric/log artifact still records the NaN origin, and
+                # the alternative (creating a one-shot loop with its own
+                # async engine) is more risk than the notification is worth.
+                log.debug(
+                    "no API loop available; skipping nan-origin event "
+                    "emission for node %s",
+                    node_id,
+                )
         except Exception:
             log.exception("nan-origin event emit failed for node %s", node_id)
 
@@ -1014,10 +1022,19 @@ def execute(
                 row = con.execute(full_sql).fetchone()
                 cols = [d[0] for d in con.description]
                 metrics = dict(zip(cols, row))
-                clean_metrics = {
-                    k: (int(v) if isinstance(v, (int, float)) and v == int(v) else v)
-                    for k, v in metrics.items()
-                }
+                # Round-9 fix: previous form crashed on NaN/Inf
+                # (`int(NaN)`/`int(inf)` raise ValueError) and silently
+                # coerced booleans to 0/1 because ``bool`` is a subclass
+                # of ``int``. Skip non-finite floats and exclude bool
+                # explicitly so a `passed=True` column stays True.
+                import math as _math
+                def _coerce(v: Any) -> Any:
+                    if isinstance(v, bool):
+                        return v
+                    if isinstance(v, (int, float)) and _math.isfinite(v) and v == int(v):
+                        return int(v)
+                    return v
+                clean_metrics = {k: _coerce(v) for k, v in metrics.items()}
                 artifacts.setdefault(f"_validation:{node.id}", []).append({
                     "kind": "validation",
                     "label": f"{step.id} validation",

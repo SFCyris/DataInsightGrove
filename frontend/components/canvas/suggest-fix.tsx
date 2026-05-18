@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -114,8 +115,24 @@ export function SuggestFix(props: SuggestFixProps) {
     [proposal, props.currentParams],
   );
 
-  // Hide entirely when AI is disabled or not loaded yet — no flicker.
-  if (!aiConfig.data?.enabled) return null;
+  // Hide while the AI config is loading to avoid flicker. Once loaded,
+  // if AI is disabled, surface a tiny pointer to Settings so users
+  // discover the affordance (Round-9 UX#4 #25). Don't render anything
+  // bigger — this is a hint, not a CTA.
+  if (aiConfig.isLoading) return null;
+  if (!aiConfig.data?.enabled) {
+    return (
+      <div className="mt-3 flex justify-center">
+        <Link
+          href="/settings#ai"
+          className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+          title="Enable AI in Settings to unlock 'Suggest fix' for this error"
+        >
+          ✨ Enable AI for fix suggestions
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-3 flex flex-col items-center gap-2">

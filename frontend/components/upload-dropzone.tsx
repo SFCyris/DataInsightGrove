@@ -5,8 +5,9 @@ import { useDropzone } from "react-dropzone";
 import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { api, type Dataset } from "@/lib/api/client";
+import { api, ApiError, type Dataset } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
+import { toastError } from "@/lib/toast-error";
 import { SheetPickerModal } from "@/components/sheet-picker-modal";
 import { IslandPickerModal } from "@/components/island-picker-modal";
 
@@ -49,7 +50,31 @@ export function UploadDropzone({ onUploaded }: Props) {
         ext === "nc" || ext === "nc4" || ext === "cdf" ? "netcdf" :
         ext === "fits" || ext === "fit" || ext === "fts" ? "fits" :
         "csv";  // csv / tsv / txt / dat / data / tab / psv / unknown
-      return api.uploadDataset(file, file.name, connectorId);
+      // Round-5 W3: try with the default ``error`` on-conflict policy
+      // first. If the backend rejects with 409, surface a sonner
+      // confirm: Replace vs Keep both vs Cancel.
+      try {
+        return await api.uploadDataset(file, file.name, connectorId, {}, "error");
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          const detail = e.detail as { code?: string; existingId?: string; message?: string } | undefined;
+          if (detail?.code === "dataset_name_in_use") {
+            const choice = await new Promise<"replace" | "allow" | null>((resolve) => {
+              const id = toast.warning(`Dataset "${file.name}" already exists`, {
+                description: detail.message ?? "Pick how to resolve.",
+                action: { label: "Replace", onClick: () => { resolve("replace"); toast.dismiss(id); } },
+                cancel: { label: "Keep both", onClick: () => { resolve("allow"); toast.dismiss(id); } },
+                duration: 30_000,
+                onDismiss: () => resolve(null),
+                onAutoClose: () => resolve(null),
+              });
+            });
+            if (!choice) throw e;
+            return api.uploadDataset(file, file.name, connectorId, {}, choice);
+          }
+        }
+        throw e;
+      }
     },
     onSuccess: (d) => {
       setProgress(null);
@@ -76,13 +101,47 @@ export function UploadDropzone({ onUploaded }: Props) {
     },
     onError: (e: Error) => {
       setProgress(null);
-      toast.error(`Import failed: ${e.message}`);
+      toastError("Import failed", e);
     },
   });
 
+  // Round-5 W3: support multi-file drops. Each file becomes its own
+  // dataset and we report progress one-by-one — DIG's downstream
+  // "join two CSVs" flow becomes discoverable when the user actually
+  // ends up with two datasets side by side in the catalog.
   const onDrop = useCallback(
     (files: File[]) => {
-      if (files[0]) upload.mutate(files[0]);
+      if (files.length === 0) return;
+      if (files.length === 1) {
+        upload.mutate(files[0]);
+        return;
+      }
+      // Serial upload: avoid hammering the backend's connector workers
+      // in parallel; users dropping 4 files want them all ingested,
+      // not 3 of 4 succeeding because of a transient backend load.
+      (async () => {
+        let succeeded = 0;
+        for (const f of files) {
+          try {
+            await upload.mutateAsync(f);
+            succeeded += 1;
+          } catch (e) {
+            toast.error(`Skipped ${f.name}: ${(e as Error).message}`);
+          }
+        }
+        if (succeeded > 1) {
+          toast.success(
+            `Imported ${succeeded} datasets — open the catalog to join them.`,
+            {
+              action: {
+                label: "Open catalog",
+                onClick: () => { window.location.href = "/catalog"; },
+              },
+              duration: 6000,
+            },
+          );
+        }
+      })();
     },
     [upload],
   );
@@ -115,7 +174,7 @@ export function UploadDropzone({ onUploaded }: Props) {
         ".fits", ".fit", ".fts",
       ],
     },
-    multiple: false,
+    multiple: true,
     disabled: upload.isPending,
   });
 

@@ -207,6 +207,11 @@
           "items": { "type": ["string", "number"] },
           "description": "For type=='enum': allowed values."
         },
+        "enumLabels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "For type=='enum': parallel array of human-readable hints (one per enum value). Rendered as 'value — label' in the picker so option semantics surface BEFORE the user selects."
+        },
         "columnFrom": {
           "type": "string",
           "description": "For column_ref/column_refs: input port id whose schema feeds this picker. Defaults to 'in'."
@@ -229,8 +234,16 @@
         },
         "visibleWhen": {
           "type": "object",
-          "description": "Show this param only when sibling params equal the given values. Equality only — no expressions.",
-          "additionalProperties": { "type": ["string", "number", "boolean"] }
+          "description": "Show this param only when sibling params equal the given values. Equality only — no expressions. A param key may also map to an array of allowed values (the param shows for any match).",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": ["string", "number", "boolean"] },
+              {
+                "type": "array",
+                "items": { "type": ["string", "number", "boolean"] }
+              }
+            ]
+          }
         },
         "widget": {
           "type": "string",

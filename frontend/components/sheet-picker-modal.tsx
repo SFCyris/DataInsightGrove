@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError, type Dataset } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,16 @@ export function SheetPickerModal({ dataset, onPicked, onCancel }: Props) {
   const sheets = dataset.availableSheets ?? [];
   const [picked, setPicked] = useState<string>(sheets[0] ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const firstRadioRef = useRef<HTMLInputElement | null>(null);
+
+  // Round-8 a11y: ESC closes the modal + initial focus lands on the
+  // first sheet option so keyboard users can immediately ↑↓ pick.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    queueMicrotask(() => firstRadioRef.current?.focus());
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
 
   const onSubmit = async () => {
     if (!picked) return;
@@ -69,6 +79,7 @@ export function SheetPickerModal({ dataset, onPicked, onCancel }: Props) {
         transition={{ type: "spring", stiffness: 360, damping: 28 }}
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[480px] max-w-[92vw] bg-card border border-border rounded-lg shadow-2xl p-5 space-y-4"
         role="dialog"
+        aria-modal="true"
         aria-label="Pick Excel sheet"
       >
         <header className="flex items-center gap-2">
@@ -95,7 +106,7 @@ export function SheetPickerModal({ dataset, onPicked, onCancel }: Props) {
         </p>
 
         <div className="max-h-[280px] overflow-y-auto rounded-md border border-border/60 divide-y divide-border/40">
-          {sheets.map((s) => (
+          {sheets.map((s, i) => (
             <label
               key={s}
               className={[
@@ -104,6 +115,7 @@ export function SheetPickerModal({ dataset, onPicked, onCancel }: Props) {
               ].join(" ")}
             >
               <input
+                ref={i === 0 ? firstRadioRef : null}
                 type="radio"
                 name="sheet"
                 value={s}

@@ -27,27 +27,32 @@
     },
     "min": {
       "type": "number",
-      "label": "Min (between only)",
-      "help": "Inclusive lower bound for `between` checks. Leave blank to skip the lower bound."
+      "label": "Min",
+      "visibleWhen": { "check": "between" },
+      "help": "Inclusive lower bound. Leave blank to skip the lower bound."
     },
     "max": {
       "type": "number",
-      "label": "Max (between only)",
-      "help": "Inclusive upper bound for `between` checks. Leave blank to skip the upper bound."
+      "label": "Max",
+      "visibleWhen": { "check": "between" },
+      "help": "Inclusive upper bound. Leave blank to skip the upper bound."
     },
     "set": {
       "type": "string",
-      "label": "Allowed values (in_set only)",
+      "label": "Allowed values",
+      "visibleWhen": { "check": "in_set" },
       "help": "Comma-separated list of values, e.g. `paid, pending, cancelled`. Each value is compared as text — surround with quotes if it contains a comma."
     },
     "pattern": {
       "type": "string",
-      "label": "Regex (regex only)",
+      "label": "Regex",
+      "visibleWhen": { "check": "regex" },
       "help": "DuckDB regex pattern (POSIX-style). The rule passes if every non-NULL value matches."
     },
     "expression": {
       "type": "string",
-      "label": "SQL expression (expression only)",
+      "label": "SQL expression",
+      "visibleWhen": { "check": "expression" },
       "help": "Free-form SQL predicate. The rule passes when the expression returns TRUE for every row. Reference the column with its quoted name. Same security validator as filter_rows / derive_column."
     },
     "severity": {

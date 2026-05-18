@@ -1,8 +1,8 @@
 {
   "id": "math_equation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "🧮 Math equation",
-  "description": "Add a column computed from a math expression over existing columns. Supports arithmetic (+ - * / %), exponents (^ or pow()), and the usual math functions: sqrt, abs, log, ln, exp, sin, cos, tan, round, floor, ceil, mod, greatest, least. Reference columns by name, e.g. (price * quantity) - discount.",
+  "description": "Add a column computed from a math expression over existing columns. Supports arithmetic (+ - * / %), exponents (^ or pow()), and the standard math functions: sqrt, abs, log, ln, exp, sin, cos, tan, asin, acos, atan, atan2(y, x), sinh, cosh, tanh, asinh, acosh, atanh, round, floor, ceil, mod, greatest, least. Reference columns by name, e.g. (price * quantity) - discount, atan2(dy, dx) for bearing.",
   "category": "derive",
   "engine": { "primary": "sql", "browser": "sql", "deterministic": true },
   "io": {
@@ -19,7 +19,7 @@
     "equation": {
       "type": "expression",
       "label": "Equation",
-      "help": "Math expression — e.g. (price * quantity) - discount, sqrt(a^2 + b^2), round(amount * 1.07, 2)",
+      "help": "Math expression — e.g. (price * quantity) - discount, sqrt(a^2 + b^2), atan2(dy, dx), round(amount * 1.07, 2)",
       "required": true
     },
     "position": {

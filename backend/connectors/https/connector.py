@@ -8,7 +8,7 @@ import socket
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import polars as pl
 
@@ -43,6 +43,27 @@ def _is_private_address(host: str) -> bool:
         ):
             return True
     return False
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    """Re-validate the Location header on every 3xx hop.
+
+    Without this guard the initial URL is checked but a malicious server
+    can return ``Location: http://169.254.169.254/...`` (cloud metadata)
+    or ``http://localhost:8090/...`` (sibling service) and the default
+    ``HTTPRedirectHandler`` will silently follow it. Pen-test finding
+    round 8.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        _assert_https_uri_safe(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_url(req: Request, timeout: int):
+    """``urlopen``-compatible call that re-validates every redirect hop."""
+    opener = build_opener(_SafeRedirectHandler())
+    return opener.open(req, timeout=timeout)
 
 
 def _assert_https_uri_safe(uri: str) -> None:
@@ -113,7 +134,7 @@ class HttpsConnector(Connector):
         )
         # Cap response size — a 60 GB malicious response would OOM the
         # worker. Read in chunks so we can stop early.
-        with urlopen(req, timeout=60) as resp:
+        with _open_url(req, timeout=60) as resp:
             buf = bytearray()
             while True:
                 chunk = resp.read(64 * 1024)

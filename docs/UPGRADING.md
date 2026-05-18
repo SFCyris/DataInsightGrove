@@ -11,7 +11,7 @@ newer one?" a one-command answer.
 ./upgrade.sh --check          # is there a newer release on GitHub?
 ./upgrade.sh                  # interactive upgrade (prompts before applying)
 ./upgrade.sh --yes            # non-interactive upgrade (CI / scripted)
-./upgrade.sh --to v0.11.0     # upgrade to a specific tag
+./upgrade.sh --to v1.0.0-rc2     # upgrade to a specific tag
 ```
 
 After the script finishes, restart the backend. On boot, DIG records the
@@ -114,7 +114,7 @@ Exit codes:
 Pin a known-good version in a corporate / disconnected environment:
 
 ```bash
-./upgrade.sh --to v0.11.0 --yes
+./upgrade.sh --to v1.0.0-rc2 --yes
 ```
 
 ## Manual upgrade (without the script)
@@ -123,7 +123,7 @@ If you can't or don't want to use `upgrade.sh`:
 
 ```bash
 git fetch --tags origin
-git checkout v0.11.0          # or whichever tag
+git checkout v1.0.0-rc2          # or whichever tag
 ./backend/.venv/bin/pip install -e ./backend
 ( cd frontend && pnpm install )
 printf '0.10.0\n' > "${DIG_DATA_DIR:-./data}/.installed_version"  # OLD version — the boot rewrites it after firing the transition event
@@ -169,8 +169,10 @@ added; the older code ignores them.
 Exception: **MAJOR-version rollbacks** may require a database restore
 from backup if the MAJOR included a non-additive migration. The boot
 notification fired by the original upgrade tells you whether such a
-migration ran — if so, your `data/dig.sqlite.bak.<timestamp>` (left
-behind by the migration tool) is the canonical roll-back source.
+migration ran. DIG does not auto-snapshot the SQLite file, so before
+running a MAJOR upgrade copy `data/dig.sqlite` somewhere safe — that
+copy is your roll-back source if the migration turns out to be
+incompatible.
 
 ## Where versions live
 

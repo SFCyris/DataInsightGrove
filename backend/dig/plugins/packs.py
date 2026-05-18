@@ -140,6 +140,27 @@ def _validate_id(pack_id: Any, label: str = "pack id") -> str:
     return pack_id
 
 
+# Liberal SemVer-ish: digits, dots, hyphens, plus, alphanum (for prerelease
+# tags like `1.2.3-rc1`). Bans `/` `\` `..` `:` so the value can never
+# escape its containing directory after `f"{pack_id}-{version}"`
+# concatenation. Round-3 pen-tester: `discard_staged` only validated
+# `pack_id`, so a request like
+# ``DELETE /packs/_pending/foo?version=../../etc`` resolved into a
+# directory outside ``PENDING_PACKS_DIR``.
+_VERSION_RE = __import__("re").compile(r"^[A-Za-z0-9.+\-]{1,40}$")
+
+
+def _validate_version(version: Any, label: str = "pack version") -> str:
+    if not isinstance(version, str) or not version:
+        raise PackError(f"{label} must be a non-empty string")
+    if not _VERSION_RE.match(version):
+        raise PackError(
+            f"invalid {label}: {version!r} — must be 1..40 chars of "
+            "letters/digits/./+/-",
+        )
+    return version
+
+
 def _safe_member_path(name: str) -> bool:
     """Reject zip member paths that try to escape the pack root."""
     if name.startswith("/") or name.startswith("\\"):
@@ -553,7 +574,14 @@ def install_staged(pack_id: str, version: str) -> InstallResult:
 def discard_staged(pack_id: str, version: str) -> None:
     """Drop a staged pending pack without installing."""
     _validate_id(pack_id)
-    pending_dir = PENDING_PACKS_DIR / f"{pack_id}-{version}"
+    _validate_version(version)
+    # Defence-in-depth: even with the version validator, resolve the
+    # constructed path and reject anything that would escape the staging
+    # root. Belt-and-suspenders against a future regex regression.
+    pending_dir = (PENDING_PACKS_DIR / f"{pack_id}-{version}").resolve()
+    staging_root = PENDING_PACKS_DIR.resolve()
+    if not str(pending_dir).startswith(str(staging_root) + "/") and pending_dir != staging_root:
+        raise PackError(f"pending dir {pending_dir} escapes staging root {staging_root}")
     if pending_dir.exists():
         shutil.rmtree(pending_dir)
 

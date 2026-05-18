@@ -2,18 +2,7 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { motion } from "motion/react";
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  ingest: "📥",
-  shape: "✂️",
-  clean: "🧹",
-  derive: "➕",
-  combine: "🔗",
-  aggregate: "📊",
-  model: "🧠",
-  output: "📤",
-  custom: "🧩",
-};
+import { CATEGORY_EMOJI } from "@/lib/category-emoji";
 
 // ---- Phase A Layer 1: run-state overlay ---------------------------------
 
@@ -116,7 +105,7 @@ export function DatasetNode({ data, selected }: NodeProps) {
           <p className="text-sm font-medium truncate" title={d.label}>{d.label}</p>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} id="out" className="!bg-foreground/40" />
+      <Handle type="source" position={Position.Right} id="out" className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30" />
     </motion.div>
   );
 }
@@ -137,8 +126,22 @@ export function StepNode({ data, selected }: NodeProps) {
     : null;
   const rowsLabel = d.rowsOut != null ? formatRows(d.rowsOut) : null;
 
+  // Round-4 UX#2 finding: the step node had no accessible name; screen
+  // readers heard a bare emoji + the category + label crammed
+  // together with no semantics. Add an aria-label that reads as
+  // "{category} step: {label}, {run-state}" — the latter only
+  // appears when relevant so the announcement stays terse.
+  const a11yLabel = (() => {
+    const parts: string[] = [`${d.category} step: ${d.label}`];
+    if (d.runState) parts.push(d.runState);
+    if (rowsLabel) parts.push(`${rowsLabel} rows`);
+    if (d.hasError) parts.push("error");
+    return parts.join(", ");
+  })();
   return (
     <motion.div
+      role="group"
+      aria-label={a11yLabel}
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 320, damping: 26 }}
@@ -218,7 +221,7 @@ export function StepNode({ data, selected }: NodeProps) {
           id={port}
           position={Position.Left}
           style={{ top: 24 + idx * 16 }}
-          className="!bg-foreground/40"
+          className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30"
         />
       ))}
       {d.outputPorts.map((port, idx) => (
@@ -228,7 +231,7 @@ export function StepNode({ data, selected }: NodeProps) {
           id={port}
           position={Position.Right}
           style={{ top: 24 + idx * 16 }}
-          className="!bg-foreground/40"
+          className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30"
         />
       ))}
     </motion.div>
@@ -254,7 +257,7 @@ export function OutputNode({ data, selected }: NodeProps) {
           <p className="text-sm font-medium truncate">{d.label}</p>
         </div>
       </div>
-      <Handle type="target" position={Position.Left} id="out" className="!bg-foreground/40" />
+      <Handle type="target" position={Position.Left} id="out" className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30" />
     </motion.div>
   );
 }
@@ -308,6 +311,7 @@ export function GroupNode({ id, data }: NodeProps) {
         className={[
           "absolute -top-3 left-3 px-2 py-0.5 rounded-md bg-card border border-border shadow-sm",
           "hover:bg-muted hover:border-foreground/30 cursor-pointer transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         ].join(" ")}
         style={{ pointerEvents: "auto" }}
         title="Click to edit group"

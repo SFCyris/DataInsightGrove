@@ -4,11 +4,7 @@ import Link from "next/link";
 import { motion } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type StepManifest } from "@/lib/api/client";
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  ingest: "📥", shape: "✂️", clean: "🧹", derive: "➕",
-  combine: "🔗", aggregate: "📊", output: "📤", custom: "🧩",
-};
+import { CATEGORY_EMOJI } from "@/lib/category-emoji";
 
 interface Props {
   onAdd: (step: StepManifest) => void;

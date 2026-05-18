@@ -100,6 +100,15 @@ class WebhookTriggerStep(Step):
         payload: dict[str, Any] = {
             "event": "step.triggered",
             "runId": run_id,
+            # Round-4 QA finding: the auto-dispatch payload includes
+            # pipelineId / pipelineName, but the in-pipeline trigger
+            # payload only carried runId + stepId. Receivers couldn't
+            # correlate a triggered fire back to a pipeline without
+            # parsing the runId and querying the DB. Add the two
+            # identifiers using the PolarsContext fields wired up for
+            # exactly this purpose.
+            "pipelineId": ctx.pipeline_id if ctx else None,
+            "pipelineName": ctx.pipeline_name if ctx else None,
             "stepId": self.id,
             "stepLabel": self.label,
             "rowCount": df.height,
@@ -107,10 +116,17 @@ class WebhookTriggerStep(Step):
             **extra,  # user-supplied keys win over defaults — that's the point of "extra"
         }
 
-        # We're inside a thread (executor wraps execute_polars in to_thread),
-        # so spin up a private event loop to call the async dispatcher.
-        # This keeps the side-effect synchronous from the executor's POV
-        # and avoids leaking an unfinished coroutine.
+        # Round-4 QA finding: previously this called ``asyncio.run(_fire())``
+        # from inside a worker thread. `_resolve_webhook` opens
+        # ``SessionLocal()`` whose aiosqlite engine is bound to the API
+        # main event loop — submitting it to a brand-new loop raises
+        # ``RuntimeError: ... Future attached to a different loop`` on
+        # the first real fire. The fix is the same pattern the
+        # subpipeline step uses: hand the coroutine to the API's main
+        # loop via ``run_coroutine_threadsafe`` and block here on the
+        # concurrent.futures.Future result.
+        from dig.jobs.manager import main_loop
+        loop = main_loop()
         async def _fire() -> tuple[bool, str | None]:
             hook = await _resolve_webhook(label)
             if hook is None:
@@ -121,7 +137,15 @@ class WebhookTriggerStep(Step):
             except Exception as e:  # noqa: BLE001
                 return False, f"{type(e).__name__}: {e}"
 
-        fired, err = asyncio.run(_fire())
+        if loop is None:
+            # No API loop captured yet (e.g. running this step standalone
+            # in a test). Fall back to a fresh loop — `_resolve_webhook`
+            # opens its OWN session here, so binding is consistent within
+            # the call.
+            fired, err = asyncio.run(_fire())
+        else:
+            fut = asyncio.run_coroutine_threadsafe(_fire(), loop)
+            fired, err = fut.result(timeout=30)
 
         artifact: dict[str, Any] = {
             "kind": "webhook_trigger",

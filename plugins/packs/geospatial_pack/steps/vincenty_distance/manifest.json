@@ -1,0 +1,55 @@
+{
+  "id": "vincenty_distance",
+  "version": "1.0.0",
+  "label": "🌍 Vincenty distance",
+  "description": "Compute geodesic distance (in metres) between two lat/lon points using Vincenty's formula on the WGS84 ellipsoid. More accurate than Haversine for long distances and near the poles, where Haversine's spherical-earth assumption introduces error up to ~0.5%. Use for aviation, maritime, and continent-scale distance work; Haversine (the built-in geo_distance step) is fine for sub-100 km distances.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "lat1Column": {
+      "type": "column_ref",
+      "label": "Point A latitude",
+      "columnFrom": "in",
+      "required": true
+    },
+    "lon1Column": {
+      "type": "column_ref",
+      "label": "Point A longitude",
+      "columnFrom": "in",
+      "required": true
+    },
+    "lat2Column": {
+      "type": "column_ref",
+      "label": "Point B latitude",
+      "columnFrom": "in",
+      "required": true
+    },
+    "lon2Column": {
+      "type": "column_ref",
+      "label": "Point B longitude",
+      "columnFrom": "in",
+      "required": true
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "distance_m",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "outputBearing": {
+      "type": "boolean",
+      "label": "Also output initial bearing (degrees)",
+      "default": false,
+      "help": "Adds a second column with the initial heading from A to B (0 = north, 90 = east)."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "distance", "vincenty", "geodesic", "wgs84", "derive"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}, {"kind": "numeric"}, {"kind": "numeric"}],
+  "aliases": ["geodesic", "ellipsoid distance", "long distance", "great circle accurate"]
+}

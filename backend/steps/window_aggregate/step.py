@@ -48,9 +48,20 @@ class WindowAggregateStep(Step):
             if not col:
                 raise ValueError(f"{fn} requires 'column'")
             expr = f"{sql_fn}({quote_ident(col)}) OVER ({partition_clause}{order_clause})"
-        else:
+        elif fn == "count":
+            # count is the only aggregate that supports COUNT(*).
             arg = quote_ident(col) if col else "*"
             expr = f"{sql_fn}({arg}) OVER ({partition_clause}{order_clause})"
+        else:
+            # Round-8 fix: SUM/MIN/MAX/AVG/STD(*) is invalid SQL. Raise
+            # preflight so the editor shows a clear error instead of a
+            # cryptic Binder Error.
+            if not col:
+                raise ValueError(
+                    f"window_aggregate: aggregate {fn!r} requires a "
+                    "column (count(*) is the only column-less form)",
+                )
+            expr = f"{sql_fn}({quote_ident(col)}) OVER ({partition_clause}{order_clause})"
 
         return f"SELECT *, {expr} AS {alias} FROM {src}"
 

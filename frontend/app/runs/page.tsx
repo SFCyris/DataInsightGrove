@@ -21,8 +21,10 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 
 import { api, searchApi, type RunListItem } from "@/lib/api/client";
-import { fmtInt } from "@/lib/format-number";
+import { fmtDuration, fmtInt } from "@/lib/format-number";
 import { useURLState } from "@/lib/use-url-state";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { PositiveLoader } from "@/components/positive-loader";
 
 // ---- Helpers -----------------------------------------------------------
 
@@ -36,14 +38,6 @@ const STATUS_META: Record<string, { emoji: string; tone: string; label: string }
 
 function statusMeta(s: string) {
   return STATUS_META[s] ?? { emoji: "❔", tone: "text-zinc-500", label: s };
-}
-
-function fmtDuration(ms: number | null): string {
-  if (ms == null) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${Math.round(ms / 1000 / 60)}m ${Math.round((ms / 1000) % 60)}s`;
-  return `${Math.round(ms / 1000 / 3600)}h ${Math.round((ms / 1000 % 3600) / 60)}m`;
 }
 
 function fmtTimeAgo(iso: string | null): string {
@@ -86,6 +80,7 @@ const DEFAULT_FILTERS: FilterState = {
 };
 
 export default function RunsPage() {
+  useDocumentTitle('Run history');
   // URL-state for shareable filtered views (synergy with the URL state
   // hook from Phase-A-pro #2).
   const [filters, setFilters] = useURLState<FilterState>("rf", DEFAULT_FILTERS);
@@ -144,7 +139,7 @@ export default function RunsPage() {
     filters.preset !== "all";
 
   return (
-    <main className="flex flex-col h-screen overflow-hidden">
+    <main id="main" className="flex flex-col h-screen overflow-hidden">
       {/* Header */}
       <header className="px-6 py-3 border-b border-border flex items-center gap-3 shrink-0">
         <Link
@@ -180,6 +175,7 @@ export default function RunsPage() {
               key={s}
               type="button"
               onClick={() => toggleStatus(s)}
+              aria-pressed={active}
               className={[
                 "px-2 py-0.5 rounded-full border transition-all flex items-center gap-1",
                 active
@@ -203,6 +199,7 @@ export default function RunsPage() {
               key={p.id}
               type="button"
               onClick={() => setFilters((cur) => ({ ...cur, preset: p.id }))}
+              aria-pressed={active}
               className={[
                 "px-2 py-0.5 rounded-full border transition-all",
                 active
@@ -226,6 +223,7 @@ export default function RunsPage() {
                   key={t}
                   type="button"
                   onClick={() => toggleTag(t)}
+                  aria-pressed={active}
                   className={[
                     "px-2 py-0.5 rounded-full border transition-all",
                     active
@@ -243,6 +241,7 @@ export default function RunsPage() {
         <span className="w-px self-stretch bg-border mx-1" />
 
         <select
+          aria-label="Filter by pipeline"
           value={filters.pipeline ?? ""}
           onChange={(e) =>
             setFilters((p) => ({ ...p, pipeline: e.target.value || null }))
@@ -269,8 +268,8 @@ export default function RunsPage() {
       {/* Grid */}
       <div className="flex-1 overflow-y-auto">
         {runsQ.isLoading ? (
-          <div className="h-full grid place-items-center text-sm text-muted-foreground italic">
-            Loading runs…
+          <div className="h-full grid place-items-center">
+            <PositiveLoader variant="rendering" primary="Loading runs…" size="md" showTimer={false} />
           </div>
         ) : items.length === 0 ? (
           <div className="h-full grid place-items-center text-center text-muted-foreground">
@@ -292,44 +291,47 @@ export default function RunsPage() {
               <p className="text-xs mt-1">Open a pipeline and click <span className="font-mono">▶ Run</span> to populate this list.</p>
               {!filtersActive && (
                 <div className="pt-3">
-                  <a
+                  <Link
                     href="/pipelines"
                     className="inline-block px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                   >
                     🛤 Browse pipelines
-                  </a>
+                  </Link>
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-background/95 backdrop-blur border-b border-border z-10">
-              <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                <th className="px-4 py-2 w-[120px]">Status</th>
-                <th className="px-4 py-2">Pipeline</th>
-                <th className="px-4 py-2 w-[110px]">Triggered</th>
-                <th className="px-4 py-2 w-[110px] text-right">Started</th>
-                <th className="px-4 py-2 w-[90px] text-right">Duration</th>
-                <th className="px-4 py-2 w-[70px] text-right">Outputs</th>
-                <th className="px-4 py-2 w-[100px] text-right">Rows</th>
-                <th className="px-4 py-2 w-[140px]">Tags</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <RunRow key={r.id} run={r} />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-xs">
+              <thead className="sticky top-0 bg-background/95 backdrop-blur border-b border-border z-10">
+                <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+                  <th className="px-4 py-2 w-[120px]">Status</th>
+                  <th className="px-4 py-2">Pipeline</th>
+                  <th className="px-4 py-2 w-[110px]">Triggered</th>
+                  <th className="px-4 py-2 w-[110px] text-right">Started</th>
+                  <th className="px-4 py-2 w-[90px] text-right">Duration</th>
+                  <th className="px-4 py-2 w-[70px] text-right">Outputs</th>
+                  <th className="px-4 py-2 w-[100px] text-right">Rows</th>
+                  <th className="px-4 py-2 w-[140px]">Tags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((r) => (
+                  <RunRow key={r.id} run={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         {runsQ.hasNextPage && (
-          <div className="p-4 grid place-items-center">
+          <div className="p-4 grid place-items-center" aria-live="polite">
             <button
               type="button"
               onClick={() => runsQ.fetchNextPage()}
               disabled={runsQ.isFetchingNextPage}
+              aria-busy={runsQ.isFetchingNextPage}
               className="text-xs px-3 py-1.5 rounded border border-border bg-card hover:bg-muted disabled:opacity-50 transition-colors"
             >
               {runsQ.isFetchingNextPage ? "Loading…" : "Load more"}
@@ -371,7 +373,15 @@ function RunRow({ run }: { run: RunListItem }) {
         </Link>
       </td>
       <td className="px-4 py-2 text-muted-foreground">{run.triggeredBy}</td>
-      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground" title={run.startedAt ?? run.createdAt}>
+      <td
+        className="px-4 py-2 text-right tabular-nums text-muted-foreground"
+        title={(() => {
+          const t = run.startedAt ?? run.createdAt;
+          if (!t) return "";
+          const d = new Date(t);
+          return Number.isNaN(d.getTime()) ? t : d.toLocaleString();
+        })()}
+      >
         {fmtTimeAgo(run.startedAt ?? run.createdAt)}
       </td>
       <td className="px-4 py-2 text-right tabular-nums">{fmtDuration(run.durationMs)}</td>

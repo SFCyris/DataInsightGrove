@@ -71,7 +71,18 @@ class CastTypeStep(Step):
         col = params["column"]
         target = params["targetType"]
         strict = params.get("strict", False)
-        sql_type = _TYPE_TO_SQL[target]
+        # Round-8 fix: previously did ``_TYPE_TO_SQL[target]`` which raises
+        # a bare ``KeyError`` on unknown target types — legacy pipelines
+        # referencing a removed type, or a manifest enum typo, crashed
+        # mid-compile with no clear error. Return a ValueError naming the
+        # allowed values instead.
+        sql_type = _TYPE_TO_SQL.get(target)
+        if sql_type is None:
+            allowed = ", ".join(sorted(_TYPE_TO_SQL.keys()))
+            raise ValueError(
+                f"cast_type: unknown targetType {target!r}; "
+                f"expected one of: {allowed}",
+            )
         cast_op = "CAST" if strict else "TRY_CAST"
         col_q = quote_ident(col)
         return f"SELECT * REPLACE ({cast_op}({col_q} AS {sql_type}) AS {col_q}) FROM {src}"

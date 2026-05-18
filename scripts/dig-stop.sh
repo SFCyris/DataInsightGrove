@@ -46,7 +46,8 @@ if [[ -f "$PID_FILE" ]]; then
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
-    print("\n".join(str(d[k]["pid"]) for k in ("api", "web") if k in d and isinstance(d[k], dict)))
+    # tls_proxy is the optional third process started when TLS is enabled.
+    print("\n".join(str(d[k]["pid"]) for k in ("api", "web", "tls_proxy") if k in d and isinstance(d[k], dict)))
 except Exception:
     pass
 PYEOF
@@ -99,7 +100,12 @@ fi
 # the API) gets its owning process killed too. We want to stop the server,
 # not the user's browser.
 if command -v lsof >/dev/null 2>&1; then
-  for port in "$API_PORT" "$WEB_PORT"; do
+  # Include the HTTPS-side ports too so a TLS proxy that escaped the
+  # PID kill (e.g. wrapper crashed but child kept running) gets cleaned
+  # up by the orphan sweep.
+  API_HTTPS_PORT="${DIG_API_HTTPS_PORT:-8443}"
+  WEB_HTTPS_PORT="${DIG_WEB_HTTPS_PORT:-3443}"
+  for port in "$API_PORT" "$WEB_PORT" "$API_HTTPS_PORT" "$WEB_HTTPS_PORT"; do
     while IFS= read -r pid; do
       [[ -z "$pid" ]] && continue
       echo "[dig stop] orphan on :$port → kill $pid"

@@ -1,0 +1,57 @@
+{
+  "id": "wkb_by_us_zip",
+  "version": "1.0.0",
+  "label": "📮 Boundary by US ZIP",
+  "description": "Look up the WKB boundary of a US ZIP Code Tabulation Area (ZCTA) from a 5-digit ZIP or a lat/lon point. The bundled boundary is APPROXIMATE — derived from the Census Bureau gazetteer's centroid + land area as an equal-area circle. For a marker-style map this is accurate; for a high-fidelity choropleth, use a custom ZCTA polygon dataset and a join step.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "input_mode": {
+      "type": "enum",
+      "label": "Input mode",
+      "enumValues": ["text", "point", "auto"],
+      "enumLabels": [
+        "text · 5-digit ZIP column",
+        "point · separate lat + lon columns",
+        "auto · try text first, fall back to point"
+      ],
+      "default": "auto",
+      "required": true
+    },
+    "input_column": {
+      "type": "column_ref",
+      "label": "ZIP column",
+      "help": "Column with 5-digit US ZIP codes. Leading zeros must be preserved (e.g. \"00501\" for Holtsville, NY). The lookup also tolerates \"02139-1234\" — the trailing +4 is stripped.",
+      "columnFrom": "in",
+      "visibleWhen": { "input_mode": ["text", "auto"] }
+    },
+    "lat_column": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "lon_column": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "zip_geometry",
+      "required": true,
+      "help": "Companion columns: <name>_zip, <name>_centroid_lat, <name>_centroid_lon, <name>_land_area_m2."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "boundary", "zip", "zcta", "lookup", "wkb"],
+  "aliases": ["zip code geometry", "zcta", "zip polygon", "us zip", "postal code us"]
+}

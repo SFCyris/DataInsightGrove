@@ -43,6 +43,7 @@ class EventKinds:
     RUN_STARTED     : Final = "run.started"
     RUN_SUCCEEDED   : Final = "run.succeeded"
     RUN_FAILED      : Final = "run.failed"
+    RUN_CANCELLED   : Final = "run.cancelled"   # user-triggered cancel
     RUN_SLOW        : Final = "run.slow"        # took longer than its baseline
 
     # Freshness — TRANSITIONS, not steady states. fresh→due means "this
@@ -84,7 +85,7 @@ class EventKinds:
 # Flat list for UI dropdowns + validation. Keep in sync with EventKinds.
 ALL_EVENT_KINDS: tuple[str, ...] = (
     EventKinds.RUN_QUEUED, EventKinds.RUN_STARTED, EventKinds.RUN_SUCCEEDED,
-    EventKinds.RUN_FAILED, EventKinds.RUN_SLOW,
+    EventKinds.RUN_FAILED, EventKinds.RUN_CANCELLED, EventKinds.RUN_SLOW,
     EventKinds.FRESHNESS_DUE, EventKinds.FRESHNESS_STALE, EventKinds.FRESHNESS_RECOVERED,
     EventKinds.SYSTEM_STARTUP, EventKinds.SYSTEM_SHUTDOWN, EventKinds.SYSTEM_ERROR,
     EventKinds.LOGIN_SUCCESS, EventKinds.LOGIN_FAILED,

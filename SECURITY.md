@@ -63,4 +63,4 @@ Once 1.0.0 GAs, the support window becomes: **current minor + previous minor**, 
 - `DIG_PIP_INDEX_URL` — override the index pack auto-install reads from. Use to point at an internal mirror.
 - `DIG_VALIDATE_MAX_NODES`, `DIG_MAX_BODY_BYTES`, `DIG_WS_MAX_BYTES` — resource-exhaustion guardrails.
 
-See `docs/CONFIG.md` (when it lands) for the full list.
+See [`docs/CONFIG.md`](docs/CONFIG.md) for the full list.

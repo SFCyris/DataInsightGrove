@@ -298,6 +298,23 @@ export function ProfileDrawer({
     return () => window.removeEventListener("keydown", fn);
   }, [open, onClose]);
 
+  // Round-4 UX#2: lock body scroll while the drawer is open so the
+  // page beneath doesn't slide when the user wheels over the backdrop.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
+
+  // Move focus into the drawer on open so screen-reader / keyboard
+  // users actually enter the dialog. The close button is the safest
+  // initial focus target — it always exists and dismisses cleanly.
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) closeButtonRef.current?.focus();
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && columnName && profile && (
@@ -312,6 +329,9 @@ export function ProfileDrawer({
           />
           <motion.aside
             key="drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-drawer-title"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -322,13 +342,14 @@ export function ProfileDrawer({
               <span className="text-2xl" aria-hidden>{TYPE_EMOJI[logical(columnType ?? "")] ?? "❔"}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Profile</p>
-                <p className="font-medium truncate" title={columnName}>{columnName}</p>
+                <p id="profile-drawer-title" className="font-medium truncate" title={columnName}>{columnName}</p>
               </div>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
-                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close profile drawer"
+                className="inline-flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 ✕
               </button>

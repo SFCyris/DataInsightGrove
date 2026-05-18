@@ -8,11 +8,7 @@ import type {
   StepManifest,
 } from "@/lib/api/client";
 import { fmtInt } from "@/lib/format-number";
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  ingest: "📥", shape: "✂️", clean: "🧹", derive: "➕",
-  combine: "🔗", aggregate: "📊", model: "🧠", output: "📤", custom: "🧩",
-};
+import { CATEGORY_EMOJI } from "@/lib/category-emoji";
 
 interface Props {
   doc: PipelineDocument;

@@ -352,6 +352,23 @@ export function LiveGrid({
     [dragCol, columnNames, onColumnAction],
   );
 
+  // Round-4 UX#2: drag-to-reorder was mouse-only. Keyboard users need
+  // an Alt+Left / Alt+Right alternative on a focused header to move
+  // the column. We reuse the same reducer the drop path uses so the
+  // resulting order is identical.
+  const moveColumn = useCallback(
+    (colName: string, dir: -1 | 1) => {
+      const cur = columnNames.indexOf(colName);
+      if (cur < 0) return;
+      const target = cur + dir;
+      if (target < 0 || target >= columnNames.length) return;
+      const next = [...columnNames];
+      [next[cur], next[target]] = [next[target], next[cur]];
+      onColumnAction({ kind: "reorder", order: next });
+    },
+    [columnNames, onColumnAction],
+  );
+
   // Cap rendered rows at 500 — plain <table> handles this comfortably
   // without virtualization. The status strip below shows total + the
   // "showing first N of M" hint when truncated.
@@ -382,20 +399,24 @@ export function LiveGrid({
         )}
         <span className="flex-1" />
         {totalRows > previewCount && (
-          <span className="text-[10px] text-muted-foreground">
+          <span
+            role="status"
+            aria-live="polite"
+            className="text-[10px] text-muted-foreground"
+          >
             showing first {fmtInt(previewCount)} of {fmtInt(totalRows)}
           </span>
         )}
-        {!ranLocally && (
-          <span
-            className="text-[10px] px-2 py-0.5 rounded-full border border-sky-300/40 bg-sky-50/40 dark:bg-sky-900/10 text-sky-700 dark:text-sky-300"
-            title="This step needs the DuckDB spatial extension, which isn't available in the in-browser engine. Preview ran on the backend instead."
-          >
-            🌐 via backend
-          </span>
-        )}
+        {/*
+          Round-4 UX#2 finding: the "🌐 via backend" badge leaked
+          DIG's execution-routing implementation detail into the UI.
+          User memory says we must treat processing surface as
+          transparent — the system auto-routes, the user doesn't pick.
+          Drop the badge entirely; the spatial-extension fallback is
+          internal plumbing, not a user concern.
+        */}
         <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-300/40 bg-amber-50/40 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300">
-          🦆 sample · {fmtInt(sampleRows)}
+          sample · {fmtInt(sampleRows)} rows
         </span>
         {loading && (
           <motion.span
@@ -454,6 +475,16 @@ export function LiveGrid({
                     <th
                       key={c.name}
                       draggable
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.altKey && e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          moveColumn(c.name, -1);
+                        } else if (e.altKey && e.key === "ArrowRight") {
+                          e.preventDefault();
+                          moveColumn(c.name, 1);
+                        }
+                      }}
                       onDragStart={(e) => {
                         e.dataTransfer.effectAllowed = "move";
                         // Some browsers refuse to start a drag without payload.

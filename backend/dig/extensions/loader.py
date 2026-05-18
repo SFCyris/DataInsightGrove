@@ -135,8 +135,15 @@ def discover_entry_points(
                 log.warning("duplicate extension %s:%s from %s — skipped", group, ep.name, pkg)
                 continue
             seen.add(key)
+            # Round-4 QA finding: a third-party plugin that does heavy
+            # import-time work (DB connect, model load, 30s blocking IO)
+            # used to freeze the whole FastAPI lifespan because
+            # ``ep.load()`` is synchronous and we call it serially.
+            # Wrap each load in a worker thread with a deadline; on
+            # timeout, record the error and move on so a bad plugin
+            # can't extend startup indefinitely.
             try:
-                obj = ep.load()
+                obj = _load_with_timeout(ep, _ENTRY_POINT_LOAD_TIMEOUT_S)
                 discovered.append(DiscoveredExtension(
                     group=group, name=ep.name, package=pkg,
                     package_version=ver, loaded_object=obj,
@@ -152,6 +159,62 @@ def discover_entry_points(
                     load_error=f"{type(exc).__name__}: {exc}",
                 ))
     return discovered
+
+
+# Hard ceiling for a single entry-point load. The clean case (a small
+# Python module import) finishes in milliseconds; anything above this
+# means the plugin is doing IO at import time, which is forbidden by
+# the protocol contract and would freeze startup.
+_ENTRY_POINT_LOAD_TIMEOUT_S = 10.0
+
+
+def _load_with_timeout(ep: Any, timeout_s: float) -> Any:
+    """Run ``ep.load()`` in a worker thread; raise TimeoutError after
+    ``timeout_s`` seconds. The worker keeps running (you can't safely
+    kill a Python thread mid-import) but the lifespan moves on, which
+    is what matters for startup latency. A subsequent re-import inside
+    the now-broken plugin will re-raise the partial-init failure.
+    """
+    import concurrent.futures
+    # Round-9 fix: the previous `with ... as pool:` block waited for
+    # the future on __exit__, so a stuck plugin held startup until
+    # the worker thread eventually finished. Call shutdown explicitly
+    # with `wait=False, cancel_futures=True` on timeout so the
+    # lifespan moves on immediately.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = pool.submit(ep.load)
+        try:
+            return fut.result(timeout=timeout_s)
+        except concurrent.futures.TimeoutError as e:
+            raise TimeoutError(
+                f"entry-point load exceeded {timeout_s}s deadline; "
+                "plugin does forbidden import-time IO",
+            ) from e
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _check_manifest_complexity(obj: Any, *, max_depth: int, max_items: int) -> None:
+    """Iterative walk that bounds depth + total node count. Raises ValueError
+    on overflow. Iterative — never grows the Python call stack."""
+    if obj is None:
+        return
+    stack: list[tuple[Any, int]] = [(obj, 1)]
+    count = 0
+    while stack:
+        node, depth = stack.pop()
+        count += 1
+        if count > max_items:
+            raise ValueError(f"manifest contains > {max_items} nodes")
+        if depth > max_depth:
+            raise ValueError(f"manifest nesting exceeds depth {max_depth}")
+        if isinstance(node, dict):
+            for v in node.values():
+                stack.append((v, depth + 1))
+        elif isinstance(node, list):
+            for v in node:
+                stack.append((v, depth + 1))
 
 
 def discover_fs_extensions() -> list[DiscoveredFsExtension]:
@@ -188,6 +251,12 @@ def discover_fs_extensions() -> list[DiscoveredFsExtension]:
                         f"manifest.json too large ({size} bytes; max 1 MiB)",
                     )
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                # Round-4 QA finding: even within 1 MiB a manifest can
+                # nest arrays / objects deeply enough to hit Python's
+                # recursion limit on the post-load walks, and the body
+                # ends up exposed via /health.extensions. Cap depth + a
+                # rough item count.
+                _check_manifest_complexity(manifest, max_depth=32, max_items=10_000)
             except Exception as exc:  # noqa: BLE001
                 log.exception("malformed manifest.json in %s", child)
                 load_error = f"manifest.json: {type(exc).__name__}: {exc}"
@@ -256,13 +325,24 @@ _RESERVED_NAMES = frozenset({
 def _is_safe_name(name: str) -> bool:
     """Names become URL path segments + filesystem dirs.
 
-    Conservative: lowercase + alphanumerics + hyphens + underscores
+    Conservative: lowercase + ASCII alphanumerics + hyphens + underscores
     only. Rejects path traversal, URL reserved chars, control bytes,
-    and DIG's reserved top-level route names.
+    Unicode confusables, and DIG's reserved top-level route names.
+
+    Round-3 pen-tester: ``c.isalnum()`` returns True for non-ASCII
+    letters like Cyrillic ``а`` (U+0430) and Greek ``ο`` (U+03BF). An
+    attacker could register a pack named ``ruпs`` (with a Cyrillic
+    ``п``) — visually identical to ``runs``, NOT in
+    ``_RESERVED_NAMES`` because the reserved-set check is byte-exact,
+    and trivially mountable at ``/ext/ruпs`` to phish operators or
+    poison logs. Gate on ``name.isascii()`` so the reserved-name
+    comparison and the alphanumeric check both speak the same alphabet.
     """
     if not name or len(name) > 64:
         return False
     if name in {".", ".."}:
+        return False
+    if not name.isascii():
         return False
     if name.lower() in _RESERVED_NAMES:
         return False
