@@ -4,12 +4,80 @@ All notable changes to DataInsightGrove are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/) once 1.0.0 ships. Pre-1.0 releases may include breaking changes between minor versions — see `docs/API_STABILITY.md` for the contract.
 
-## [Unreleased]
+## [1.0.0] — 2026-05-18
 
-Workflow + interaction polish from the round-4 / round-5 audit waves.
-No structural change; everything is additive.
+The 1.0 line. Combines the round-4 / round-5 workflow + interaction polish
+with the release-prep wave (TLS dual-protocol, input-data preservation
+policy, geospatial pack expansion, 50 GB-on-a-single-host validation).
 
-### Added
+### Added — release-prep wave
+
+- **TLS dual-protocol**: HTTPS is available via a TLS-terminating proxy on
+  parallel ports (default 8443 / 3443) alongside the HTTP listeners. The
+  page-to-API path uses same-origin via a Next.js `/api/*` rewrite, so no
+  cert trust install is required for the UI to work.
+- **Rotating logs**: API + web + TLS-proxy streams write through a
+  `RotatingFileHandler` wrapper to `/var/log/DIG` (bootstrapped with sudo
+  on first run; falls back to `~/Library/Logs/DIG` on macOS or
+  `~/.local/state/DIG/logs` on Linux). Size + count configurable via
+  `log.maxBytes` / `log.backupCount` (defaults: 10 MB × 5 files).
+- **Startup banner**: every boot writes a structured banner to the top of
+  the active log file — version, git SHA, OS, kernel, Python, Node, CPU,
+  RAM, disk free, resolved config, masked `DIG_*` env vars.
+- **Once-and-done auto-trust**: cert install into the system trust store
+  is attempted exactly once; subsequent restarts skip the sudo prompt
+  whether successful or declined. Re-trigger explicitly with
+  `./scripts/dig_tls.py trust`.
+- **Geospatial pack**: dual-resolution world atlas (10m + 110m);
+  auto-resolution by bbox-diagonal heuristic; dot-proxy substitution at
+  world scale (HTML re-evaluates on zoom); Mercator-aligned PNG
+  choropleth; EU GDP + SF Bay Area demo pipelines.
+- **Reference existing file**: new modal + canvas dropdown footer entry
+  registers an existing file as a dataset reference without copying it
+  into DIG's managed area.
+- **Settings UI — Server & TLS tab**: 7 boot-time entries (log dir, log
+  rotation, TLS toggles, HTTPS ports) round-trip through
+  `~/.config/dig/config.json`.
+- **ADMINISTRATION.md**: new operator-facing reference covering the
+  config-file schema, product tree, on-disk folder layout, log rotation,
+  and backup boundaries.
+- **50 GB benchmark**: `scripts/_gen_50gb_dataset.py` +
+  `scripts/_run_benchmark.py` — end-to-end driver runs a 5-step pipeline
+  with 6 terminals (3 file outputs + 3 visualisations) against a 500 M-row
+  dataset.
+
+### Changed — release-prep wave
+
+- **Input data is sacred**: `DELETE /api/datasets/{id}` removes only the
+  DB row + DIG's internal Parquet cache. Source files at `source_uri` are
+  preserved regardless of location (`data/uploads/`, `data/inputs/`,
+  anywhere else). Audit log surfaces every preserved path.
+- **`DIG_MAX_DATASET_MB` default raised** from 1024 → 65 536 (64 GB) to
+  align with the documented "up to ~50 GB on a single dataset" claim.
+- **`Pipeline.stepVersion`** is now optional on the wire — missing values
+  are backfilled at parse time from the live registry version.
+- **`.gitignore`** sanitised.
+- **Variables demo sink**: `file://exports/...` parsed as authority +
+  absolute path and was rejected by `assert_local_path_safe`; replaced
+  with the run-output-relative default.
+
+### Configuration
+
+- New `~/.config/dig/config.json` blocks: `api.httpsPort`,
+  `web.httpsPort`, `log.{maxBytes,backupCount}`, and
+  `tls.{enabled,certFile,keyFile,autoTrust,additionalSans}`. JSON Schema
+  + CONFIG.md updated to match.
+- Boot-time settings registered in the backend Settings registry with
+  `source: "config_file"` so writes round-trip to disk and the UI can
+  show a "(requires restart)" hint.
+
+### Fixed — release-prep wave
+
+- Gallery template detail page: `q.data?.name` → `q.data?.title` (the
+  API field is `title`).
+- macOS `Info.plist` version: bumped from the placeholder 0.0.1 to 1.0.0.
+
+### Added — workflow polish wave (formerly Unreleased)
 
 - **Command palette**: per-pipeline verbs (▶ run, 📑 duplicate, ⏰ schedule, 🔗 copy link, ⬇ export), Recent group at the top of the palette, "New blank pipeline" / "Browse templates" / "Upload a dataset" create-flow shortcuts, and a global `/` shortcut that focuses the palette search. Typing a step name while inside the editor now inserts it; previously the palette only toasted a hint.
 - **G-chord navigation**: `g h` / `g p` / `g d` / `g r` / `g c` / `g s` jump to Home / Pipelines / Datasets / Runs / Catalog / Settings (Linear / GitHub convention). 1-second timeout; disarmed silently if the second key isn't mapped.

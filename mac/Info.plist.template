@@ -9,9 +9,9 @@
     <key>CFBundleIdentifier</key>
     <string>local.datainsightgrove</string>
     <key>CFBundleVersion</key>
-    <string>0.0.1</string>
+    <string>1.0.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.0.1</string>
+    <string>1.0.0</string>
     <key>CFBundleExecutable</key>
     <string>DataInsightGrove</string>
     <key>CFBundlePackageType</key>
@@ -37,6 +37,6 @@
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 Sebastian Cyris. DataInsightGrove™ and the 🌳 logo are unregistered trademarks of Sebastian Cyris. AGPL-3.0-or-later. Source: https://github.com/SFCyris/DataInsightGrove</string>
     <key>CFBundleGetInfoString</key>
-    <string>DataInsightGrove™ 0.0.1 — self-hosted data preparation. AGPL-3.0. https://github.com/SFCyris/DataInsightGrove</string>
+    <string>DataInsightGrove™ 1.0.0 — self-hosted data preparation. AGPL-3.0. https://github.com/SFCyris/DataInsightGrove</string>
 </dict>
 </plist>
