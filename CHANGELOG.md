@@ -4,11 +4,12 @@ All notable changes to DataInsightGrove are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/) once 1.0.0 ships. Pre-1.0 releases may include breaking changes between minor versions — see `docs/API_STABILITY.md` for the contract.
 
-## [1.0.0] — 2026-05-18
+## [1.0.0-rc3] — 2026-05-18
 
-The 1.0 line. Combines the round-4 / round-5 workflow + interaction polish
-with the release-prep wave (TLS dual-protocol, input-data preservation
-policy, geospatial pack expansion, 50 GB-on-a-single-host validation).
+Third release candidate of the 1.0 line. Combines the round-4 / round-5
+workflow + interaction polish with the release-prep wave (TLS dual-
+protocol, input-data preservation policy, geospatial pack expansion,
+50 GB-on-a-single-host validation).
 
 ### Added — release-prep wave
 
