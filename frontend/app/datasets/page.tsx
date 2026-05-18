@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/upload-dropzone";
+import { ReferenceFileModal } from "@/components/reference-file-modal";
 import { DatasetCard } from "@/components/dataset-card";
 import { HelpLink } from "@/components/help-link";
 import {
@@ -13,9 +15,12 @@ import {
   filterAndSortLibrary,
   useLibraryView,
 } from "@/components/library-toolbar";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 export default function DatasetsPage() {
+  useDocumentTitle('Datasets');
   const reduce = useReducedMotion();
+  const [refModalOpen, setRefModalOpen] = useState(false);
   const datasets = useQuery({
     queryKey: ["datasets"],
     queryFn: api.listDatasets,
@@ -60,6 +65,14 @@ export default function DatasetsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setRefModalOpen(true)}
+            title="Reference an existing file on the DIG server (no copy is made; the file stays where it is)"
+          >
+            📁 Reference file
+          </Button>
           <Link
             href="/datasets/from-rest"
             className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -78,6 +91,10 @@ export default function DatasetsPage() {
       </motion.header>
 
       <UploadDropzone />
+      <ReferenceFileModal
+        open={refModalOpen}
+        onClose={() => setRefModalOpen(false)}
+      />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">

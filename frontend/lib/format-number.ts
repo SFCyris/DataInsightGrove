@@ -65,3 +65,30 @@ export function fmtCell(v: unknown): string {
   }
   return String(v);
 }
+
+/**
+ * Human-readable elapsed duration. Previously reimplemented in
+ * three places (runs/page.tsx, runs/[id]/page.tsx, run-history.tsx)
+ * with slight rounding differences. One canonical helper now.
+ *
+ *   - `null` / undefined → "—"
+ *   - <1s   → "850ms"
+ *   - <1m   → "12.34s"
+ *   - <1h   → "3m 12s"
+ *   - else  → "1h 23m"
+ */
+export function fmtDuration(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`;
+  const totalSec = Math.round(ms / 1000);
+  if (ms < 3_600_000) {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}m ${s}s`;
+  }
+  const totalMin = Math.round(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${m}m`;
+}

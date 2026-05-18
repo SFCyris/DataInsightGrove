@@ -153,6 +153,47 @@ def lint_plugin_python(source: str) -> list[LintIssue]:
             message=f"Python syntax error: {e.msg}",
         )]
 
+    # Round-4 QA finding: ``from polars import read_csv as r`` followed
+    # by ``r("/etc/passwd")`` slipped past the lint because the Call's
+    # func was just ``Name("r")``, not in ``_BANNED_NAMES``. Track
+    # import-time aliases so the alias resolves back to its original
+    # banned identifier. Same logic catches ``import os as o; o.system(...)``
+    # (we now walk attribute-on-aliased-import too).
+    aliases: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            for alias in n.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+        elif isinstance(n, ast.Import):
+            for alias in n.names:
+                if alias.asname:
+                    # `import os as o` → o is a stand-in for `os`
+                    aliases[alias.asname] = alias.name
+        elif isinstance(n, ast.NamedExpr):
+            # Round-4 QA finding: walrus aliases of banned names —
+            # ``(b := __builtins__)`` followed by ``b["eval"]`` — also
+            # need to map back to the original.
+            if isinstance(n.target, ast.Name) and isinstance(n.value, ast.Name):
+                aliases[n.target.id] = n.value.id
+        elif isinstance(n, ast.Assign):
+            # Same shape via plain assignment: ``b = __builtins__``.
+            if (
+                len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name)
+                and isinstance(n.value, ast.Name)
+            ):
+                aliases[n.targets[0].id] = n.value.id
+
+    def _resolve(name: str) -> str:
+        """Follow the alias chain to the original identifier."""
+        seen: set[str] = set()
+        cur = name
+        while cur in aliases and cur not in seen:
+            seen.add(cur)
+            cur = aliases[cur]
+        return cur
+
     for node in ast.walk(tree):
         # ── Imports ────────────────────────────────────────────────────
         if isinstance(node, ast.Import):
@@ -201,11 +242,16 @@ def lint_plugin_python(source: str) -> list[LintIssue]:
         # ── Banned names (function calls, attribute access) ────────────
         if isinstance(node, ast.Call):
             fn_name = _call_name(node.func)
-            if fn_name and _final_segment(fn_name) in _BANNED_NAMES:
-                issues.append(LintIssue(
-                    node.lineno, node.col_offset, "banned_call",
-                    f"Call to '{fn_name}' is not allowed in plugins.",
-                ))
+            if fn_name:
+                final = _final_segment(fn_name)
+                # Resolve aliases — `r()` where `r` was `from polars import
+                # read_csv as r` should report against `read_csv`.
+                resolved = _resolve(final)
+                if final in _BANNED_NAMES or resolved in _BANNED_NAMES:
+                    issues.append(LintIssue(
+                        node.lineno, node.col_offset, "banned_call",
+                        f"Call to '{fn_name}' is not allowed in plugins.",
+                    ))
 
         if isinstance(node, ast.Attribute):
             if node.attr in _BANNED_NAMES:
@@ -215,7 +261,9 @@ def lint_plugin_python(source: str) -> list[LintIssue]:
                 ))
 
         if isinstance(node, ast.Name):
-            if node.id in _BANNED_NAMES:
+            # Also check the alias-resolved name so `b` (aliased to
+            # __builtins__) is caught.
+            if node.id in _BANNED_NAMES or _resolve(node.id) in _BANNED_NAMES:
                 issues.append(LintIssue(
                     node.lineno, node.col_offset, "banned_name",
                     f"Name '{node.id}' is not allowed in plugins.",
@@ -227,11 +275,44 @@ def lint_plugin_python(source: str) -> list[LintIssue]:
         # Also catches obj.__dict__['__builtins__'] via the attribute walker.
         if isinstance(node, ast.Subscript):
             base = node.value
-            if isinstance(base, ast.Name) and base.id in _BANNED_NAMES:
-                issues.append(LintIssue(
-                    node.lineno, node.col_offset, "banned_subscript",
-                    f"Subscript access on '{base.id}' is not allowed (sandbox bypass).",
-                ))
+            if isinstance(base, ast.Name):
+                if base.id in _BANNED_NAMES or _resolve(base.id) in _BANNED_NAMES:
+                    issues.append(LintIssue(
+                        node.lineno, node.col_offset, "banned_subscript",
+                        f"Subscript access on '{base.id}' is not allowed (sandbox bypass).",
+                    ))
+
+        # ── Metaclass / triggered-execution dunder ban ────────────────
+        # Round-3 pen-tester: the AST lint catches direct calls to banned
+        # names but a class body can install runtime hooks that fire on
+        # later attribute access / instantiation / subclassing. The
+        # generated plugin code never legitimately needs these, so ban
+        # them outright:
+        #   - ``class Foo(metaclass=…)`` — metaclass.__call__ runs on
+        #     every ``Foo()`` and can re-import banned modules.
+        #   - ``def __init_subclass__`` / ``def __set_name__`` /
+        #     ``def __class_getitem__`` — fire the moment another module
+        #     subclasses or annotates with the class.
+        if isinstance(node, ast.ClassDef):
+            for kw in node.keywords:
+                if kw.arg == "metaclass":
+                    issues.append(LintIssue(
+                        node.lineno, node.col_offset, "banned_metaclass",
+                        f"class '{node.name}' uses a custom metaclass; "
+                        "metaclasses are not permitted in plugins.",
+                    ))
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) and child.name in {
+                    "__init_subclass__",
+                    "__set_name__",
+                    "__class_getitem__",
+                    "__init_subclass_hook__",
+                }:
+                    issues.append(LintIssue(
+                        child.lineno, child.col_offset, "banned_dunder_hook",
+                        f"method '{child.name}' on class '{node.name}' is "
+                        "a runtime hook and not permitted in plugins.",
+                    ))
 
     return issues
 

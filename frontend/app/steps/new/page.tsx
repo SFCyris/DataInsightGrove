@@ -16,8 +16,10 @@ import { toast } from "sonner";
 import { aiApi, ApiError, type AiGeneratedStep } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { ThinkingLabel } from "@/components/positive-loader";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 export default function NewStepPage() {
+  useDocumentTitle("Generate a step");
   const reduce = useReducedMotion();
   const fadeUp = reduce
     ? { initial: false as const, animate: { opacity: 1, y: 0 } }

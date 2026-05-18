@@ -1,12 +1,45 @@
 from __future__ import annotations
 
 import json as _json
+import re
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
 from dig.engine.connector import Connector
+
+# Conservative SQL-identifier guard. Postgres allows quoted identifiers with
+# arbitrary characters, but the connector's UI surface advertises plain
+# table/schema names — restrict to those so a malicious option string
+# (``table='a"; DROP TABLE x; --'``) can't break out of the quotes.
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_ident(value: str, kind: str) -> str:
+    if not _IDENT_RE.match(value):
+        raise ValueError(
+            f"postgres connector: {kind} {value!r} must match "
+            "^[A-Za-z_][A-Za-z0-9_]*$ (use the 'query' option for "
+            "non-standard names)"
+        )
+    return value
+
+
+def _qualify(schema: str, table: str) -> str:
+    """Quote schema.table after validating both halves. The pre-existing
+    ``"." in table`` shortcut is preserved (so callers can pass
+    ``other_schema.my_table`` in one go) but both pieces are validated."""
+    if "." in table:
+        schema_part, _, table_part = table.partition(".")
+        _validate_ident(schema_part, "schema")
+        _validate_ident(table_part, "table")
+        return f'"{schema_part}"."{table_part}"'
+    _validate_ident(table, "table")
+    if schema:
+        _validate_ident(schema, "schema")
+        return f'"{schema}"."{table}"'
+    return f'"{table}"'
 
 
 class PostgresConnector(Connector):
@@ -31,7 +64,7 @@ class PostgresConnector(Connector):
         if query:
             sql = query
         else:
-            qualified = table if "." in table else f'{schema}."{table}"' if schema else f'"{table}"'
+            qualified = _qualify(schema, table)
             sql = f"SELECT * FROM {qualified}"
 
         try:
@@ -67,11 +100,7 @@ class PostgresConnector(Connector):
                 f"postgres connector: if_exists must be append/replace/fail (got {if_exists!r})"
             )
 
-        qualified = (
-            table
-            if "." in table
-            else f"{schema}.{table}" if schema else table
-        )
+        qualified = _qualify(schema, table)
 
         try:
             frame.write_database(

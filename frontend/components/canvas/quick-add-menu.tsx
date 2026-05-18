@@ -1,31 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type StepManifest } from "@/lib/api/client";
 import { evaluateRequirements, unmetTooltip } from "@/lib/step-requirements";
 import { rankSteps } from "@/lib/step-search";
 import { AiRibbon } from "./ai-ribbon";
+import { CATEGORY_EMOJI } from "@/lib/category-emoji";
 
-// 9-outcome taxonomy. Render order is fixed below so the picker has a
-// predictable visual hierarchy regardless of which categories happen
-// to have matches in a given query. `analyze` and `validate` are new
-// peers (not renames) — see docs/UI_GUIDELINES.md.
-const CATEGORY_EMOJI: Record<string, string> = {
-  ingest:    "📥",
-  shape:     "🧱",
-  clean:     "🧹",
-  derive:    "🧮",
-  aggregate: "📊",
-  combine:   "🔗",
-  analyze:   "📐",
-  model:     "🔮",
-  validate:  "🧪",
-  visualize: "📈",
-  output:    "📤",
-  custom:    "🧩",
-};
+// Render order is fixed below so the picker has a predictable visual
+// hierarchy regardless of which categories happen to have matches in a
+// given query.
 
 const CATEGORY_ORDER: string[] = [
   "clean", "shape", "derive", "aggregate", "combine",
@@ -115,10 +102,24 @@ export function QuickAddMenu({
 
   useEffect(() => {
     if (open) {
-      setQuery("");
+      // Round-5 W1 finding: previously reset to empty on every open.
+      // Persist the last query in sessionStorage so closing the popover
+      // to look at a step, then reopening, keeps the user's typed
+      // filter — a common back-and-forth comparison workflow.
+      try {
+        const persisted = window.sessionStorage.getItem("dig.quickadd.query");
+        if (persisted) setQuery(persisted);
+      } catch { /* ignore */ }
       setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      window.sessionStorage.setItem("dig.quickadd.query", query);
+    } catch { /* ignore */ }
+  }, [open, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -213,7 +214,12 @@ export function QuickAddMenu({
               draw context from (a real pipeline + a focused node). It
               hides itself when AI is disabled in Settings. Renders just
               under the search input — the most prominent slot. */}
-          {pipelineId && focusedNodeId && !query.trim() && (
+          {/* Round-5 W1: previously hidden the moment the user typed
+              anything. Keep it visible regardless of query so the
+              "show me what AI suggests" affordance stays one click
+              away. The ribbon's own internal logic decides whether
+              to fetch a fresh suggestion. */}
+          {pipelineId && focusedNodeId && (
             <AiRibbon
               pipelineId={pipelineId}
               focusedNodeId={focusedNodeId}
@@ -275,6 +281,19 @@ export function QuickAddMenu({
               </ul>
             </div>
           ))}
+          {/* Round-5 W1: "Don't see your step? Generate one" CTA — the
+              ``/steps/new`` flow used to be reachable only from a never-
+              mounted StepLibrary sidebar. */}
+          <div className="border-t border-border/40 mt-2 pt-2 px-2 pb-1">
+            <Link
+              href="/steps/new"
+              onClick={onClose}
+              className="block text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1.5"
+              title="Open the AI-assisted custom-step authoring flow"
+            >
+              ✨ Don&apos;t see your step? Generate one →
+            </Link>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

@@ -2,13 +2,13 @@
 
 ## 1.0-rc cycle (current)
 
-DIG is at **1.0.0-rc1**. The architectural decisions described in
+DIG is at **1.0.0-rc2**. The architectural decisions described in
 [Post-1.0 (the contract that will go live at GA)](#post-10-the-contract-that-goes-live-at-ga)
 are LOCKED — schemas, protocol surface, extension architecture, IP
-posture, and DB schema additivity. Round-2 audit findings are being
-landed in subsequent rc tags; nothing in the SemVer contract below
-will change between rc1 and 1.0.0 GA without an explicit
-`[BREAKING]` note in [`CHANGELOG.md`](../CHANGELOG.md).
+posture, and DB schema additivity. Round-2 / round-3 audit findings
+are being landed in subsequent rc tags; nothing in the SemVer
+contract below will change between rc1 and 1.0.0 GA without an
+explicit `[BREAKING]` note in [`CHANGELOG.md`](../CHANGELOG.md).
 
 For history: pre-1.0 (`0.x`) minor versions were allowed to break:
 

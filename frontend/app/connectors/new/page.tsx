@@ -9,8 +9,11 @@
  *   2. Optionally describe intent → Generate (LLM produces manifest +
  *      connector.py, backend stages to plugins/_pending/, runs safety
  *      lint)
- *   3. Review the generated diff + lint findings → Install (move to
- *      plugins/connectors/) or Discard
+ *   3. Review the generated files + lint findings → Install (move to
+ *      plugins/connectors/) or Discard. There's no diff in this step
+ *      because the connector is a new file, not an edit of an existing
+ *      one; the "Review" view shows the manifest.json + connector.py
+ *      bodies the LLM produced.
  *
  * Safety: AI-generated Python is statically linted on the backend
  * (see dig/ai/safety.py). The user only sees an "Install" button when
@@ -30,6 +33,7 @@ import {
 } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ThinkingLabel } from "@/components/positive-loader";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 type AuthKind = "none" | "bearer" | "api_key_query" | "basic";
 
@@ -41,6 +45,7 @@ const AUTH_PLACEHOLDER: Record<AuthKind, string> = {
 };
 
 export default function NewConnectorPage() {
+  useDocumentTitle("Generate a connector");
   const reduce = useReducedMotion();
   const fadeUp = reduce
     ? { initial: false as const, animate: { opacity: 1, y: 0 } }
@@ -164,7 +169,7 @@ export default function NewConnectorPage() {
           />
         </div>
 
-        <div className="grid grid-cols-[160px_1fr] gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-3">
           <div>
             <label className="text-[11px] uppercase tracking-widest text-muted-foreground block mb-1">Auth</label>
             <select

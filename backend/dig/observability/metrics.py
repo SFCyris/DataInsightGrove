@@ -12,10 +12,14 @@ workloads (a few thousand counter increments per second per process).
 """
 from __future__ import annotations
 
+import logging
+import math
 import threading
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import Literal
+
+log = logging.getLogger(__name__)
 
 
 _LOCK = threading.Lock()
@@ -34,6 +38,59 @@ _TYPE: dict[str, Literal["counter", "gauge", "histogram"]] = {}
 # but per-label breakdown stops growing.
 _PER_METRIC_CARDINALITY_CAP = 10_000
 _OVERFLOW_LABEL = (("__overflow__", "1"),)
+
+# Round-4 QA finding: the per-metric cardinality cap stops new label
+# tuples per metric, but doesn't cap the metric-NAME space itself. A
+# misbehaving plugin emitting millions of distinct names could OOM the
+# registry. Cap globally; past this any new metric name lands in a
+# single `__metric_overflow__` sentinel and is logged once.
+_METRIC_NAME_CAP = 1_000
+_NAME_OVERFLOW_SENTINEL = "__metric_overflow__"
+_name_overflow_warned = False
+
+# Round-3 pen-tester: a malicious step (or a forged plugin) could pass a
+# multi-megabyte string as a label value — `_format_labels` would then
+# happily render it into the `/metrics` body, ballooning the response and
+# poisoning every Prometheus scrape until the process restarts. Cap label
+# names + values defensively. Past the limits, truncate (with an
+# unambiguous suffix) so the metric still emits but the abuse is bounded.
+_MAX_LABEL_NAME_LEN = 128
+_MAX_LABEL_VALUE_LEN = 256
+
+
+def _gate_metric_name(name: str) -> str:
+    """Enforce the global metric-name cap. Returns ``name`` unchanged
+    once the metric is registered, returns the overflow sentinel for
+    additional new names past the cap. Caller holds _LOCK."""
+    global _name_overflow_warned
+    if name in _TYPE:
+        return name
+    if len(_TYPE) >= _METRIC_NAME_CAP:
+        if not _name_overflow_warned:
+            log.warning(
+                "metric-name cap (%d) reached; further new names collapse to %r",
+                _METRIC_NAME_CAP, _NAME_OVERFLOW_SENTINEL,
+            )
+            _name_overflow_warned = True
+        return _NAME_OVERFLOW_SENTINEL
+    return name
+
+
+def _truncate_labels(labels: dict[str, str] | None) -> dict[str, str]:
+    """Cap label name + value length. Defensive — emitting metrics from a
+    plugin should never be able to bloat /metrics indefinitely."""
+    if not labels:
+        return {}
+    out: dict[str, str] = {}
+    for k, v in labels.items():
+        ks = str(k)
+        vs = str(v)
+        if len(ks) > _MAX_LABEL_NAME_LEN:
+            ks = ks[:_MAX_LABEL_NAME_LEN - 3] + "..."
+        if len(vs) > _MAX_LABEL_VALUE_LEN:
+            vs = vs[:_MAX_LABEL_VALUE_LEN - 3] + "..."
+        out[ks] = vs
+    return out
 
 # Histogram buckets, in seconds — exponential out to 60s. Chosen for
 # request-latency + step-execution-time use cases.
@@ -80,18 +137,37 @@ def inc(name: str, value: float = 1.0, labels: dict[str, str] | None = None) -> 
     """Increment a counter. Auto-registers the metric on first call.
     Past the per-metric cardinality cap, the increment lands in a single
     `__overflow__="1"` bucket so the total stays accurate but the labels
-    don't grow unbounded."""
+    don't grow unbounded. Label name/value lengths are truncated.
+
+    Round-4 QA finding: counters are monotonically non-decreasing by
+    Prometheus definition. ``inc(name, -5)`` previously silently
+    decremented; now it's rejected. NaN/inf are also rejected — they
+    poison ``_sum`` rendering and break every scrape.
+    """
+    if not math.isfinite(value) or value < 0:
+        log.warning("metrics.inc(%r) rejected non-finite/negative value %r", name, value)
+        return
+    safe_labels = _truncate_labels(labels)
     with _LOCK:
-        _TYPE.setdefault(name, "counter")
-        key = _cap_labels_for_metric(name, _COUNTERS, _key(name, labels))
+        gated = _gate_metric_name(name)
+        _TYPE.setdefault(gated, "counter")
+        key = _cap_labels_for_metric(gated, _COUNTERS, _key(gated, safe_labels))
         _COUNTERS[key] += value
 
 
 def set_gauge(name: str, value: float, labels: dict[str, str] | None = None) -> None:
-    """Set a gauge to an absolute value. Labels are capped per `inc()`."""
+    """Set a gauge to an absolute value. Labels are capped per `inc()`.
+
+    Gauges may be NaN/inf in principle (e.g. ``ratio = a / b`` with
+    b=0), but Prometheus text format requires those rendered as ``NaN``
+    / ``+Inf`` / ``-Inf``. We accept the value here and let
+    ``_format_float`` produce the spec-compliant string.
+    """
+    safe_labels = _truncate_labels(labels)
     with _LOCK:
-        _TYPE.setdefault(name, "gauge")
-        key = _cap_labels_for_metric(name, _GAUGES, _key(name, labels))
+        gated = _gate_metric_name(name)
+        _TYPE.setdefault(gated, "gauge")
+        key = _cap_labels_for_metric(gated, _GAUGES, _key(gated, safe_labels))
         _GAUGES[key] = value
 
 
@@ -101,10 +177,28 @@ def histogram_observe(
     labels: dict[str, str] | None = None,
 ) -> None:
     """Append an observation to a histogram. Labels are capped per `inc()`.
-    Buckets aggregated on render."""
+    Buckets aggregated on render.
+
+    Round-4 QA finding: NaN/inf observations corrupted the rendered
+    ``_sum`` line (``sum([5, nan]) == nan``) which violates the
+    Prometheus text spec and breaks every downstream scrape. Reject
+    here; emit a counter so operators see the dropped count.
+    """
+    if not math.isfinite(value):
+        log.warning("metrics.histogram_observe(%r) rejected non-finite %r", name, value)
+        with _LOCK:
+            _TYPE.setdefault("dig_metric_observations_dropped_total", "counter")
+            drop_key = _key(
+                "dig_metric_observations_dropped_total",
+                {"metric": name[:64]},
+            )
+            _COUNTERS[drop_key] += 1
+        return
+    safe_labels = _truncate_labels(labels)
     with _LOCK:
-        _TYPE.setdefault(name, "histogram")
-        key = _cap_labels_for_metric(name, _HISTOGRAMS, _key(name, labels))
+        gated = _gate_metric_name(name)
+        _TYPE.setdefault(gated, "histogram")
+        key = _cap_labels_for_metric(gated, _HISTOGRAMS, _key(gated, safe_labels))
         _HISTOGRAMS[key].append(value)
 
 
@@ -118,6 +212,19 @@ def _format_labels(label_tuples: frozenset[tuple[str, str]]) -> str:
 
 def _escape(v: str) -> str:
     return v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _format_float(v: float) -> str:
+    """Prometheus text format: ``+Inf`` / ``-Inf`` / ``NaN`` for special
+    values; plain repr otherwise. Round-4 QA finding: Python's ``str(inf)``
+    yields ``"inf"`` (lowercase) which scrapers reject. Spec calls for
+    the exact casing emitted here.
+    """
+    if math.isnan(v):
+        return "NaN"
+    if math.isinf(v):
+        return "+Inf" if v > 0 else "-Inf"
+    return repr(v) if isinstance(v, float) else str(v)
 
 
 def render_prometheus() -> str:
@@ -141,13 +248,13 @@ def render_prometheus() -> str:
                     ((k, v) for k, v in _COUNTERS.items() if k[0] == name),
                     key=lambda kv: sorted(kv[0][1]),
                 ):
-                    lines.append(f"{key_name}{_format_labels(label_tuples)} {val}")
+                    lines.append(f"{key_name}{_format_labels(label_tuples)} {_format_float(val)}")
             elif kind == "gauge":
                 for (key_name, label_tuples), val in sorted(
                     ((k, v) for k, v in _GAUGES.items() if k[0] == name),
                     key=lambda kv: sorted(kv[0][1]),
                 ):
-                    lines.append(f"{key_name}{_format_labels(label_tuples)} {val}")
+                    lines.append(f"{key_name}{_format_labels(label_tuples)} {_format_float(val)}")
             elif kind == "histogram":
                 # One bucket line per bucket boundary + _sum + _count.
                 for (key_name, label_tuples), samples in sorted(
@@ -164,7 +271,9 @@ def render_prometheus() -> str:
                     lines.append(
                         f'{key_name}_bucket{{le="+Inf"{label_str_inner}}} {len(samples)}'
                     )
-                    lines.append(f"{key_name}_sum{_format_labels(label_tuples)} {sum(samples)}")
+                    lines.append(
+                        f"{key_name}_sum{_format_labels(label_tuples)} {_format_float(sum(samples))}"
+                    )
                     lines.append(f"{key_name}_count{_format_labels(label_tuples)} {len(samples)}")
     if not lines:
         return "# DIG metrics registry is empty\n"

@@ -103,18 +103,78 @@ def _validate_cron(expr: str) -> str:
                         f"cron {label} {v!r} out of range — must be {lo}..{hi}"
                     )
     # Day-of-month / month sanity — Feb 30, Apr 31, etc.
+    # Pen-tester round-3: previously this was gated on `.isdigit()` for both
+    # fields, so any non-digit shape (range / step / list) bypassed the
+    # check entirely. Now expand each field to its concrete integer set
+    # and check every (dom, mon) combination. Also fix the Feb cap from
+    # 30 → 29 so Feb-29-on-non-leap-years (which never fires either) is
+    # caught when the cron pinned Feb 29 explicitly.
     dom_field = fields[2]
     mon_field = fields[3]
-    impossible = {"4": 31, "6": 31, "9": 31, "11": 31, "2": 30}  # max-day per month
-    if dom_field.isdigit() and mon_field.isdigit():
-        dom_v = int(dom_field)
-        max_day = impossible.get(mon_field)
-        if max_day is not None and dom_v >= max_day:
+    impossible = {4: 31, 6: 31, 9: 31, 11: 31, 2: 30}  # max-day per month (Feb=30 means "no 30 or 31"; Feb 29 is leap-only and cron auto-skips non-leap)
+    try:
+        dom_set = _expand_cron_field(dom_field, lo=1, hi=31)
+        mon_set = _expand_cron_field(mon_field, lo=1, hi=12)
+    except ValueError:
+        # Already validated for shape above; if expansion fails, let the
+        # existing raise surface elsewhere.
+        return " ".join(fields)
+    # If EVERY combination in the cartesian product is impossible, the cron
+    # genuinely never fires. (Some-impossible-some-fine is fine; cron will
+    # skip the impossible ones.)
+    if dom_set and mon_set:
+        any_possible = False
+        for mon in mon_set:
+            max_day = impossible.get(mon, 31)
+            for dom in dom_set:
+                if dom <= max_day:
+                    any_possible = True
+                    break
+            if any_possible:
+                break
+        if not any_possible:
             raise ValueError(
                 f"cron expression {' '.join(fields)!r} can never fire — "
-                f"month {mon_field} doesn't have day {dom_v}"
+                f"every (day {sorted(dom_set)}, month {sorted(mon_set)}) "
+                f"combination is impossible"
             )
     return " ".join(fields)
+
+
+def _expand_cron_field(field: str, *, lo: int, hi: int) -> set[int]:
+    """Expand a cron field shape (digit, *, range, step, list) to its
+    concrete set of integer values within [lo, hi]. Returns an empty set
+    for `*` (meaning "all values" — caller should treat as the full range).
+    """
+    out: set[int] = set()
+    if field == "*":
+        return set(range(lo, hi + 1))
+    for token in field.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        # Strip step (after `/`)
+        step = 1
+        if "/" in token:
+            base, _, step_s = token.partition("/")
+            step = int(step_s)
+            if step < 1:
+                raise ValueError(f"cron step must be >= 1; got {step}")
+            token = base
+        # Range or scalar
+        if token == "*":
+            tlo, thi = lo, hi
+        elif "-" in token:
+            tlo_s, _, thi_s = token.partition("-")
+            tlo, thi = int(tlo_s), int(thi_s)
+        else:
+            tlo = thi = int(token)
+        if tlo > thi:
+            raise ValueError(f"cron range {tlo}-{thi} reversed")
+        for v in range(tlo, thi + 1, step):
+            if lo <= v <= hi:
+                out.add(v)
+    return out
 
 
 def _validate_pipeline_id(pid: str) -> str:
@@ -195,9 +255,31 @@ async def list_schedules() -> list[ScheduleEntry]:
             continue
         cron = " ".join(cron_fields[:5])
         rest = cron_fields[5]
-        # Pull the pipeline id from the marker.
-        marker_idx = rest.find("# DIG_SCHED:")
-        pid = rest[marker_idx + len("# DIG_SCHED:"):].strip() if marker_idx >= 0 else "?"
+        # Round-4 QA finding: previously ``rest.find("# DIG_SCHED:")`` picked
+        # the FIRST occurrence anywhere in the trailing string. A crontab
+        # line whose command argument quoted ``"# DIG_SCHED:fake"`` would
+        # produce a bogus pipeline_id while the real marker stayed
+        # unparsed — UI-side DELETE then failed the ULID check, leaving
+        # the real schedule un-removable via the API.
+        #
+        # The marker we write is always at the END of the line (see
+        # ``dig-schedule.sh`` add path: ``... # DIG_SCHED:<pid>``), so the
+        # right slice is the LAST occurrence, and the pid we accept must
+        # match the same shape ``_validate_pipeline_id`` enforces.
+        marker_idx = rest.rfind("# DIG_SCHED:")
+        pid_raw = (
+            rest[marker_idx + len("# DIG_SCHED:"):].strip()
+            if marker_idx >= 0 else ""
+        )
+        # Strip anything after the first whitespace — defensive.
+        pid_raw = pid_raw.split()[0] if pid_raw else ""
+        # If the parsed pid doesn't match the validator's shape, surface
+        # the row but mark it unknown so the UI doesn't claim to be able
+        # to manage it.
+        try:
+            pid = _validate_pipeline_id(pid_raw)
+        except ValueError:
+            pid = "?"
         # Pull sample if present.
         sample: int | None = None
         m = re.search(r"--sample\s+(\d+)", rest)

@@ -1,0 +1,126 @@
+{
+  "id": "geospatial_pack",
+  "version": "1.0.0",
+  "label": "🌍 Geospatial Pack",
+  "description": "Boundary lookups (state / country / zip / city → WKB geometry), spatial joins, geometry parsing, geohash/H3 indexing, Vincenty distance, CRS reprojection, reverse geocoding, and map-matching. Pairs with the built-in convert_coordinates, geo_distance, and the choropleth/heat modes of export_to_map.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "1.0.0",
+  "steps": [
+    "parse_geometry",
+    "spatial_join",
+    "geohash_cell",
+    "vincenty_distance",
+    "crs_transform",
+    "reverse_geocode",
+    "map_match",
+    "wkb_by_country",
+    "wkb_by_us_state",
+    "wkb_by_us_zip",
+    "wkb_by_us_city"
+  ],
+  "connectors": [],
+  "pythonRequirements": [
+    "shapely>=2.0",
+    "geographiclib>=2.0",
+    "pyproj>=3.6",
+    "geohash2>=1.1",
+    "h3>=4.0",
+    "reverse_geocoder>=1.5",
+    "scipy>=1.11",
+    "pycountry>=23.12"
+  ],
+  "resources": {
+    "archive": "data.zip",
+    "sha256": "c278a56c651574b482082bde2ec87c172a4571b4d6ac9d2ee86c0a548956990b",
+    "compressedBytes": 29703026,
+    "extractedBytes": 29702102,
+    "files": [
+      {
+        "id": "us_places_2023",
+        "path": "us_places_2023.parquet",
+        "sha256": "aabe7807a8c01d727a3bf631a89f225fd0186af502ec859b9a88565411b261e5",
+        "sizeBytes": 10307147,
+        "rowCount": 32329,
+        "schemaVersion": 1,
+        "license": "Public Domain (US Census)",
+        "attribution": "Census Bureau 2023 Places Gazetteer (Incorporated Places + CDPs, centroid + land area). Boundaries approximated as equal-area circles around the centroid at pack-build time.",
+        "source": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_place_national.zip",
+        "description": "32,329 US Census Places (incorporated cities, towns, boroughs, villages + CDPs). Centroid + true land area from the gazetteer; geometry is an approximate equal-area circle. For pixel-accurate boundaries replace this resource with TIGER Place shapefiles."
+      },
+      {
+        "id": "us_states_10m",
+        "path": "us_states_10m.parquet",
+        "sha256": "90c2e95154ee53f5692adb0ac2260a7f298684b4c6110ba1483501478091f2f7",
+        "sizeBytes": 165598,
+        "rowCount": 56,
+        "schemaVersion": 1,
+        "license": "Public Domain (US Census)",
+        "attribution": "U.S. Census Bureau Cartographic Boundary Files (10m), packaged by topojson/us-atlas v3",
+        "source": "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json",
+        "description": "US state outlines at 1:10,000,000 scale. 56 rows (50 states + DC + 5 territories). WKB MULTIPOLYGON in EPSG:4326."
+      },
+      {
+        "id": "us_zcta_centroids_2023",
+        "path": "us_zcta_centroids_2023.parquet",
+        "sha256": "10f0ec2f3015b99d983af3c27fb454a47546e89f9bf92176fa0c96effe846b9e",
+        "sizeBytes": 10138486,
+        "rowCount": 33791,
+        "schemaVersion": 1,
+        "license": "Public Domain (US Census)",
+        "attribution": "Census Bureau 2023 ZCTA Gazetteer (zip → centroid + land area). Boundaries approximated as equal-area circles around the centroid at pack-build time.",
+        "source": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip",
+        "description": "33,791 US ZIP Code Tabulation Areas. Centroid + true land area from the gazetteer; geometry is an approximate equal-area circle (32-vertex polygon). Use a custom dataset if pixel-accurate boundaries matter."
+      },
+      {
+        "id": "world_aggregates_10m",
+        "path": "world_aggregates_10m.parquet",
+        "sha256": "ce6c5a1afc11228ff5732c7f2365587ab306488e25232ba69a3d27b632ea4cb3",
+        "sizeBytes": 4202267,
+        "rowCount": 8,
+        "schemaVersion": 1,
+        "license": "Public Domain (Natural Earth, derived)",
+        "attribution": "Aggregate geometries (EU / EEA / Schengen / G7 / G20 / BRICS / USMCA / ASEAN) derived by UNIONing member-country polygons from world_countries_10m at pack-build time.",
+        "source": "Computed locally from world_countries_10m.parquet — no external download.",
+        "description": "Supra-national aggregates. Each row's `members_alpha3` lists the ISO-3 codes UNIONed to form the boundary. Same projection / WKB shape as world_countries_10m."
+      },
+      {
+        "id": "world_aggregates_110m",
+        "path": "world_aggregates_110m.parquet",
+        "sha256": "4c47d3991a73f98bb98f7dc380ea25fd6aac2c72bc631057873573e3a82a4189",
+        "sizeBytes": 67052,
+        "rowCount": 8,
+        "schemaVersion": 1,
+        "license": "Public Domain (Natural Earth, derived)",
+        "attribution": "Aggregate geometries (EU / EEA / Schengen / G7 / G20 / BRICS / USMCA / ASEAN) derived by UNIONing member-country polygons from world_countries_110m at pack-build time.",
+        "source": "Computed locally from world_countries_110m.parquet — no external download.",
+        "description": "Supra-national aggregates at 110m resolution. Note that the EU/EEA/Schengen totals are slightly smaller than the 10m equivalents because Malta and Liechtenstein drop below the simplification threshold at 110m."
+      },
+      {
+        "id": "world_countries_10m",
+        "path": "world_countries_10m.parquet",
+        "sha256": "a975de815868b6d6d79403e8f0fe9957f5162f32bedc6dc18a2fa06d6ffaa32f",
+        "sizeBytes": 4693497,
+        "rowCount": 254,
+        "schemaVersion": 1,
+        "license": "Public Domain (Natural Earth)",
+        "attribution": "Natural Earth Admin 0 (10m), packaged by topojson/world-atlas v2, ISO codes via pycountry",
+        "source": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json",
+        "description": "World country outlines at 1:10,000,000 scale. 254 sovereign states + dependencies, including microstates (Malta, Liechtenstein, Monaco, San Marino, Andorra) that 110m drops. WKB MULTIPOLYGON in EPSG:4326."
+      },
+      {
+        "id": "world_countries_110m",
+        "path": "world_countries_110m.parquet",
+        "sha256": "1a0f23df51b70e70f0253aa5a795c42c9366f4330c012ad5468edd2c8f5b5422",
+        "sizeBytes": 128055,
+        "rowCount": 177,
+        "schemaVersion": 1,
+        "license": "Public Domain (Natural Earth)",
+        "attribution": "Natural Earth Admin 0 (110m), packaged by topojson/world-atlas v2, ISO codes via pycountry",
+        "source": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json",
+        "description": "World country outlines at 1:110,000,000 scale. 177 entities, microstates omitted. Used for world-scale renders where fast load + lean payload matter more than per-country detail. Combined with the dot-proxy logic in the choropleth renderer, missing microstates still surface as graduated symbols."
+      }
+    ]
+  }
+}

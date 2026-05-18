@@ -146,18 +146,69 @@ eval "$EXPORT"
 
 API_HOST="${DIG_API_HOST:-127.0.0.1}"
 API_PORT="${DIG_API_PORT:-8090}"
+API_HTTPS_PORT="${DIG_API_HTTPS_PORT:-8443}"
 WEB_HOST="${DIG_WEB_HOST:-127.0.0.1}"
 WEB_PORT="${DIG_WEB_PORT:-3000}"
+WEB_HTTPS_PORT="${DIG_WEB_HTTPS_PORT:-3443}"
 
 # Where to put PIDs + logs. Use XDG_CONFIG_HOME on both Linux and macOS.
 USER_CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/dig"
 mkdir -p "$USER_CFG_DIR"
 PID_FILE="$USER_CFG_DIR/pid.json"
 
-LOG_DIR="${DIG_LOG_DIR:-${TMPDIR:-/tmp}}"
-mkdir -p "$LOG_DIR"
+# Effective log dir comes from dig_config.py (defaults → file → env). The
+# canonical path is /var/log/DIG; dig_config defaults to that. We bootstrap
+# the dir below — sudo if it's a system path the current user can't write
+# to, falling back to a per-user location if sudo is unavailable / declined.
+LOG_DIR="${DIG_LOG_DIR:-/var/log/DIG}"
+
+# Per-user fallback that doesn't need root. Picked to match each platform's
+# native convention so logs surface in the OS-provided viewers (Console.app
+# on macOS) and live alongside other XDG state on Linux.
+case "$(uname -s)" in
+  Darwin) USER_LOG_FALLBACK="$HOME/Library/Logs/DIG" ;;
+  *)      USER_LOG_FALLBACK="${XDG_STATE_HOME:-$HOME/.local/state}/DIG/logs" ;;
+esac
+
+# Bootstrap LOG_DIR. Three cases:
+#   1. Already exists + writable by us → no-op.
+#   2. System path (/var/* /opt/*) → sudo mkdir + chown to the current
+#      user. Sudo will prompt if there's no cached credential; if the
+#      user declines or sudo isn't installed, fall through to the user
+#      fallback rather than crash the whole start.
+#   3. User path → plain mkdir.
+_log_dir_writable() {
+  [[ -d "$1" ]] && [[ -w "$1" ]]
+}
+
+if ! _log_dir_writable "$LOG_DIR"; then
+  case "$LOG_DIR" in
+    /var/*|/opt/*|/srv/*|/usr/*)
+      info "[dig start] log dir $LOG_DIR isn't writable; bootstrapping with sudo"
+      if command -v sudo >/dev/null 2>&1 \
+         && sudo -p "[dig start] sudo password to create $LOG_DIR: " mkdir -p "$LOG_DIR" \
+         && sudo chown "$(id -un):$(id -gn)" "$LOG_DIR"; then
+        info "[dig start] $LOG_DIR ready (chown $(id -un))"
+      else
+        err "[dig start] could not bootstrap $LOG_DIR via sudo; using $USER_LOG_FALLBACK instead"
+        LOG_DIR="$USER_LOG_FALLBACK"
+        mkdir -p "$LOG_DIR"
+      fi
+      ;;
+    *)
+      mkdir -p "$LOG_DIR"
+      ;;
+  esac
+fi
+
 API_LOG="$LOG_DIR/dig-api.log"
 WEB_LOG="$LOG_DIR/dig-web.log"
+
+# Rotation knobs come from dig_config.py too. Defaults: 10 MB × 5 files
+# per stream. Override via DIG_LOG_MAX_BYTES / DIG_LOG_BACKUP_COUNT or
+# `dig-config set log.maxBytes / log.backupCount`.
+LOG_MAX_BYTES="${DIG_LOG_MAX_BYTES:-10485760}"
+LOG_BACKUP_COUNT="${DIG_LOG_BACKUP_COUNT:-5}"
 
 # ---- preflight ----
 # When deps aren't ready, run the installer rather than punting back to the
@@ -199,9 +250,42 @@ if command -v lsof >/dev/null 2>&1; then
   fi
 fi
 
+# ---- TLS bootstrap ----
+# We always serve HTTP on the primary ports (api.port / web.port) so the
+# "just open the URL" path never trips on cert-trust issues. When TLS is
+# enabled we ALSO open https:// listeners on api.httpsPort / web.httpsPort
+# via dig_tls_proxy.py — a tiny asyncio TLS-terminating TCP proxy that
+# forwards plain HTTP to the same backends. So: same uvicorn + same next
+# dev, but reachable on both protocols.
+#
+# This decouples cert trust from "can I use the app at all" — which was
+# the real failure mode of the previous all-HTTPS setup: an untrusted
+# self-signed cert silently drops cross-origin fetch() calls in every
+# modern browser, leaving the page blank with no error.
+TLS_ENABLED="${DIG_TLS_ENABLED:-1}"
+TLS_READY=0
+if [[ "$TLS_ENABLED" == "1" || "$TLS_ENABLED" == "true" ]]; then
+  TLS_ARGS=(bootstrap)
+  if [[ "${DIG_TLS_AUTO_TRUST:-1}" == "1" || "${DIG_TLS_AUTO_TRUST:-1}" == "true" ]]; then
+    TLS_ARGS+=(--trust)
+  fi
+  [[ -n "${DIG_TLS_CERT:-}" ]] && TLS_ARGS+=(--cert "$DIG_TLS_CERT")
+  [[ -n "${DIG_TLS_KEY:-}" ]]  && TLS_ARGS+=(--key  "$DIG_TLS_KEY")
+
+  TLS_OUT="$("$PY" "$SCRIPT_DIR/dig_tls.py" "${TLS_ARGS[@]}")" || {
+    err "[dig start] TLS bootstrap failed — HTTPS listeners disabled."
+    TLS_OUT=""
+  }
+  if [[ -n "$TLS_OUT" ]]; then
+    eval "$TLS_OUT"
+    export DIG_TLS_CERT DIG_TLS_KEY
+    TLS_READY=1
+  fi
+fi
+
 cat <<EOF
-[dig start] api  → http://$API_HOST:$API_PORT
-[dig start] web  → http://$WEB_HOST:$WEB_PORT
+[dig start] api  → http://$API_HOST:$API_PORT$([[ "$TLS_READY" -eq 1 ]] && echo "  ·  https://$API_HOST:$API_HTTPS_PORT")
+[dig start] web  → http://$WEB_HOST:$WEB_PORT$([[ "$TLS_READY" -eq 1 ]] && echo "  ·  https://$WEB_HOST:$WEB_HTTPS_PORT")
 [dig start] cfg  → $("$PY" "$SCRIPT_DIR/dig_config.py" path 2>/dev/null || echo '(defaults only)')
 EOF
 
@@ -250,17 +334,27 @@ if is_global_bind "$API_HOST"; then
   # and every non-loopback IPv4 on the box. Honor a user-provided
   # DIG_CORS_ORIGINS — only auto-populate when unset.
   if [[ -z "${DIG_CORS_ORIGINS:-}" ]]; then
+    # Build the CORS list for both protocols + every reachable host.
+    # The browser sends the page's own origin (scheme + host + port) as
+    # the Origin header, so the allow-list has to enumerate every
+    # combination the user could land on — http://lan-ip:3000 and
+    # https://lan-ip:3443 are different origins as far as CORS is
+    # concerned, even though they reach the same Next dev server.
+    _add_origin() {
+      local host="$1"
+      cors_list="$cors_list,http://${host}:${WEB_PORT}"
+      [[ "$TLS_READY" -eq 1 ]] && cors_list="$cors_list,https://${host}:${WEB_HTTPS_PORT}"
+    }
     cors_list="http://localhost:$WEB_PORT,http://127.0.0.1:$WEB_PORT"
+    [[ "$TLS_READY" -eq 1 ]] && cors_list="$cors_list,https://localhost:$WEB_HTTPS_PORT,https://127.0.0.1:$WEB_HTTPS_PORT"
     hn="$(local_hostname)"
     if [[ -n "$hn" ]]; then
-      cors_list="$cors_list,http://$hn:$WEB_PORT"
-      # On macOS local_hostname returns `<name>.local`; also add the
-      # bare hostname (kernel form) since some browsers prefer that.
+      _add_origin "$hn"
       bare="${hn%.local}"
-      [[ "$bare" != "$hn" ]] && cors_list="$cors_list,http://$bare:$WEB_PORT"
+      [[ "$bare" != "$hn" ]] && _add_origin "$bare"
     fi
     while IFS= read -r ip; do
-      [[ -n "$ip" ]] && cors_list="$cors_list,http://$ip:$WEB_PORT"
+      [[ -n "$ip" ]] && _add_origin "$ip"
     done < <(list_lan_addresses)
     export DIG_CORS_ORIGINS="$cors_list"
     info "[dig start] DIG_CORS_ORIGINS auto-populated for LAN: $DIG_CORS_ORIGINS"
@@ -283,10 +377,27 @@ elif command -v nohup >/dev/null 2>&1; then
   START_PREFIX=(nohup)
 fi
 
+# Pin the startup banner to the top of both log files BEFORE handing
+# them off to the rotator. The banner captures DIG version, git SHA,
+# OS / kernel / Python / Node, RAM / CPU / disk, the resolved config,
+# and every DIG_* env var (sensitive values masked) — designed to be
+# the first thing in any support-ticket attachment.
+"$PY" "$SCRIPT_DIR/dig_startup_info.py" --target "$API_LOG" --target "$WEB_LOG" \
+  || err "[dig start] startup banner failed (continuing)"
+
+# Rotator wrapper: spawns the wrapped service, captures stdout+stderr,
+# writes through Python's RotatingFileHandler with the configured caps,
+# forwards SIGTERM/SIGINT/SIGHUP to the child. dig-stop kills the
+# wrapper PID; the wrapper propagates and waits for clean shutdown.
+ROT=("$PY" "$SCRIPT_DIR/dig_log_rotate.py"
+     --max-bytes "$LOG_MAX_BYTES"
+     --backup-count "$LOG_BACKUP_COUNT")
+
 cd "$REPO_ROOT/backend"
 DIG_HOST="$API_HOST" DIG_PORT="$API_PORT" \
-  "${START_PREFIX[@]}" "$REPO_ROOT/backend/.venv/bin/dig-api" \
-    > "$API_LOG" 2>&1 &
+  "${START_PREFIX[@]}" "${ROT[@]}" --file "$API_LOG" -- \
+    "$REPO_ROOT/backend/.venv/bin/dig-api" \
+    < /dev/null > /dev/null 2>&1 &
 API_PID=$!
 
 # next dev — only pin NEXT_PUBLIC_DIG_API for LOCAL mode. In global mode we
@@ -299,24 +410,72 @@ NEXT_API_ENV=()
 if ! is_global_bind "$API_HOST"; then
   NEXT_API_ENV=(NEXT_PUBLIC_DIG_API="http://$API_HOST:$API_PORT")
 fi
+# Tell the frontend bundle which port answers HTTPS, so the API client
+# can route page-on-https → api-on-https-port without hardcoding 8443.
+# Picked up by ``frontend/lib/api/client.ts``.
+if [[ "$TLS_READY" -eq 1 ]]; then
+  NEXT_API_ENV+=(NEXT_PUBLIC_DIG_API_HTTPS_PORT="$API_HTTPS_PORT")
+  # Node trusts the cert at runtime via NODE_EXTRA_CA_CERTS — important
+  # when Next's SSR side fetches the API on https. Without it Node
+  # rejects the self-signed handshake even if the OS trust store accepts
+  # it.
+  export NODE_EXTRA_CA_CERTS="$DIG_TLS_CERT"
+fi
+
 env "${NEXT_API_ENV[@]}" PORT="$WEB_PORT" HOSTNAME="$WEB_HOST" \
-  "${START_PREFIX[@]}" pnpm dev --port "$WEB_PORT" --hostname "$WEB_HOST" \
-    > "$WEB_LOG" 2>&1 &
+  "${START_PREFIX[@]}" "${ROT[@]}" --file "$WEB_LOG" -- \
+    pnpm dev --port "$WEB_PORT" --hostname "$WEB_HOST" \
+    < /dev/null > /dev/null 2>&1 &
 WEB_PID=$!
 
-# Persist PIDs so dig-stop can find them.
-"$PY" - "$PID_FILE" "$API_PID" "$WEB_PID" "$API_PORT" "$WEB_PORT" "$API_LOG" "$WEB_LOG" <<'PYEOF'
+# TLS proxy — only when cert was successfully prepared. Listens on
+# api.httpsPort + web.httpsPort, terminates TLS, forwards to the plain
+# HTTP backends started above. Wrapped in the rotator like the other two
+# services so its log rotates the same way.
+PROXY_PID=""
+if [[ "$TLS_READY" -eq 1 ]]; then
+  PROXY_LOG="$LOG_DIR/dig-tls-proxy.log"
+  "$PY" "$SCRIPT_DIR/dig_startup_info.py" --target "$PROXY_LOG" \
+    > /dev/null 2>&1 || true
+  "${START_PREFIX[@]}" "${ROT[@]}" --file "$PROXY_LOG" -- \
+    "$PY" "$SCRIPT_DIR/dig_tls_proxy.py" \
+      --cert "$DIG_TLS_CERT" --key "$DIG_TLS_KEY" \
+      --host "$API_HOST" \
+      --forward "${API_HTTPS_PORT}:${API_PORT}" \
+      --forward "${WEB_HTTPS_PORT}:${WEB_PORT}" \
+    < /dev/null > /dev/null 2>&1 &
+  PROXY_PID=$!
+fi
+
+# Persist PIDs so dig-stop can find them. The TLS proxy is recorded as
+# an extra entry when present so dig-stop can tear it down too — without
+# this the rotator survives the api/web kills and keeps re-spawning a
+# zombie listener until the user finds it manually.
+"$PY" - "$PID_FILE" "$API_PID" "$WEB_PID" "${PROXY_PID:-}" \
+       "$API_PORT" "$WEB_PORT" "${API_HTTPS_PORT}" "${WEB_HTTPS_PORT}" \
+       "$API_LOG" "$WEB_LOG" "${PROXY_LOG:-}" <<'PYEOF'
 import json, sys
-path, api_pid, web_pid, api_port, web_port, api_log, web_log = sys.argv[1:]
+(path, api_pid, web_pid, proxy_pid,
+ api_port, web_port, api_https_port, web_https_port,
+ api_log, web_log, proxy_log) = sys.argv[1:]
 data = {
     "api": {"pid": int(api_pid), "port": int(api_port), "log": api_log},
     "web": {"pid": int(web_pid), "port": int(web_port), "log": web_log},
 }
+if proxy_pid:
+    data["tls_proxy"] = {
+        "pid": int(proxy_pid),
+        "https_ports": {"api": int(api_https_port), "web": int(web_https_port)},
+        "log": proxy_log or "",
+    }
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
 PYEOF
 
-# Wait for both endpoints to start serving.
+# Wait for both endpoints to start serving. We probe the HTTP path
+# (always available) — the TLS proxy comes up almost instantly once both
+# backends are listening, so a separate HTTPS readiness probe just slows
+# the start banner without adding signal.
 ready_api=0
 ready_web=0
 for i in $(seq 1 60); do
@@ -324,7 +483,11 @@ for i in $(seq 1 60); do
     ready_api=1
     echo "[dig start] api ready (${i}s)"
   fi
-  if [[ "$ready_web" -eq 0 ]] && curl -sf -o /dev/null "http://$WEB_HOST:$WEB_PORT/" 2>&1; then
+  # Round-3 regression: previous form was `-o /dev/null ... 2>&1` which
+  # left stderr streaming to the operator's terminal — every retry while
+  # Next.js was still booting printed connection-refused chatter. Match
+  # the api-ready line above: silence both streams completely.
+  if [[ "$ready_web" -eq 0 ]] && curl -sf "http://$WEB_HOST:$WEB_PORT/" >/dev/null 2>&1; then
     ready_web=1
     echo "[dig start] web ready (${i}s)"
   fi
@@ -348,10 +511,17 @@ if is_global_bind "$WEB_HOST"; then
   echo
   echo "   Open the web UI at any of:"
   echo "     • http://localhost:$WEB_PORT          (this machine)"
+  [[ "$TLS_READY" -eq 1 ]] && echo "     • https://localhost:$WEB_HTTPS_PORT          (this machine, TLS)"
   hn="$(local_hostname)"
-  [[ -n "$hn" ]] && echo "     • http://$hn:$WEB_PORT"
+  if [[ -n "$hn" ]]; then
+    echo "     • http://$hn:$WEB_PORT"
+    [[ "$TLS_READY" -eq 1 ]] && echo "     • https://$hn:$WEB_HTTPS_PORT"
+  fi
   while IFS= read -r ip; do
-    [[ -n "$ip" ]] && echo "     • http://$ip:$WEB_PORT"
+    if [[ -n "$ip" ]]; then
+      echo "     • http://$ip:$WEB_PORT"
+      [[ "$TLS_READY" -eq 1 ]] && echo "     • https://$ip:$WEB_HTTPS_PORT"
+    fi
   done < <(list_lan_addresses)
   echo
   if [[ -n "${DIG_AUTH_TOKEN:-}" ]]; then
@@ -374,6 +544,7 @@ else
   echo
   echo "   Open the web UI:"
   echo "     • http://localhost:$WEB_PORT"
+  [[ "$TLS_READY" -eq 1 ]] && echo "     • https://localhost:$WEB_HTTPS_PORT  (TLS, self-signed)"
   echo
   echo "   To make DIG reachable from other devices on your network, restart with:"
   echo "     ./scripts/dig-restart.sh --global   # this run"
@@ -381,7 +552,40 @@ else
   echo
 fi
 
-echo "   api:  http://$API_HOST:$API_PORT"
-echo "   pids: api=$API_PID web=$WEB_PID"
-echo "   logs: $API_LOG  ·  $WEB_LOG"
+# TLS subsection — only printed when the proxy is running. Shows
+# fingerprint + trust state so the operator can spot-check the cert in
+# their browser's "View certificate" dialog and confirm it's the one we
+# generated. The HTTP path always works regardless of trust state, so
+# this is informational rather than a setup requirement.
+if [[ "$TLS_READY" -eq 1 ]]; then
+  TLS_FP="$("$PY" - <<PYEOF 2>/dev/null
+import json, subprocess, sys
+r = subprocess.run(
+    ["${SCRIPT_DIR}/dig_tls.py", "info"],
+    capture_output=True, text=True,
+)
+try:
+    info = json.loads(r.stdout)
+except Exception:
+    print("(unavailable)"); sys.exit(0)
+print(info.get("fingerprint_sha256", "(unavailable)"))
+PYEOF
+)"
+  echo "   🔐 TLS:  also reachable on https://*:$WEB_HTTPS_PORT (web) · https://*:$API_HTTPS_PORT (api)"
+  echo "        SHA-256 ${TLS_FP:0:32}…"
+  echo "        cert: $DIG_TLS_CERT"
+  if "$PY" "$SCRIPT_DIR/dig_tls.py" info 2>/dev/null | grep -q '"trusted_in_system_store": true'; then
+    echo "        ✓ installed in system trust store — browsers accept it silently"
+  else
+    echo "        ⚠ self-signed cert NOT yet in system trust store — HTTPS works but"
+    echo "          browsers show a 'Not Secure' warning. Run once to fix:"
+    echo "             ./scripts/dig_tls.py trust    (one-time sudo install)"
+    echo "          (Or just keep using the http:// URLs above — they don't need trust.)"
+  fi
+  echo
+fi
+
+echo "   api:  http://$API_HOST:$API_PORT$([[ "$TLS_READY" -eq 1 ]] && echo "  ·  https://$API_HOST:$API_HTTPS_PORT")"
+echo "   pids: api=$API_PID web=$WEB_PID$([[ -n "${PROXY_PID:-}" ]] && echo " tls-proxy=$PROXY_PID")"
+echo "   logs: $API_LOG  ·  $WEB_LOG$([[ "$TLS_READY" -eq 1 ]] && echo "  ·  $PROXY_LOG")"
 echo "   stop: ./scripts/dig-stop.sh"

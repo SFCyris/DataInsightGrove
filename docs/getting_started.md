@@ -302,5 +302,7 @@ Override the data directory with `DIG_DATA_DIR=/some/path` before starting the b
 - Pipeline JSON format: [`docs/PIPELINE_FORMAT.md`](PIPELINE_FORMAT.md).
 - JDBC connector + step setup (Java + JAR): [`docs/JDBC_SETUP.md`](JDBC_SETUP.md).
 - UI guidelines (motion + emojis): [`docs/UI_GUIDELINES.md`](UI_GUIDELINES.md).
+- Keyboard shortcuts (⌘K · `/` · `g h` etc.): [`docs/KEYBOARD_SHORTCUTS.md`](KEYBOARD_SHORTCUTS.md).
+- Visualization catalog (what each chart needs as input): [`docs/VISUALIZATIONS.md`](VISUALIZATIONS.md).
 
 You can replay the in-app tour any time from the **🧭 Help · replay tour** link in the home-page footer.

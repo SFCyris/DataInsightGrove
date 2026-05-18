@@ -1,0 +1,59 @@
+{
+  "id": "logistic_regression",
+  "version": "1.0.0",
+  "label": "📊 Logistic regression",
+  "description": "Binary classification via logistic regression. Fits a model to predict a 0/1 (or true/false) target from numeric features, adds predicted_class + predicted_proba columns, and emits per-feature coefficients + intercept + accuracy as a side-effect artifact.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "targetColumn": {
+      "type": "column_ref",
+      "label": "Target column (binary)",
+      "columnFrom": "in",
+      "required": true,
+      "help": "The 0/1 (or true/false) outcome column to predict."
+    },
+    "featureColumns": {
+      "type": "column_refs",
+      "label": "Feature columns",
+      "columnFrom": "in",
+      "required": true,
+      "help": "Numeric columns to use as predictors. Encode categoricals via the one-hot or cast_type steps first."
+    },
+    "regularization": {
+      "type": "enum",
+      "label": "Regularization",
+      "enumValues": ["none", "l1", "l2"],
+      "default": "l2",
+      "required": true,
+      "help": "l2: ridge (default, shrinks coefficients). l1: lasso (drops weak features to zero). none: pure unregularised fit; can overfit on small / collinear data."
+    },
+    "c": {
+      "type": "number",
+      "label": "Regularization strength (C)",
+      "default": 1.0,
+      "min": 0.0001,
+      "help": "Inverse of regularization weight — smaller C = stronger regularization. Ignored when regularization = none."
+    },
+    "predictedClassColumn": {
+      "type": "string",
+      "label": "Predicted class column",
+      "default": "predicted_class",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "predictedProbaColumn": {
+      "type": "string",
+      "label": "Predicted probability column",
+      "default": "predicted_proba",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["statistics", "ml", "classification", "logistic", "regression"],
+  "requires": [{"kind": "numeric"}],
+  "aliases": ["logit", "binary classification", "classify", "sklearn logistic"]
+}

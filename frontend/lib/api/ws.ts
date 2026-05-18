@@ -4,8 +4,22 @@ import { markDown, markRecovered } from "@/lib/server-status";
 export type WsMessage = { topic: string; payload: Record<string, unknown> };
 
 export function wsUrl(path: string): string {
-  // API_BASE is http(s)://host:port — convert to ws(s).
-  const u = new URL(path, API_BASE);
+  // API_BASE comes in two shapes:
+  //   - absolute  "http(s)://host:port"   (SSR + legacy build-time NEXT_PUBLIC_DIG_API)
+  //   - relative  "/api"                  (in-browser default — same-origin via Next rewrite)
+  // The relative form needs an origin to parse into a URL, so we anchor
+  // against the page origin. The resulting URL ends up under the page's
+  // own scheme + host + port — which is exactly what we want, because
+  // same-origin sidesteps the cross-origin self-signed-cert trap (the
+  // browser would silently drop a cross-origin WS handshake to an
+  // untrusted-cert host the same way it does fetch()).
+  let baseStr = API_BASE;
+  if (baseStr.startsWith("/") && typeof window !== "undefined") {
+    baseStr = `${window.location.origin}${baseStr}`;
+  }
+  baseStr = baseStr.replace(/\/+$/, "");
+  const fullPath = path.startsWith("/") ? path : `/${path}`;
+  const u = new URL(`${baseStr}${fullPath}`);
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
   // Browsers can't set custom headers on WS handshakes, so we pass the auth
   // token via query string. Backend BearerAuthMiddleware reads `?token=…` for

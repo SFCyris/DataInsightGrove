@@ -16,6 +16,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 
 import { notificationsApi, type NotificationOut } from "@/lib/api/client";
+import { confirmAction } from "@/lib/confirm-toast";
+import { PositiveLoaderInline } from "@/components/positive-loader";
 
 const KINDS: { id: string; emoji: string; label: string }[] = [
   { id: "system",     emoji: "🖥️", label: "System" },
@@ -32,12 +34,32 @@ const LEVELS = [
   { id: "error",        emoji: "🔴", label: "Error",        tone: "text-rose-700 dark:text-rose-300 bg-rose-50/70 dark:bg-rose-950/30 border-rose-200/70 dark:border-rose-900/50" },
 ] as const;
 
-function formatUtc(iso: string): string {
+function formatLocal(iso: string): string {
   // Backend serializes naive UTC timestamps without a Z; force it so JS
   // parses as UTC (same trick as the canvas's relativeTime).
   const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso);
   const d = new Date(hasTz ? iso : `${iso}Z`);
-  // Compact ISO: "2026-05-08 21:00:18 UTC"
+  // Round-8 polish: relative time matches the runs page so the inbox
+  // feels live ("2m ago") rather than presenting a wall-clock that the
+  // operator has to mentally diff. The cell's ``title=`` (set at the
+  // call site) carries the absolute UTC value for verification.
+  const nowMs = Date.now();
+  const sec = Math.max(1, Math.round((nowMs - d.getTime()) / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  if (day < 14) return `${day}d ago`;
+  // Fall back to ISO date for older items where relative time stops
+  // being useful (the title tooltip still shows the precise UTC).
+  return d.toLocaleDateString();
+}
+
+function formatUtcForTitle(iso: string): string {
+  const hasTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso);
+  const d = new Date(hasTz ? iso : `${iso}Z`);
   const pad = (n: number) => String(n).padStart(2, "0");
   return (
     `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
@@ -164,9 +186,15 @@ export function NotificationsSection() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+      <div
+        className="rounded-xl border border-border bg-card/40 overflow-hidden"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Notification inbox"
+      >
         <div className="grid grid-cols-[180px_120px_100px_80px_1fr_60px] gap-2 px-4 py-2 text-[10px] uppercase tracking-wide text-muted-foreground font-mono border-b border-border bg-muted/30">
-          <div>Date (UTC)</div>
+          <div>Date</div>
           <div>Kind</div>
           <div>Level</div>
           <div>User</div>
@@ -175,8 +203,8 @@ export function NotificationsSection() {
         </div>
         <AnimatePresence initial={false}>
           {listQ.isLoading && (
-            <div className="px-4 py-8 text-sm text-muted-foreground italic">
-              Loading…
+            <div className="px-4 py-8 flex justify-center">
+              <PositiveLoaderInline variant="rendering" text="Loading notifications…" />
             </div>
           )}
           {!listQ.isLoading && items.length === 0 && (
@@ -203,8 +231,11 @@ export function NotificationsSection() {
                 transition={{ duration: 0.18 }}
                 className="grid grid-cols-[180px_120px_100px_80px_1fr_60px] gap-2 px-4 py-2.5 border-b border-border/50 last:border-b-0 text-xs items-start hover:bg-muted/20"
               >
-                <div className="font-mono tabular-nums text-muted-foreground">
-                  {formatUtc(n.createdAt)}
+                <div
+                  className="font-mono tabular-nums text-muted-foreground"
+                  title={formatUtcForTitle(n.createdAt)}
+                >
+                  {formatLocal(n.createdAt)}
                 </div>
                 <div>
                   <span className="inline-flex items-center gap-1">
@@ -227,8 +258,42 @@ export function NotificationsSection() {
                   {n.userId ?? "N/A"}
                 </div>
                 <div className="min-w-0">
-                  <div className="font-medium truncate" title={n.title}>
-                    {n.title}
+                  <div className="font-medium truncate flex items-center gap-2" title={n.title}>
+                    <span className="truncate">{n.title}</span>
+                    {/* Round-5 W4: when an event carries ``run_id`` /
+                        ``pipeline_id`` in its context, surface a one-
+                        click "Open run" / "Open pipeline" affordance
+                        so the user doesn't have to copy IDs out of
+                        the foldable JSON below. */}
+                    {(() => {
+                      const ctx = (n.context ?? {}) as Record<string, unknown>;
+                      const runId = typeof ctx.run_id === "string" ? ctx.run_id : null;
+                      const pipelineId = typeof ctx.pipeline_id === "string" ? ctx.pipeline_id : null;
+                      const links: React.ReactNode[] = [];
+                      if (runId) {
+                        links.push(
+                          <a
+                            key="run"
+                            href={`/runs/${runId}`}
+                            className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline shrink-0"
+                          >
+                            🔍 Run
+                          </a>,
+                        );
+                      }
+                      if (pipelineId) {
+                        links.push(
+                          <a
+                            key="pipe"
+                            href={`/pipelines/${pipelineId}`}
+                            className="text-[10px] text-sky-700 dark:text-sky-300 hover:underline shrink-0"
+                          >
+                            🛤 Pipeline
+                          </a>,
+                        );
+                      }
+                      return links;
+                    })()}
                   </div>
                   {n.message && (
                     <div className="text-muted-foreground text-[11px] mt-0.5 leading-snug whitespace-pre-wrap break-words line-clamp-2">
@@ -252,29 +317,34 @@ export function NotificationsSection() {
                       type="button"
                       onClick={() => dismissM.mutate(n.id)}
                       title="Dismiss (keeps row in audit log)"
+                      aria-label="Dismiss notification"
                       className="text-[10px] px-1.5 py-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      ✓
+                      <span aria-hidden>✓</span>
                     </button>
                   ) : (
                     <span
                       className="text-[10px] text-muted-foreground italic"
-                      title={`Dismissed ${formatUtc(n.dismissedAt)}`}
+                      title={`Dismissed ${formatUtcForTitle(n.dismissedAt)}`}
                     >
                       dismissed
                     </span>
                   )}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm("Permanently delete this notification?")) {
-                        removeM.mutate(n.id);
-                      }
+                    onClick={async () => {
+                      const ok = await confirmAction({
+                        title: "Permanently delete this notification?",
+                        description: "The row will be removed from the audit log too.",
+                        confirmLabel: "Delete",
+                      });
+                      if (ok) removeM.mutate(n.id);
                     }}
                     title="Permanently delete"
+                    aria-label="Permanently delete notification"
                     className="text-[10px] px-1.5 py-0.5 rounded hover:bg-rose-100 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                   >
-                    🗑
+                    <span aria-hidden>🗑</span>
                   </button>
                 </div>
               </motion.div>
@@ -304,6 +374,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={[
         "text-xs px-2.5 py-1 rounded-full border transition-colors",
         active

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface Shortcut { keys: string; desc: string }
@@ -9,16 +9,36 @@ const GROUPS: Array<{ name: string; emoji: string; items: Shortcut[] }> = [
     name: "Global", emoji: "🌐",
     items: [
       { keys: "⌘K / Ctrl+K", desc: "Open command palette" },
+      { keys: "/",            desc: "Focus the command palette search" },
       { keys: "?",            desc: "Show this cheatsheet" },
       { keys: "Esc",          desc: "Close any overlay" },
+      { keys: "g h",          desc: "Jump to Home" },
+      { keys: "g p",          desc: "Jump to Pipelines" },
+      { keys: "g d",          desc: "Jump to Datasets" },
+      { keys: "g r",          desc: "Jump to Run history" },
+      { keys: "g c",          desc: "Jump to Catalog" },
+      { keys: "g s",          desc: "Jump to Settings" },
+      { keys: "⌘⇧E",         desc: "Cycle expertise mode" },
     ],
   },
   {
     name: "Editor", emoji: "🛤",
     items: [
       { keys: "⌘Z",            desc: "Undo last edit" },
-      { keys: "⌘⇧Z",          desc: "Redo" },
-      { keys: "⌫ / Delete",    desc: "Delete selected step / dataset" },
+      { keys: "⌘⇧Z",          desc: "Redo (also ⌘Y)" },
+      { keys: "⌘S",            desc: "Save (open labelled-checkpoint dialog)" },
+      { keys: "⌘⇧S",          desc: "Save As (clone)" },
+      { keys: "⌫ / Delete",    desc: "Delete selected step / edge" },
+      { keys: "Double-click sub-pipeline node", desc: "Open the source pipeline in a new tab" },
+      { keys: "Alt+←/→",       desc: "Reorder a focused grid column" },
+    ],
+  },
+  {
+    name: "Run loop", emoji: "▶️",
+    items: [
+      { keys: "▶ Run pipeline",  desc: "Run the full pipeline against the whole dataset" },
+      { keys: "🛑 Stop",          desc: "Cancel the currently-running run" },
+      { keys: "Click run row",   desc: "Open the run-detail view" },
     ],
   },
   {
@@ -43,6 +63,20 @@ const GROUPS: Array<{ name: string; emoji: string; items: Shortcut[] }> = [
 
 export function ShortcutsCheatsheet() {
   const [open, setOpen] = useState(false);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const restoreFocusTo = useRef<HTMLElement | null>(null);
+
+  // Round-8 a11y: capture previous focus on open, hand focus to the
+  // close button so keyboard users land inside the dialog, restore on
+  // close. Mirrors the pattern in command-palette.tsx.
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusTo.current = (document.activeElement as HTMLElement) ?? null;
+    queueMicrotask(() => closeBtnRef.current?.focus());
+    return () => {
+      restoreFocusTo.current?.focus?.();
+    };
+  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,6 +105,9 @@ export function ShortcutsCheatsheet() {
         >
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shortcuts-cheatsheet-title"
             initial={{ opacity: 0, y: 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0 }}
@@ -78,15 +115,17 @@ export function ShortcutsCheatsheet() {
             className="absolute left-1/2 top-[14vh] -translate-x-1/2 w-[min(640px,92vw)] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden"
           >
             <header className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="text-2xl">⌨️</span>
+              <span className="text-2xl" aria-hidden>⌨️</span>
               <div className="flex-1">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Keyboard</p>
-                <h2 className="font-semibold">Shortcuts</h2>
+                <h2 id="shortcuts-cheatsheet-title" className="font-semibold">Shortcuts</h2>
               </div>
               <button
+                ref={closeBtnRef}
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close shortcuts dialog"
+                className="text-muted-foreground hover:text-foreground rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 ✕
               </button>

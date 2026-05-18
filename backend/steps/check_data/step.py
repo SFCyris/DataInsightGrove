@@ -98,9 +98,15 @@ class CheckDataStep(Step):
         #   severity       — propagated for the executor's fail-on-violation path
         #   check_kind     — propagated so the notification template can read it
         #   check_name     — friendly label, propagated similarly
+        #
+        # Materialize the predicate as a scalar column in an inner subquery
+        # before aggregating. DuckDB disallows window functions inside
+        # aggregate FILTER, and the `unique` check uses
+        # `COUNT(*) OVER (PARTITION BY col)` — without the subquery, that
+        # raises "window function not allowed in FILTER" at validation time.
         sample_expr = (
             f"string_agg(DISTINCT {col_q}::VARCHAR, ', ') "
-            f"FILTER (WHERE NOT ({passes}) AND {col_q} IS NOT NULL)"
+            f"FILTER (WHERE _dig_passes = FALSE AND {col_q} IS NOT NULL)"
         )
         severity_lit = quote_str(str(params.get("severity") or "warn"))
         kind_lit = quote_str(str(params.get("check") or "not_null"))
@@ -108,12 +114,12 @@ class CheckDataStep(Step):
         return (
             f"SELECT "
             f"COUNT(*) AS total, "
-            f"COUNT(*) FILTER (WHERE NOT ({passes})) AS violations, "
+            f"COUNT(*) FILTER (WHERE _dig_passes = FALSE) AS violations, "
             f"{sample_expr} AS first_bad, "
             f"{severity_lit} AS severity, "
             f"{kind_lit} AS check_kind, "
             f"{name_lit} AS check_name "
-            f"FROM {inputs['in']}"
+            f"FROM (SELECT {col_q}, ({passes}) AS _dig_passes FROM {inputs['in']})"
         )
 
 

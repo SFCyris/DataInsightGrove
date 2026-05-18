@@ -1,0 +1,28 @@
+{
+  "id": "stream_graph",
+  "version": "1.0.0",
+  "label": "🌊 Stream graph",
+  "description": "Stacked area chart with center-baselined symmetry (the classic 'wiggle' algorithm). Use for displaying multi-series totals over time where the *shape* of each series matters more than absolute zero — music genres over time, browser market share, social-media topic mix.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "dateColumn":   { "type": "column_ref", "label": "Date / x-axis column", "columnFrom": "in", "required": true },
+    "groupColumn":  { "type": "column_ref", "label": "Series (group) column", "columnFrom": "in", "required": true },
+    "valueColumn":  { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true,
+                      "columnTypes": ["integer", "double"] },
+    "color_scale": {
+      "type": "enum", "label": "Color scale",
+      "enumValues": ["viridis", "plasma", "Spectral", "tab20"], "default": "viridis"
+    },
+    "title": { "type": "string", "label": "Title", "default": "Stream graph" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "time-series", "stream", "stacked area"],
+  "aliases": ["stacked area", "wiggle", "themeriver"],
+  "requires": [{"kind": "temporal"}, {"kind": "any"}, {"kind": "numeric"}]
+}

@@ -60,8 +60,11 @@ export async function previewPipeline(
     terminalViewMode?: "matched" | "unmatched_left" | "unmatched_right";
   } = {},
 ): Promise<PreviewResult> {
-  const sampleRows = opts.sampleRows ?? 100_000;
-  const previewLimit = opts.previewLimit ?? 500;
+  const sampleRows = Math.max(1, Math.floor(Number(opts.sampleRows) || 100_000));
+  // Round-9 fix: clamp into a positive integer range before
+  // interpolating into the SQL string. A caller passing 0/-1/Infinity
+  // would otherwise produce invalid SQL or an empty preview.
+  const previewLimit = Math.max(1, Math.min(Math.floor(Number(opts.previewLimit) || 500), 10_000));
 
   // Pass the abort signal so the actual fetch can be cancelled mid-flight
   // — not just short-circuited after the response arrives. Without this,

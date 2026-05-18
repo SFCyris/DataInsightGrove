@@ -197,10 +197,21 @@ def _detect_row_count_anomaly(
         mean = sum(historical) / len(historical)
         var = sum((v - mean) ** 2 for v in historical) / len(historical)
         stddev = math.sqrt(var)
+        # Round-4 QA finding: pipelines that have historically produced
+        # 0 (or near-zero) rows generate noisy false-positive anomalies
+        # when they recover or sporadically fire. ``pct_dev`` divides by
+        # ``max(mean, 1)`` so any non-trivial cur_rows looks like a
+        # huge percentage deviation; the z-score with mean<1 also fires
+        # easily. Skip when the historical mean is essentially zero —
+        # there is no signal to deviate from. The user can still see
+        # the row count change in the run UI; we just don't emit a
+        # rule-routable anomaly event for the "zero-or-rare" baseline.
+        if mean < 1.0:
+            continue
         if stddev == 0:
             # Constant history — only flag as anomaly if the current
             # value is substantially different in absolute terms.
-            if mean == 0 or cur_rows == mean:
+            if cur_rows == mean:
                 continue
             pct_dev = abs(cur_rows - mean) / max(mean, 1) * 100
             if pct_dev < ROW_COUNT_MIN_DEVIATION_PCT:

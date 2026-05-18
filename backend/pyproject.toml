@@ -7,7 +7,7 @@ name = "dig"
 #   • frontend display         → reads /health.version (no hardcoded copy)
 # The frontend's package.json carries its own "version" only because npm
 # tooling expects the field; nothing user-facing reads it.
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -90,6 +90,7 @@ dev = [
 
 [project.scripts]
 dig-api = "dig.api.main:run"
+dig-pack = "dig.cli.pack:main"
 
 [project.urls]
 Homepage      = "https://github.com/SFCyris/DataInsightGrove"

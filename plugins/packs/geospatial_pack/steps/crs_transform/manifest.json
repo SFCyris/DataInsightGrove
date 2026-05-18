@@ -1,0 +1,58 @@
+{
+  "id": "crs_transform",
+  "version": "1.0.0",
+  "label": "🧭 CRS / projection transform",
+  "description": "Reproject coordinates between coordinate reference systems via pyproj. Convert lat/lon (EPSG:4326) into UTM zones, State Plane, Web Mercator, or any other EPSG code. Use when downstream tools expect projected coordinates (e.g. metres) or for accurate area / distance work in a specific region. Complements the built-in convert_coordinates which only handles WGS84↔ECEF cartesian.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "xColumn": {
+      "type": "column_ref",
+      "label": "X / longitude column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "yColumn": {
+      "type": "column_ref",
+      "label": "Y / latitude column",
+      "columnFrom": "in",
+      "required": true
+    },
+    "sourceCrs": {
+      "type": "string",
+      "label": "Source CRS",
+      "default": "EPSG:4326",
+      "required": true,
+      "help": "Any pyproj-recognised string: EPSG code (EPSG:4326 = WGS84 lat/lon), PROJ string, or WKT. EPSG:4326 is the default for lat/lon data."
+    },
+    "targetCrs": {
+      "type": "string",
+      "label": "Target CRS",
+      "default": "EPSG:3857",
+      "required": true,
+      "help": "Any pyproj-recognised CRS. Common targets: EPSG:3857 (Web Mercator, used by web maps), EPSG:32633 (UTM zone 33N), EPSG:2154 (Lambert-93 for France), EPSG:27700 (British National Grid)."
+    },
+    "outputXColumn": {
+      "type": "string",
+      "label": "Output X column name",
+      "default": "x_proj",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    },
+    "outputYColumn": {
+      "type": "string",
+      "label": "Output Y column name",
+      "default": "y_proj",
+      "required": true,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "crs", "projection", "pyproj", "epsg", "reproject"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}],
+  "aliases": ["reproject", "projection", "EPSG", "UTM", "State Plane", "Web Mercator", "pyproj transform"]
+}

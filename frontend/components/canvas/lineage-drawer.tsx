@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { api, ApiError } from "@/lib/api/client";
 import { PositiveLoader } from "@/components/positive-loader";
@@ -35,6 +35,17 @@ export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Prop
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState<LineageSource[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Round-8 a11y: ESC closes the drawer; focus moves to the close
+  // button on open so keyboard users land inside the modal.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    queueMicrotask(() => closeBtnRef.current?.focus());
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open || rowIndex === null) return;
@@ -77,6 +88,9 @@ export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Prop
           />
           <motion.aside
             key="lineage-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Row lineage"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
@@ -90,14 +104,21 @@ export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Prop
                   Lineage · output row {rowIndex}
                 </p>
                 <p className="font-medium truncate">
-                  {loading ? "Tracing…" : sources.length === 0 && !error ? "No upstream sources" : `${sources.length} source row(s)`}
+                  {loading
+                    ? "Tracing…"
+                    : error
+                      ? "Lineage error"
+                      : sources.length === 0
+                        ? "No upstream sources"
+                        : `${sources.length} source ${sources.length === 1 ? "row" : "rows"}`}
                 </p>
               </div>
               <button
+                ref={closeBtnRef}
                 type="button"
                 onClick={onClose}
-                aria-label="Close"
-                className="text-muted-foreground hover:text-foreground"
+                aria-label="Close lineage drawer"
+                className="text-muted-foreground hover:text-foreground rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 ✕
               </button>

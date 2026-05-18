@@ -13,6 +13,23 @@ class RenameColumnsStep(Step):
         mapping = params.get("mapping") or []
         if not mapping:
             return f"SELECT * FROM {src}"
+        # Round-8 fix: detect collisions on the ``to`` side preflight so
+        # the editor surfaces a clear error instead of a DuckDB
+        # "duplicate column" runtime crash. Two rules with the same
+        # target name, or a target that aliases an unrenamed column,
+        # both produce ambiguous output and SHOULD fail loudly.
+        seen_targets: dict[str, str] = {}
+        for m in mapping:
+            src_col = m.get("from")
+            dst_col = m.get("to")
+            if not src_col or not dst_col:
+                continue
+            if dst_col in seen_targets:
+                raise ValueError(
+                    f"rename_columns: two rules both rename to {dst_col!r} "
+                    f"(from {seen_targets[dst_col]!r} and {src_col!r})",
+                )
+            seen_targets[dst_col] = src_col
         # Use DuckDB's SELECT * RENAME (a AS b, c AS d) FROM …
         renames = ", ".join(
             f"{quote_ident(m['from'])} AS {quote_ident(m['to'])}" for m in mapping

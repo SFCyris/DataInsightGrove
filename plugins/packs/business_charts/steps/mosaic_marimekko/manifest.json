@@ -1,0 +1,24 @@
+{
+  "id": "mosaic_marimekko",
+  "version": "1.0.0",
+  "label": "🟦 Marimekko / mosaic",
+  "description": "Two-dimensional part-to-whole. Column widths proportional to the row group's total; column heights proportional to the column group's share within that row. Use for revenue × channel × segment, market share × geography × time.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "rowGroup":    { "type": "column_ref", "label": "Row group (x-axis category)", "columnFrom": "in", "required": true },
+    "columnGroup": { "type": "column_ref", "label": "Stack group (y stacking category)", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true,
+                      "columnTypes": ["integer", "double"] },
+    "title": { "type": "string", "label": "Title", "default": "Marimekko" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "business", "composition", "marimekko", "mosaic"],
+  "aliases": ["mekko", "variwide", "2d stacked bar"],
+  "requires": [{"kind": "any"}, {"kind": "any"}, {"kind": "numeric"}]
+}

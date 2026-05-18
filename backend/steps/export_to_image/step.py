@@ -191,24 +191,52 @@ class ExportToImageStep(Step):
                 ctx_name = "talk"       # poster-size renders
             sns.set_theme(style="whitegrid", context=ctx_name)
 
+        # Optional grouping column used by box / violin / pair / joint /
+        # bubble. None means "no group dimension".
+        hue = params.get("hue")
+        # Column list for pair plot.
+        columns = params.get("columns") or []
+
         if kind == "scatter3d":
             fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi)
             ax = fig.add_subplot(111, projection="3d")
             self._render_scatter3d(ax, df, x, y, z, value)
+        elif kind == "pair":
+            # Figure-level: seaborn returns a PairGrid with its own fig.
+            # Rebind ``fig`` and ``ax`` so the title / save path below
+            # work unchanged.
+            fig, ax = self._render_pair(df, columns, hue, fig_w, fig_h, dpi)
+        elif kind == "joint":
+            # Figure-level: seaborn jointplot returns a JointGrid.
+            fig, ax = self._render_joint(df, x, y, hue, fig_w, fig_h, dpi)
         else:
             fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=dpi)
             renderer = {
                 "histogram":  self._render_histogram,
+                "density":    self._render_density,
+                "box":        self._render_box,
+                "violin":     self._render_violin,
                 "bar_counts": self._render_bar_counts,
+                "stacked_bar": self._render_stacked_bar,
+                "percent_stacked_bar": self._render_percent_stacked_bar,
                 "scatter":    self._render_scatter,
                 "line":       self._render_line,
                 "hexbin":     self._render_hexbin,
                 "heatmap":    self._render_heatmap,
+                "bubble":     self._render_bubble,
             }.get(kind)
             if renderer is None:
                 plt.close(fig)
                 raise ValueError(f"export_to_image: unknown kind '{kind}'")
-            renderer(ax, df, x, y, value)
+            # box / violin / stacked / bubble take the optional `hue`
+            # grouping; the older renderers don't. Inspect the
+            # signature to avoid passing kwargs the legacy ones can't.
+            import inspect
+            sig = inspect.signature(renderer)
+            if "hue" in sig.parameters:
+                renderer(ax, df, x, y, value, hue=hue)
+            else:
+                renderer(ax, df, x, y, value)
 
         ax.set_title(title)
         fig.tight_layout()
@@ -338,6 +366,168 @@ class ExportToImageStep(Step):
             cbar_kws={"label": value},
         )
         ax.set_xlabel(x); ax.set_ylabel(y)
+
+    def _render_density(self, ax, df, x, y, value):
+        """Smooth distribution via Gaussian KDE. Use when N is large
+        enough that histogram bin choice starts to dominate the
+        appearance of the data."""
+        col = x or value or y or df.columns[0]
+        import seaborn as sns
+        sns.kdeplot(df.get_column(col).to_numpy(), ax=ax, fill=True)
+        ax.set_xlabel(col)
+        ax.set_ylabel("density")
+
+    def _render_box(self, ax, df, x, y, value, hue=None):
+        """Box plot. x = numeric to summarise. Optional `hue` (or `y`
+        when `hue` is missing) provides the grouping category — one
+        box per group."""
+        import seaborn as sns
+        num_col = x or value or df.columns[0]
+        group_col = hue or y
+        if group_col and group_col in df.columns:
+            sns.boxplot(
+                x=df.get_column(group_col).cast(pl.Utf8).to_numpy(),
+                y=df.get_column(num_col).to_numpy(),
+                ax=ax,
+            )
+            ax.set_xlabel(group_col); ax.set_ylabel(num_col)
+        else:
+            sns.boxplot(y=df.get_column(num_col).to_numpy(), ax=ax)
+            ax.set_ylabel(num_col)
+
+    def _render_violin(self, ax, df, x, y, value, hue=None):
+        """Violin plot. Same shape as box plot but draws the kernel
+        density on each side — keeps the quartile summary while showing
+        bimodality / skew that box plots flatten."""
+        import seaborn as sns
+        num_col = x or value or df.columns[0]
+        group_col = hue or y
+        if group_col and group_col in df.columns:
+            sns.violinplot(
+                x=df.get_column(group_col).cast(pl.Utf8).to_numpy(),
+                y=df.get_column(num_col).to_numpy(),
+                ax=ax, inner="quartile",
+            )
+            ax.set_xlabel(group_col); ax.set_ylabel(num_col)
+        else:
+            sns.violinplot(y=df.get_column(num_col).to_numpy(), ax=ax, inner="quartile")
+            ax.set_ylabel(num_col)
+
+    def _render_stacked_bar(self, ax, df, x, y, value, hue=None, percent=False):
+        """Stacked bar chart. x = primary category, y or hue = stack
+        category, value = the numeric to sum (or count if missing)."""
+        import numpy as np
+        x_col = x or df.columns[0]
+        stack_col = hue or y
+        if not stack_col:
+            raise ValueError("stacked_bar needs `y` or `hue` for the stack category")
+        if value and value in df.columns:
+            agg = (
+                df.group_by([x_col, stack_col])
+                  .agg(pl.col(value).sum().alias("__v"))
+            )
+            value_label = f"sum({value})"
+        else:
+            agg = (
+                df.group_by([x_col, stack_col])
+                  .len().rename({"len": "__v"})
+            )
+            value_label = "count"
+
+        # Pivot to get one column per stack category.
+        pivot = agg.pivot(values="__v", index=x_col, on=stack_col, aggregate_function="sum").fill_null(0)
+        x_labels = pivot.get_column(x_col).cast(pl.Utf8).to_list()
+        stack_cols = [c for c in pivot.columns if c != x_col]
+        mat = np.asarray(pivot.drop(x_col).to_numpy(), dtype=float)
+        if percent:
+            row_sums = mat.sum(axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1.0
+            mat = mat / row_sums * 100.0
+            value_label = "percent"
+
+        bottom = np.zeros(mat.shape[0])
+        import matplotlib.cm as cm
+        colors = cm.tab10.colors if len(stack_cols) <= 10 else cm.tab20.colors
+        for i, col in enumerate(stack_cols):
+            ax.bar(x_labels, mat[:, i], bottom=bottom, label=col, color=colors[i % len(colors)])
+            bottom = bottom + mat[:, i]
+        ax.set_xlabel(x_col); ax.set_ylabel(value_label)
+        ax.legend(title=stack_col, bbox_to_anchor=(1.02, 1.0), loc="upper left")
+        ax.tick_params(axis="x", rotation=45)
+
+    def _render_percent_stacked_bar(self, ax, df, x, y, value, hue=None):
+        return self._render_stacked_bar(ax, df, x, y, value, hue=hue, percent=True)
+
+    def _render_bubble(self, ax, df, x, y, value, hue=None):
+        """Bubble chart — scatter with the third channel mapped to
+        marker size. Optional `hue` colors by category (uses a
+        qualitative palette instead of viridis)."""
+        if not x or not y:
+            raise ValueError("bubble needs both x and y")
+        if not value:
+            raise ValueError("bubble needs a `value` column for marker size")
+        import numpy as np
+        xs = df.get_column(x).to_numpy()
+        ys = df.get_column(y).to_numpy()
+        sizes = _normalise_sizes(df.get_column(value).to_numpy())
+        kw = {"alpha": 0.6, "s": sizes}
+        if hue and hue in df.columns:
+            # Map distinct categories to color indices (qualitative).
+            cats = df.get_column(hue).cast(pl.Utf8).to_list()
+            uniq = sorted(set(cats))
+            cat_to_idx = {c: i for i, c in enumerate(uniq)}
+            kw["c"] = [cat_to_idx[c] for c in cats]
+            import matplotlib.cm as cm
+            kw["cmap"] = cm.tab10 if len(uniq) <= 10 else cm.tab20
+        else:
+            kw["c"] = sizes
+            kw["cmap"] = "viridis"
+        sc = ax.scatter(xs, ys, **kw)
+        ax.set_xlabel(x); ax.set_ylabel(y)
+        if hue and hue in df.columns:
+            # Build a discrete legend for the categories.
+            import matplotlib.lines as mlines
+            handles = [
+                mlines.Line2D([], [], marker="o", linestyle="",
+                              markerfacecolor=sc.cmap(sc.norm(cat_to_idx[c])),
+                              label=c)
+                for c in sorted(cat_to_idx)
+            ]
+            ax.legend(handles=handles, title=hue, bbox_to_anchor=(1.02, 1.0), loc="upper left")
+        _apply_axis_locator(ax)
+
+    def _render_pair(self, df, columns, hue, fig_w, fig_h, dpi):
+        """Pair plot — N×N matrix of scatter / kde plots over the
+        chosen numeric columns. Returns (fig, ax) where ax is the
+        first axes (for the title set by the caller)."""
+        if not columns or len(columns) < 2:
+            raise ValueError("pair plot needs at least 2 columns")
+        import seaborn as sns
+        # Subset to a pandas frame so seaborn handles the grid layout.
+        pdf = df.select([*columns, *([hue] if hue and hue in df.columns else [])]).to_pandas()
+        kw = {"data": pdf, "vars": list(columns), "diag_kind": "kde", "corner": True}
+        if hue and hue in df.columns:
+            kw["hue"] = hue
+        grid = sns.pairplot(**kw)
+        # Resize the figure to honour the user's width/height + dpi.
+        grid.figure.set_size_inches(fig_w, fig_h)
+        grid.figure.set_dpi(dpi)
+        return grid.figure, grid.axes[0][0]
+
+    def _render_joint(self, df, x, y, hue, fig_w, fig_h, dpi):
+        """Joint plot — central scatter with marginal distributions
+        on each axis. Returns (fig, ax) where ax is the joint scatter."""
+        if not x or not y:
+            raise ValueError("joint plot needs both x and y")
+        import seaborn as sns
+        pdf = df.select([x, y, *([hue] if hue and hue in df.columns else [])]).to_pandas()
+        kw = {"data": pdf, "x": x, "y": y, "kind": "scatter"}
+        if hue and hue in df.columns:
+            kw["hue"] = hue
+        grid = sns.jointplot(**kw)
+        grid.figure.set_size_inches(fig_w, fig_h)
+        grid.figure.set_dpi(dpi)
+        return grid.figure, grid.ax_joint
 
     def _render_scatter3d(self, ax, df, x, y, z, value):
         if not (x and y and z):

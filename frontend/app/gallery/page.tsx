@@ -6,16 +6,17 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 import { api, type GalleryTemplate } from "@/lib/api/client";
 import { fmtInt } from "@/lib/format-number";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { PositiveLoader } from "@/components/positive-loader";
 
 /**
  * Public template gallery — discoverability surface for shareable pipelines.
  *
- * Reads from the local DIG instance's /templates endpoint (which lists every
- * Template the user has saved + any curated set bundled in). When DIG is
- * deployed in sandbox mode, the same page reads from the public hosted
- * registry — see HOSTED_SANDBOX.md.
+ * Reads from the local DIG instance's /templates endpoint, which lists
+ * every template the user has saved + any curated set bundled in.
  */
 export default function GalleryPage() {
+  useDocumentTitle('Templates');
   const reduce = useReducedMotion();
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -87,16 +88,18 @@ export default function GalleryPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="🔍 Search templates…"
+            aria-label="Search templates"
             className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/40"
           />
           <div className="flex gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={() => setActiveTag(null)}
+              aria-pressed={!activeTag}
               className={[
                 "px-2.5 py-1 text-xs rounded-md border transition-colors",
                 !activeTag
-                  ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-900/20"
+                  ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-900/20 font-medium"
                   : "border-border hover:border-foreground/30",
               ].join(" ")}
             >
@@ -107,10 +110,11 @@ export default function GalleryPage() {
                 key={tag}
                 type="button"
                 onClick={() => setActiveTag(tag === activeTag ? null : tag)}
+                aria-pressed={tag === activeTag}
                 className={[
                   "px-2.5 py-1 text-xs rounded-md border transition-colors",
                   tag === activeTag
-                    ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-900/20"
+                    ? "border-emerald-500/60 bg-emerald-50 dark:bg-emerald-900/20 font-medium"
                     : "border-border hover:border-foreground/30",
                 ].join(" ")}
               >
@@ -120,7 +124,11 @@ export default function GalleryPage() {
           </div>
         </div>
 
-        {q.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {q.isLoading && (
+          <div className="py-8 grid place-items-center">
+            <PositiveLoader variant="rendering" primary="Loading gallery…" size="md" showTimer={false} />
+          </div>
+        )}
         {q.error && (
           <p className="text-sm text-destructive">
             Couldn't load gallery: {(q.error as Error).message}

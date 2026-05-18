@@ -1,0 +1,53 @@
+{
+  "id": "matrix_inverse",
+  "version": "1.0.0",
+  "label": "🔄 Matrix inverse",
+  "description": "Invert a square matrix. Supports two input shapes: a column-grid (M rows × M columns of numbers) and a nested-list column (each row carries a full square matrix). Singular matrices raise a clear error; the pseudoinverse option falls back to numpy.linalg.pinv for non-invertible inputs.",
+  "category": "shape",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "mode": {
+      "type": "enum",
+      "label": "Input shape",
+      "enumValues": ["column_grid", "nested_list"],
+      "default": "column_grid",
+      "required": true,
+      "help": "column_grid: pick M numeric columns from M input rows. nested_list: each row carries a full square matrix in a single nested-list column."
+    },
+    "valueColumns": {
+      "type": "column_refs",
+      "label": "Value columns",
+      "columnFrom": "in",
+      "help": "The M columns × M rows matrix to invert. Required for mode = column_grid.",
+      "visibleWhen": { "mode": "column_grid" }
+    },
+    "nestedListColumn": {
+      "type": "column_ref",
+      "label": "Nested-list column",
+      "columnFrom": "in",
+      "help": "A list-of-list-of-number column. Each cell must be a square matrix. Required for mode = nested_list.",
+      "visibleWhen": { "mode": "nested_list" }
+    },
+    "outputColumn": {
+      "type": "string",
+      "label": "Output column name (nested_list mode)",
+      "default": "inverse",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_ ]*$",
+      "visibleWhen": { "mode": "nested_list" }
+    },
+    "pseudoinverse": {
+      "type": "boolean",
+      "label": "Pseudoinverse fallback",
+      "default": false,
+      "help": "When the matrix is singular (non-invertible), fall back to numpy.linalg.pinv (Moore-Penrose pseudoinverse) instead of erroring. Useful when working with rank-deficient inputs."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["matrix", "inverse", "linalg", "pinv"],
+  "requires": [{"kind": ["numeric", "array", "vector"]}],
+  "aliases": ["invert", "matrix.inv", "linalg inv", "pinv"]
+}

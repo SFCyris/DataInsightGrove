@@ -2,40 +2,104 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://datainsightgrove.local/schemas/config.v1.json",
   "title": "DIG Configuration",
-  "description": "Persistent configuration for a local DIG install. Lives at $DIG_CONFIG, ~/.config/dig/config.json (Linux + macOS), or <repo>/dig.config.json (dev fallback). All fields optional; missing fields fall back to defaults.",
+  "description": "Persistent configuration for a local DIG install. Lives at $DIG_CONFIG, ~/.config/dig/config.json (Linux + macOS), or <repo>/dig.config.json (dev fallback). Loaded by scripts/dig_config.py and merged with env-var overrides at boot. All fields optional; missing fields (or explicit nulls) fall back to defaults — that way a config written before a key existed doesn't accidentally zap a newly-introduced default.",
   "type": "object",
   "required": ["version"],
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
+
     "api": {
       "type": "object",
+      "description": "Backend (FastAPI/uvicorn) bind address + ports. The 'port' is plain HTTP; 'httpsPort' is the parallel TLS listener served by scripts/dig_tls_proxy.py (it terminates TLS and forwards to plain HTTP on 'port'). Both reach the same uvicorn process.",
       "additionalProperties": false,
       "properties": {
-        "host": { "type": "string", "default": "127.0.0.1" },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8090 }
+        "host":      { "type": "string",  "default": "127.0.0.1" },
+        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8090 },
+        "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8443 }
       }
     },
+
     "web": {
       "type": "object",
+      "description": "Frontend (Next.js dev server) bind address + ports. Same dual-port story as api: 'port' is HTTP, 'httpsPort' is HTTPS via dig_tls_proxy.py.",
       "additionalProperties": false,
       "properties": {
-        "host": { "type": "string", "default": "127.0.0.1" },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3000 }
+        "host":      { "type": "string",  "default": "127.0.0.1" },
+        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3000 },
+        "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3443 }
       }
     },
+
     "dataDir": {
       "type": ["string", "null"],
       "description": "Where uploads, cached parquet, run outputs, and the metadata SQLite live. Null = <repo>/data/."
     },
+
     "logDir": {
       "type": ["string", "null"],
-      "description": "Where dig-start.sh writes API + web logs. Null = system tmp dir."
+      "description": "Where dig-start.sh writes the rotated dig-api.log + dig-web.log + dig-tls-proxy.log streams. Null = /var/log/DIG (bootstrapped with sudo on first run; falls back to ~/Library/Logs/DIG on macOS or ~/.local/state/DIG/logs on Linux if sudo is declined)."
     },
+
+    "log": {
+      "type": "object",
+      "description": "Log rotation settings — applied per stream (api + web + tls-proxy each get their own rotated set via scripts/dig_log_rotate.py).",
+      "additionalProperties": false,
+      "properties": {
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 10737418240,
+          "default": 10485760,
+          "description": "Per-file size cap. The rotator opens a new file (.log → .log.1) each time the active file crosses this size. Default 10 MB."
+        },
+        "backupCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "default": 5,
+          "description": "Number of rotated files to keep. Older ones are pruned. Default 5 → 50 MB max per stream."
+        }
+      }
+    },
+
+    "tls": {
+      "type": "object",
+      "description": "Self-signed TLS settings. The cert is auto-generated at first start (scripts/dig_tls.py), covers localhost + hostname + every LAN IPv4 the box has, and is served on api.httpsPort + web.httpsPort by dig_tls_proxy.py.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to start the TLS proxy. When false, only the http:// URLs are served."
+        },
+        "certFile": {
+          "type": ["string", "null"],
+          "description": "Path to the TLS certificate (PEM). Null = ~/.config/dig/tls/dig.crt (auto-generated)."
+        },
+        "keyFile": {
+          "type": ["string", "null"],
+          "description": "Path to the TLS private key (PEM). Null = ~/.config/dig/tls/dig.key (auto-generated)."
+        },
+        "autoTrust": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attempt to install the cert into the system trust store on first start (one sudo prompt). The attempt happens exactly once — subsequent restarts skip it whether it succeeded or not. Re-trigger with `./scripts/dig_tls.py trust` at any time."
+        },
+        "additionalSans": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra DNS names or IP addresses to cover with the cert (e.g. a load-balancer hostname). Auto-included: localhost, machine hostname, hostname.local, 127.0.0.1, ::1, every non-loopback IPv4."
+        }
+      }
+    },
+
     "browserPreviewSampleRows": {
       "type": "integer",
       "minimum": 1,
-      "description": "Default sample size for in-browser preview when no per-pipeline override is set."
+      "default": 100000,
+      "description": "Default sample size for in-browser DuckDB-WASM preview when no per-pipeline override is set."
     }
   }
 }

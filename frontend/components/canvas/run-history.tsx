@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type RunOut } from "@/lib/api/client";
+import { humanizeSqlError } from "@/lib/humanize-sql-error";
+import { PositiveLoaderInline } from "@/components/positive-loader";
+import { fmtDuration } from "@/lib/format-number";
 
 const STATUS_EMOJI: Record<string, string> = {
   succeeded: "✅", failed: "❌", running: "⏳", queued: "🟡",
@@ -52,9 +56,7 @@ function useNowMs(intervalMs = 30_000): number {
 function duration(start?: string | null, end?: string | null): string {
   if (!start || !end) return "";
   const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (ms < 1000) return `${ms} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  return `${Math.round(ms / 1000)} s`;
+  return fmtDuration(ms);
 }
 
 export function RunHistory({ pipelineId, refreshKey, onView }: Props) {
@@ -122,18 +124,34 @@ export function RunHistory({ pipelineId, refreshKey, onView }: Props) {
               <span className="text-muted-foreground">{runs.data?.length ?? 0} total</span>
             </header>
             {runs.isLoading && (
-              <div className="p-4 text-center text-xs text-muted-foreground">⏳ loading…</div>
+              <div className="p-4 flex justify-center">
+                <PositiveLoaderInline variant="rendering" text="Loading runs…" />
+              </div>
             )}
             {runs.data?.length === 0 && (
               <div className="p-6 text-center text-xs text-muted-foreground">
-                No runs yet. Click <strong>▶️ Run on backend</strong> in the toolbar.
+                No runs yet. Click <strong>▶️ Run pipeline</strong> in the toolbar.
               </div>
             )}
-            <ul className="divide-y divide-border/50">
-              {(runs.data ?? []).slice(0, 25).map((r) => (
+            <ul
+              role="listbox"
+              aria-label="Recent runs"
+              className="divide-y divide-border/50"
+            >
+              {(runs.data ?? []).slice(0, 25).map((r) => {
+                // Round-5 W4: ticking duration for in-flight runs so the
+                // user can see how long they've been waiting (and whether
+                // it's a real stall).
+                const liveDuration =
+                  (r.status === "queued" || r.status === "running") && r.startedAt
+                    ? Math.floor((nowMs - new Date(r.startedAt).getTime()) / 1000)
+                    : null;
+                return (
                 <li key={r.id}>
                   <button
                     type="button"
+                    role="option"
+                    aria-selected={false}
                     onClick={() => {
                       onView?.(r);
                       setOpen(false);
@@ -154,17 +172,32 @@ export function RunHistory({ pipelineId, refreshKey, onView }: Props) {
                       <span className="block text-muted-foreground text-[10px]">
                         {timeAgo(r.createdAt, nowMs)}
                         {r.startedAt && r.finishedAt && ` · ${duration(r.startedAt, r.finishedAt)}`}
+                        {liveDuration != null && ` · running ${liveDuration}s`}
                       </span>
                     </span>
                     {r.error && (
                       <span title={r.error} className="text-destructive text-[10px] max-w-[80px] truncate">
-                        {r.error.split("\n")[0]}
+                        {humanizeSqlError(r.error, []).title}
                       </span>
                     )}
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
+            {/* Round-5 W4: show a "see all N runs" footer link when the
+                popover truncates so the user has a pivot to the full grid. */}
+            {(runs.data?.length ?? 0) > 25 && (
+              <footer className="px-3 py-2 border-t border-border/60 text-[11px] text-center">
+                <Link
+                  href={`/runs?pipeline_id=${pipelineId}`}
+                  className="text-muted-foreground hover:text-foreground underline"
+                  onClick={() => setOpen(false)}
+                >
+                  See all {runs.data!.length} runs →
+                </Link>
+              </footer>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

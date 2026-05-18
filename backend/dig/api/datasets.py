@@ -17,7 +17,9 @@ from ulid import ULID
 from dig.engine.profile import profile_dataframe
 from dig.engine.registry import connectors
 from dig.storage.db import get_session
-from dig.storage.files import cached_parquet_path, upload_path
+from pathlib import Path
+
+from dig.storage.files import cached_parquet_path, data_dir, upload_path
 from dig.storage.models import Dataset
 
 log = logging.getLogger(__name__)
@@ -205,7 +207,14 @@ async def create_dataset_from_uri(
         df = lf.collect()
         # Global per-dataset size ceiling. AI-generated connectors could
         # otherwise stream gigabytes into memory before write_parquet runs.
-        max_mb = int(os.environ.get("DIG_MAX_DATASET_MB", "1024"))
+        #
+        # Default raised from 1024 → 65536 MB (64 GB) to align with the
+        # documented "up to ~50 GB on a single dataset" capability. A
+        # generous default (vs forcing every large-data user to set
+        # ``DIG_MAX_DATASET_MB`` explicitly) is the right v1 ergonomic;
+        # the cap still protects against runaway connectors that try to
+        # buffer the entire 4 TB lakehouse into memory.
+        max_mb = int(os.environ.get("DIG_MAX_DATASET_MB", "65536"))
         size_mb = df.estimated_size("mb")
         if size_mb > max_mb:
             raise RuntimeError(
@@ -252,6 +261,7 @@ async def upload_dataset(
     name: str | None = Form(None),
     connector_id: str = Form("csv"),
     options: str = Form("{}"),
+    on_name_conflict: str = Form("error"),
     session: AsyncSession = Depends(get_session),
 ) -> DatasetOut:
     """Upload a file and ingest it as a Dataset.
@@ -259,6 +269,14 @@ async def upload_dataset(
     The uploaded file is persisted to data/uploads/, then read by the chosen
     connector and materialized to data/datasets/{id}.parquet. A profile is
     computed and stored on the row.
+
+    Round-5 W3 finding: previously this endpoint silently produced a
+    second row when the user re-uploaded a file under the same name
+    (a frequent workflow when iterating on a CSV). The default is now
+    to refuse with 409 and a structured detail the UI can decode into
+    "Replace / Keep as new copy". Set ``on_name_conflict=allow`` to
+    keep the legacy "always create a new row" behaviour for callers
+    that genuinely want multiple copies.
     """
     try:
         opts = json.loads(options) if options else {}
@@ -274,6 +292,42 @@ async def upload_dataset(
     filename = file.filename or f"upload-{dataset_id}"
     display_name = name or filename
     upload = upload_path(dataset_id, filename)
+
+    # Detect a name collision before we write a single byte.
+    if on_name_conflict in ("error", "replace"):
+        existing = (await session.execute(
+            select(Dataset).where(Dataset.name == display_name),
+        )).scalars().first()
+        if existing is not None:
+            if on_name_conflict == "error":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "dataset_name_in_use",
+                        "existingId": existing.id,
+                        "existingStatus": existing.status,
+                        "message": (
+                            f"A dataset called {display_name!r} already exists. "
+                            "Submit again with on_name_conflict=replace to "
+                            "re-ingest in place, or on_name_conflict=allow to "
+                            "keep both."
+                        ),
+                    },
+                )
+            # ``replace`` mode: blow away the existing row's parquet +
+            # row, then continue with the new ULID. Downstream pipelines
+            # that pinned the old dataset_id will need to be re-wired
+            # — that's an explicit user choice that comes with this mode.
+            existing_id = existing.id
+            await session.delete(existing)
+            await session.commit()
+            try:
+                existing_pq = cached_parquet_path(existing_id)
+                if existing_pq.exists():
+                    existing_pq.unlink()
+            except Exception:  # noqa: BLE001
+                log.warning("could not clean stale parquet for replaced dataset %s",
+                            existing_id, exc_info=True)
 
     # Cap upload size. Default 500 MB; configurable via DIG_MAX_UPLOAD_MB.
     # Without this, a runaway client can fill data/uploads/ until disk-full.
@@ -715,24 +769,108 @@ async def import_sample(
 async def delete_dataset(
     dataset_id: str, session: AsyncSession = Depends(get_session)
 ) -> None:
+    """Remove a dataset reference + DIG's internal parquet cache for it.
+
+    Source-file preservation is a hard rule:
+
+      A dataset row is an "input reference" — a pointer to a piece of
+      source data, plus DIG's cached canonical Parquet representation
+      of it. Deleting the reference removes the pointer (the DB row)
+      AND the cache (DIG's internal artefact, invisible to the user),
+      but it never touches the source file.
+
+      This holds whether the file arrived via:
+        - the file-upload endpoint  (lands in ``data/uploads/``)
+        - ``POST /datasets/from-uri``  (lives wherever the user said)
+        - drag-and-drop in the canvas  (saved to the configured input
+          location, then referenced)
+
+      The reasoning: the entire point of a data-preparation tool is
+      to leave the source untouched. A user who deletes a reference
+      from DIG's catalog should NEVER discover their CSV is gone.
+      If they want the file gone, they delete it from the filesystem
+      themselves — explicit, deliberate, no DIG involvement.
+
+    What IS removed:
+      - the SQLite ``datasets`` row (the reference itself)
+      - ``data/datasets/<id>.parquet`` (DIG's internal cache; users
+        never see this path, no risk of surprise)
+
+    What is NEVER removed (regardless of location):
+      - the file at ``source_uri``
+    """
     d = await session.get(Dataset, dataset_id)
     if d is None:
         raise HTTPException(404, "dataset not found")
-    # Capture file paths BEFORE deleting the row. Previously we removed files
-    # first and then committed; if the commit failed (FK constraint, etc.),
-    # files were gone but the row remained. Reverse the order: row first, then
-    # files in a best-effort block. P1 review finding.
+
+    # Capture cache path BEFORE deleting the row. Row first / file second
+    # ordering: if the commit fails (FK constraint, etc.) we'd rather have
+    # a stale parquet than an orphan row pointing at nothing.
     storage_path = d.storage_uri.replace("file://", "") if d.storage_uri else None
     source_path = (
         d.source_uri.replace("file://", "")
         if (d.source_uri or "").startswith("file://") else None
     )
+
     await session.delete(d)
     await session.commit()
-    # Files now: row is gone. Failures here only orphan a file on disk; safe.
-    for p in (storage_path, source_path):
-        if p and os.path.exists(p):
-            try:
-                os.remove(p)
-            except OSError:
-                log.exception("failed to remove dataset file %s after row delete", p)
+
+    # Internal cache removal — DIG-owned, never user-visible.
+    if storage_path and os.path.exists(storage_path):
+        try:
+            os.remove(storage_path)
+        except OSError:
+            log.exception("failed to remove cache parquet %s after row delete", storage_path)
+
+    # Source-file preservation — log so an operator can audit what we
+    # left behind. This is the line you grep for when someone asks
+    # "where's my CSV after I deleted that dataset."
+    if source_path:
+        log.info(
+            "delete_dataset %s: source file preserved at %s "
+            "(input data is never deleted by DIG; remove via filesystem if needed)",
+            dataset_id, source_path,
+        )
+
+
+@router.post("/{dataset_id}/refresh", response_model=DatasetOut)
+async def refresh_dataset(
+    dataset_id: str, session: AsyncSession = Depends(get_session),
+) -> DatasetOut:
+    """Re-ingest a dataset from its current ``source_uri`` + ``options``.
+
+    Round-5 W3 finding: there was no way to refresh a dataset when its
+    underlying file (or REST URL) changed on disk. Users had to delete +
+    re-upload, which broke every downstream pipeline that pinned the
+    old dataset ID. This endpoint preserves the row + ID, re-runs the
+    connector, and re-materialises the parquet. The ``status`` flips to
+    ``ingesting`` while the work runs and back to ``ready`` (or
+    ``failed``) when done.
+    """
+    d = await session.get(Dataset, dataset_id)
+    if d is None:
+        raise HTTPException(404, "dataset not found")
+    if not d.source_uri:
+        raise HTTPException(400, "dataset has no source_uri to refresh from")
+    try:
+        connector = connectors().get(d.connector or "csv")
+    except KeyError as e:
+        raise HTTPException(400, str(e)) from e
+    d.status = "ingesting"
+    d.error = None
+    await session.commit()
+    try:
+        df = connector.read(d.source_uri, d.options or {}).collect()
+        cached = cached_parquet_path(d.id)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        df.write_parquet(cached)
+        d.row_count = df.height
+        d.profile = profile_dataframe(df).model_dump()
+        d.storage_uri = f"file://{cached}"
+        d.status = "ready"
+    except Exception as e:  # noqa: BLE001
+        d.status = "failed"
+        d.error = f"{type(e).__name__}: {e}"
+        log.exception("refresh of dataset %s failed", dataset_id)
+    await session.commit()
+    return _to_out(d)

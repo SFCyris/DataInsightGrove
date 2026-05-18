@@ -40,6 +40,6 @@
   },
   "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
   "tags": ["spatial", "geometry", "coordinates", "convert", "polar", "cartesian", "geographic"],
-  "requires": [{"kind": "spatial"}],
+  "requires": [{"kind": ["numeric", "spatial"], "min": 2}],
   "aliases": ["projection", "lat lon", "x y"]
 }

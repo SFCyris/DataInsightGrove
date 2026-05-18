@@ -1,16 +1,27 @@
 {
   "id": "time_series_pro",
-  "version": "0.2.0",
-  "label": "⏳ Time-series Pro",
-  "description": "Stationarity tests, ACF/PACF lag analysis, changepoint detection, rolling-window anomaly flagging, and median-based outlier replacement. Pairs with the built-in forecast, rolling, resample, and seasonal_decompose for a complete time-series toolkit. Real-world demos: retail forecast, IoT anomaly, healthcare vitals, hospital readmissions, ER load forecast, financial volatility, housing trend, housing inventory anomaly.",
+  "version": "0.3.0",
+  "label": "\u23f3 Time-series Pro",
+  "description": "Stationarity tests, ACF/PACF lag analysis, changepoint detection, rolling-window anomaly flagging, median-based outlier replacement, and three time-series visualizations: candlestick (OHLC), stream graph (center-baselined stacked area), horizon chart (compact small-multiples). Pairs with the built-in forecast, rolling, resample, and seasonal_decompose for a complete time-series toolkit.",
   "author": "DataInsightGrove",
   "license": "AGPL-3.0",
   "homepage": "https://github.com/SFCyris/DataInsightGrove",
   "minDigVersion": "0.10.0",
   "steps": [
-    "adf_test", "kpss_test", "acf_pacf",
-    "changepoint_detection", "anomaly_zscore", "replace_outliers"
+    "adf_test",
+    "kpss_test",
+    "acf_pacf",
+    "changepoint_detection",
+    "anomaly_zscore",
+    "replace_outliers",
+    "candlestick_chart",
+    "stream_graph",
+    "horizon_chart"
   ],
   "connectors": [],
-  "pythonRequirements": ["statsmodels>=0.14"]
+  "pythonRequirements": [
+    "statsmodels>=0.14",
+    "matplotlib>=3.8"
+  ],
+  "checksum": "sha256:739e9de7f187a9cbffa6d6186b5dee7dc2aed17d8cfebc5b68c7254ea46238ff"
 }

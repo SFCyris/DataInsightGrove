@@ -62,8 +62,11 @@ class TestPathSafetyGate:
         from dig.engine.executor import _dataset_cte
         from dig.engine.pipeline import DatasetSpec, Pipeline
 
+        # Crockford base32 ULID (26 chars, no I/L/O/U). Round-3 cleanup:
+        # the prior literal had `I` and `L` which would fail the moment
+        # a future Pipeline.id validator enforces the actual ULID alphabet.
         p = Pipeline(
-            id="01TESTPIPELINEULID00000000",
+            id="01HZZZZZZZZZZZZZZZZZZZZZZZ",
             name="hostile",
             datasets=[
                 DatasetSpec(id="ds", connector="csv", uri="file:///etc/passwd"),

@@ -189,7 +189,12 @@ class ComputeBackend(Protocol):
 
 # ── Public surface — versioned by docstring contract above ──────────────
 
-__all__ = [
+# Round-4 QA finding: ``__all__`` was a mutable list, so external code
+# (an extension, a misbehaving test) could ``dig.protocols.__all__.pop()``
+# / ``.append()`` and poison every subsequent ``from dig.protocols import *``
+# in the same process. The module docstring promises a FROZEN public
+# surface — back that with a tuple so the type forbids mutation.
+__all__ = (
     # Step plugin contract
     "Step",
     "PolarsResult",
@@ -218,7 +223,7 @@ __all__ = [
     "StorageBackend",
     "AuthProvider",
     "ComputeBackend",
-]
+)
 
 
 # ── Surface-version stamp for compatibility checks ──────────────────────

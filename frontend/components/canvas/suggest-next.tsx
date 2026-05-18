@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -31,6 +31,17 @@ export function SuggestNextButton({ pipelineId, focusedNodeId, focusedSchema, on
   const [suggestions, setSuggestions] = useState<AiSuggestion[]>([]);
   const [model, setModel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const goalRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Round-8 a11y: ESC closes the modal and initial focus lands on the
+  // textarea so users can type immediately.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    queueMicrotask(() => goalRef.current?.focus());
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
   // Gate the portal on a client-only mount flag — see explain-pipeline for
   // the full rationale (createPortal can't run during SSR).
   const [mounted, setMounted] = useState(false);
@@ -116,6 +127,7 @@ export function SuggestNextButton({ pipelineId, focusedNodeId, focusedSchema, on
               // come back. Same pattern as IslandPickerModal.
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[600px] max-w-[92vw] max-h-[88vh] bg-card border border-border rounded-lg shadow-2xl p-5 flex flex-col gap-4"
               role="dialog"
+              aria-modal="true"
               aria-label="Suggest next step with AI"
             >
               <header className="flex items-center gap-2 shrink-0">
@@ -138,6 +150,7 @@ export function SuggestNextButton({ pipelineId, focusedNodeId, focusedSchema, on
                     What do you want to do next?
                   </label>
                   <textarea
+                    ref={goalRef}
                     value={goal}
                     onChange={(e) => setGoal(e.target.value)}
                     placeholder="e.g. keep only US customers, or compute revenue per plan tier, or extract email from the JSON column"

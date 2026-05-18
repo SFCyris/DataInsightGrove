@@ -17,12 +17,14 @@
       "type": "string",
       "label": "Auth value (bearer token / API key / user:pass)",
       "default": "",
+      "visibleWhen": { "auth_kind": ["bearer", "api_key_query", "api_key_header", "basic"] },
       "help": "Sensitive — only the connector sees this; not echoed in logs. For basic auth, format as 'username:password'."
     },
     "auth_param_name": {
       "type": "string",
       "label": "API-key parameter name",
       "default": "api_key",
+      "visibleWhen": { "auth_kind": ["api_key_query", "api_key_header"] },
       "help": "Used only with api_key_query (URL ?<name>=...) or api_key_header (header <name>: ...)."
     },
     "json_path": {
@@ -40,21 +42,24 @@
     },
     "cursor_response_path": {
       "type": "string",
-      "label": "Cursor field in response (for cursor pagination)",
+      "label": "Cursor field in response",
       "default": "next_cursor",
+      "visibleWhen": { "pagination": "cursor" },
       "help": "JSONPath to the cursor in each response. e.g. 'next_cursor', 'meta.next', 'pagination.cursor'."
     },
     "cursor_param_name": {
       "type": "string",
       "label": "Cursor query param name",
-      "default": "cursor"
+      "default": "cursor",
+      "visibleWhen": { "pagination": "cursor" }
     },
     "page_size": {
       "type": "integer",
-      "label": "Page size (for offset/limit or page_number)",
+      "label": "Page size",
       "default": 100,
       "min": 1,
-      "max": 10000
+      "max": 10000,
+      "visibleWhen": { "pagination": ["offset_limit", "page_number"] }
     },
     "max_pages": {
       "type": "integer",
@@ -62,10 +67,11 @@
       "default": 50,
       "min": 1,
       "max": 1000,
+      "visibleWhen": { "pagination": ["cursor", "offset_limit", "page_number", "link_header"] },
       "help": "Hard cap to prevent runaway pagination. Adjust if your API has more pages."
     },
     "timeout_s": {
-      "type": "integer",
+      "type": "number",
       "label": "Per-request timeout (seconds)",
       "default": 30,
       "min": 1,

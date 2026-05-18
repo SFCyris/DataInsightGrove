@@ -1,8 +1,8 @@
 {
   "id": "export_to_image",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "label": "🖼 Export to image",
-  "description": "Render the data as a PNG/SVG via matplotlib + seaborn. Pick 1 column (distribution), 2 columns (scatter / categorical), or 3 columns (heatmap or 3-D scatter). 'auto' picks a sensible chart from the column types.",
+  "description": "Render the data as a PNG/SVG via matplotlib + seaborn. Distribution charts (histogram / density / box / violin), categorical charts (bar / stacked / percent stacked), bivariate (scatter / line / hexbin / heatmap / joint), multivariate (pair plot / scatter3d / bubble). 'auto' picks a sensible chart from the column types.",
   "category": "visualize",
   "engine": { "primary": "polars", "browser": "none", "deterministic": true },
   "io": {
@@ -13,7 +13,25 @@
     "kind": {
       "type": "enum",
       "label": "Chart kind",
-      "enumValues": ["auto", "histogram", "bar_counts", "scatter", "line", "hexbin", "heatmap", "scatter3d"],
+      "enumValues": ["auto", "histogram", "density", "box", "violin", "bar_counts", "stacked_bar", "percent_stacked_bar", "scatter", "line", "hexbin", "heatmap", "scatter3d", "pair", "joint", "bubble"],
+      "enumLabels": [
+        "let DIG pick by column types",
+        "1 numeric column",
+        "1 numeric column (smoothed)",
+        "1 categorical (+ optional hue)",
+        "1 categorical (+ optional hue)",
+        "1 categorical column (bar = count)",
+        "1 categorical + hue (stacked)",
+        "1 categorical + hue (100% stacked)",
+        "X numeric + Y numeric (+ optional hue)",
+        "X date/ordinal + Y2 numeric",
+        "X numeric + Y3 numeric (honeycomb)",
+        "X categorical + Y4 categorical + value (cell color)",
+        "X numeric + Y5 numeric + Z numeric (3-D)",
+        "list of numeric columns (matrix)",
+        "X numeric + Y numeric (scatter + marginal histograms)",
+        "X numeric + Y numeric + value (bubble size) + optional hue"
+      ],
       "default": "auto",
       "required": true,
       "help": "'auto' inspects the columns + types and picks one. Override for explicit control."
@@ -67,6 +85,19 @@
       "columnFrom": "in",
       "visibleWhen": { "kind": "scatter3d" }
     },
+    "columns": {
+      "type": "column_refs",
+      "label": "Columns (pair plot)",
+      "columnFrom": "in",
+      "help": "Numeric columns to include in the scatter matrix. Required for kind = pair. 2-8 columns is the practical range.",
+      "visibleWhen": { "kind": "pair" }
+    },
+    "hue": {
+      "type": "column_ref",
+      "label": "Color-by column",
+      "columnFrom": "in",
+      "help": "Optional grouping column. Box / violin / pair / joint / bubble use it to color rows by category."
+    },
     "title": { "type": "string", "label": "Title" },
     "format": {
       "type": "enum",
@@ -105,7 +136,15 @@
     "heatmap":   50000,
     "hexbin":    200000,
     "histogram": 500000,
-    "bar_counts": 50000
+    "density":   500000,
+    "box":       100000,
+    "violin":    100000,
+    "bar_counts": 50000,
+    "stacked_bar": 50000,
+    "percent_stacked_bar": 50000,
+    "pair":      5000,
+    "joint":     20000,
+    "bubble":    5000
   },
   "tags": ["export", "image", "plot", "viz", "matplotlib", "seaborn"],
   "aliases": ["chart", "plot", "visualize", "save image", "screenshot"]

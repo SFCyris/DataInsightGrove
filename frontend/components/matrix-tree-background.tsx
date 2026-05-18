@@ -160,9 +160,12 @@ export function MatrixTreeBackground({
       raf = requestAnimationFrame(draw);
     };
 
-    const reduce =
-      window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Round-4 UX#1 finding: `reduce` was read once on mount. If the
+    // operator flipped their OS reduced-motion setting mid-session the
+    // rain kept cascading. Capture the MediaQueryList so we can swap
+    // behaviour live via the `change` event below.
+    const reduceMql = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    let reduce = !!reduceMql?.matches;
 
     const drawStatic = () => {
       // Static fallback also stays translucent so the 3D tree behind shows.
@@ -203,10 +206,22 @@ export function MatrixTreeBackground({
       raf = requestAnimationFrame(draw);
     }
 
+    const onReduceChange = (e: MediaQueryListEvent) => {
+      reduce = e.matches;
+      if (reduce) {
+        if (raf !== 0) { cancelAnimationFrame(raf); raf = 0; }
+        drawStatic();
+      } else if (raf === 0 && !document.hidden) {
+        raf = requestAnimationFrame(draw);
+      }
+    };
+    reduceMql?.addEventListener?.("change", onReduceChange);
+
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
+      reduceMql?.removeEventListener?.("change", onReduceChange);
     };
   }, []);
 

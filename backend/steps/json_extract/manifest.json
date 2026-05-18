@@ -21,7 +21,7 @@
       "label": "JSON path",
       "required": true,
       "help": "JSONPath syntax. Examples: $.field, $.user.email, $.items[0].name. Use $ to refer to the root.",
-      "default": "$."
+      "default": "$"
     },
     "outputColumn": {
       "type": "string",

@@ -48,7 +48,14 @@ export function docToFlow(
   // Step nodes — laid out from doc.ui or default cascade.
   doc.nodes.forEach((n, idx) => {
     const manifest = manifests[n.step];
-    const inputPorts = manifest?.io.inputs.ports ?? Object.keys(n.inputs).length ? Object.keys(n.inputs) : ["in"];
+    // Operator precedence: ``?? … ? … : …`` parses as
+    // ``(A ?? B) ? C : D`` — so the manifest's declared ports were
+    // ALWAYS being coerced to truthy and the result was
+    // ``Object.keys(n.inputs)`` (the wrong branch). Parenthesize
+    // explicitly so manifest ports win when present.
+    const inputPorts =
+      manifest?.io.inputs.ports
+      ?? (Object.keys(n.inputs).length ? Object.keys(n.inputs) : ["in"]);
     const outputPorts = manifest?.io.outputs.ports ?? n.outputs;
     const x = n.ui?.x ?? 280 + idx * 220;
     const y = n.ui?.y ?? 60 + (idx % 4) * 100;

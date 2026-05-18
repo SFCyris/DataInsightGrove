@@ -24,6 +24,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 type AuthKind = "none" | "bearer" | "api_key_query" | "api_key_header" | "basic";
 type Pagination = "none" | "cursor" | "offset_limit" | "page_number" | "link_header";
@@ -45,6 +46,7 @@ const PAGINATION_HELP: Record<Pagination, string> = {
 };
 
 export default function FromRestPage() {
+  useDocumentTitle("Import from REST");
   const router = useRouter();
   const reduce = useReducedMotion();
   const fadeUp = reduce
@@ -146,9 +148,26 @@ export default function FromRestPage() {
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://api.example.com/v1/things"
+            placeholder="https://api.example.com/v1/things?as_of={{ today }}"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
           />
+          {/* Round-5 W3: variable-templating was invisible at ingest time
+              even though the backend supports it. Surface the syntax
+              inline so users can parameterize URLs without hunting docs. */}
+          <p className="mt-1.5 text-[11px] text-muted-foreground leading-snug">
+            Tip: use <code className="font-mono text-foreground/80 bg-muted px-1 rounded">{`{{ today }}`}</code>,{" "}
+            <code className="font-mono text-foreground/80 bg-muted px-1 rounded">{`{{ now }}`}</code>, or{" "}
+            <code className="font-mono text-foreground/80 bg-muted px-1 rounded">{`{{ vars.region }}`}</code>{" "}
+            in the URL for parameterised pulls. See{" "}
+            <a
+              href="https://github.com/SFCyris/DataInsightGrove/blob/main/docs/VARIABLES.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              VARIABLES.md
+            </a>.
+          </p>
         </Field>
       </motion.section>
 

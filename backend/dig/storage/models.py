@@ -400,7 +400,10 @@ class GlobalWebhook(Base):
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
     label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     url: Mapped[str] = mapped_column(Text)
-    on: Mapped[str] = mapped_column(String(16), default="always")  # always | succeeded | failed
+    # Free-form string so vendors / enterprise builds can introduce new
+    # triggers without a schemaVersion bump (matches Pipeline.Webhook.on).
+    # Built-in values: always | succeeded | failed | triggered.
+    on: Mapped[str] = mapped_column(String(16), default="always")
     secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     headers: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -36,11 +36,18 @@ class GroupAggregateStep(Step):
             elif fn == "count_distinct" and col:
                 expr = f"COUNT(DISTINCT {quote_ident(col)})"
             else:
+                # Round-8 fix: previously, an aggregate with a non-count
+                # fn but no ``column`` fell through to ``f"{sql_fn}(*)"``
+                # which DuckDB rejects ("SUM(*)" is invalid syntax). Raise
+                # a clear ValueError preflight so the editor surfaces it
+                # instead of a cryptic Binder Error at run time.
+                if not col:
+                    raise ValueError(
+                        f"group_aggregate: aggregate {fn!r} requires a "
+                        f"column (got alias={alias!r}, column is empty)",
+                    )
                 sql_fn = _FN_TO_SQL.get(fn, fn.upper())
-                if col:
-                    expr = f"{sql_fn}({quote_ident(col)})"
-                else:
-                    expr = f"{sql_fn}(*)"
+                expr = f"{sql_fn}({quote_ident(col)})"
             agg_exprs.append(f"{expr} AS {quote_ident(alias)}")
 
         select_list = ", ".join(group_cols + agg_exprs)

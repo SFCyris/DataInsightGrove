@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Reference(BaseModel):
@@ -107,7 +107,15 @@ class Node(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
     step: str
-    stepVersion: str
+    # ``stepVersion`` is optional on the wire: API callers who don't know
+    # (or care) which version to pin can omit it, and the Pipeline-level
+    # ``_fill_step_versions`` validator backfills the live version from
+    # the registry. Docs persisted to disk always have it set because the
+    # validator runs on every parse. Older docs that already carry an
+    # explicit version are passed through unchanged so a pipeline pinned
+    # to 1.0.0 of a step keeps using that contract even if the registry
+    # now ships 1.2.0.
+    stepVersion: str | None = None
     inputs: dict[str, Reference] = Field(default_factory=dict)
     outputs: list[str] = Field(default_factory=lambda: ["out"])
     params: dict[str, Any] = Field(default_factory=dict)
@@ -198,7 +206,20 @@ class NodeGroup(BaseModel):
 class Pipeline(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schemaVersion: Literal[1] = 1
-    id: str
+    # Round-4 QA finding: ``id`` was a bare ``str`` with no regex, no
+    # length cap, no character set restriction. The rc1 relaxation
+    # widened the ID alphabet to allow ``-`` and ``:`` but never
+    # re-imposed shape constraints, so a doc with ``id="abc\ndef"``
+    # or ``id="…26+ chars…"`` landed in JSON history and could
+    # corrupt downstream string-concatenation surfaces (crontab line,
+    # log paths, /schedules marker). Constrain shape here; existing
+    # ULID-shaped IDs continue to validate.
+    # Round-9 fix: drop ``:`` from the allowed character class — `:` is
+    # used as a namespace separator in multiple places (``pipeline:<id>``
+    # step prefix, ``run:<id>`` / ``pipeline:<id>`` WS topics, freshness
+    # LRU keys), so a pipeline id like ``abc:def`` would collide with
+    # them. Existing colon-free ULID-shaped IDs continue to validate.
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]{1,64}$")
     name: str
     description: str | None = None
     createdAt: datetime | None = None
@@ -220,3 +241,47 @@ class Pipeline(BaseModel):
     # alphanumeric / dash / underscore strings. Used by /search and
     # the catalog tag-filter chips. Set via /search/pipelines/{id}/tags.
     tags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _fill_step_versions(self) -> "Pipeline":
+        """Backfill ``stepVersion`` on every node that omitted it.
+
+        API clients (and humans writing pipelines by hand) shouldn't need
+        to look up the current registry version for each step before
+        constructing a doc — the registry already knows. We resolve once
+        per parse and stamp the live version into any node whose
+        ``stepVersion`` was left ``None``.
+
+        Pipelines that DO pin a version (older docs, intentional
+        version-locks) pass through untouched. Unknown step IDs fall
+        through to ``"1.0.0"`` because version validation surfaces a
+        clearer error elsewhere ("unknown step '<id>'") that points at
+        the real problem.
+
+        Lazy import keeps ``pipeline.py`` free of a hard dependency on
+        the registry module's side effects (avoids circular-import
+        complaints when the registry imports models from here for
+        manifest validation).
+        """
+        # Cheap exit: nothing to backfill.
+        if all(n.stepVersion for n in self.nodes):
+            return self
+
+        try:
+            from dig.engine.registry import steps as _steps  # noqa: PLC0415
+            reg = _steps()
+        except Exception:  # noqa: BLE001 — registry may not be primed in unit tests
+            reg = None
+
+        for n in self.nodes:
+            if n.stepVersion:
+                continue
+            ver: str | None = None
+            if reg is not None:
+                try:
+                    m = reg.get(n.step)
+                    ver = getattr(m, "version", None)
+                except Exception:  # noqa: BLE001
+                    ver = None
+            n.stepVersion = ver or "1.0.0"
+        return self

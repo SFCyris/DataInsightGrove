@@ -64,7 +64,7 @@ export function DemoBanner() {
             setDismissed(true);
           }}
           aria-label="Dismiss demo notice"
-          className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-50 px-1.5"
+          className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-50 px-1.5 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
         >
           ✕
         </button>

@@ -20,7 +20,7 @@
     "path": {
       "type": "string",
       "label": "Path",
-      "help": "Absolute path, or just a filename (writes under data/outputs/<run>/). Leave blank to auto-name."
+      "help": "Relative path inside the run output directory (data/outputs/<run>/). Leave blank to auto-name. Absolute paths require DIG_EXPORT_ALLOW_ABSOLUTE=1 on the server."
     },
     "compression": {
       "type": "enum",

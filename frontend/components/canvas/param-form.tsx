@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type { ParamSpec, StepManifest } from "@/lib/api/client";
@@ -44,7 +45,14 @@ interface Props {
 function isVisible(spec: ParamSpec, values: Record<string, unknown>): boolean {
   if (!spec.visibleWhen) return true;
   for (const [k, v] of Object.entries(spec.visibleWhen)) {
-    if (values[k] !== v) return false;
+    // Round-6 follow-up: support array values so a param can be visible
+    // for multiple states of the same key (e.g. `value_col` in
+    // export_to_map visible for both `choropleth` and `heat`).
+    if (Array.isArray(v)) {
+      if (!v.includes(values[k] as never)) return false;
+    } else if (values[k] !== v) {
+      return false;
+    }
   }
   return true;
 }
@@ -135,8 +143,14 @@ interface FieldProps {
 }
 
 function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExpose }: FieldProps) {
+  // Round-4 UX#2 finding: the `<label>` wrapped a `<span>` (label
+  // text), then the actual `<input>` / `<select>` rendered in a
+  // sibling switch arm with no `htmlFor`/`id` association. Clicking
+  // the visible label didn't focus the field and screen readers
+  // couldn't pair them. Generate an id here and tag every input.
+  const inputId = useId() + `-${name}`;
   const label = (
-    <label className="flex items-center justify-between gap-2 mb-1">
+    <label htmlFor={inputId} className="flex items-center justify-between gap-2 mb-1">
       <span className="block text-xs font-medium text-foreground">
         {spec.label}
         {spec.required && <span className="text-destructive ml-0.5">*</span>}
@@ -196,6 +210,7 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
           <div>
             {label}
             <textarea
+              id={inputId}
               className={inputCls + " font-mono min-h-[80px]"}
               value={(value as string) ?? (spec.default as string) ?? ""}
               placeholder='{ "key": "value" }'
@@ -209,6 +224,7 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
         <div>
           {label}
           <input
+            id={inputId}
             type="text"
             className={inputCls}
             value={(value as string) ?? (spec.default as string) ?? ""}
@@ -240,6 +256,7 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
         <div>
           {label}
           <textarea
+            id={inputId}
             className={inputCls + " font-mono min-h-[60px]"}
             value={(value as string) ?? (spec.default as string) ?? ""}
             onChange={(e) => onSet(name, e.target.value)}
@@ -267,45 +284,77 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
         <div>
           {label}
           <input
+            id={inputId}
             type="number"
             className={inputCls + " tabular-nums"}
             min={spec.min}
             max={spec.max}
             step={spec.type === "integer" ? 1 : "any"}
             value={(value as number | string | undefined)?.toString() ?? ""}
-            onChange={(e) =>
-              onSet(name, e.target.value === "" ? null : spec.type === "integer" ? parseInt(e.target.value) : Number(e.target.value))
-            }
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                onSet(name, null);
+                return;
+              }
+              // Round-9 fix: previous form persisted NaN to params during
+              // transient invalid states (e.g. user mid-typing "1.5e"
+              // briefly evaluates to NaN). Only commit a finite number.
+              const parsed = spec.type === "integer" ? parseInt(raw, 10) : Number(raw);
+              if (Number.isFinite(parsed)) onSet(name, parsed);
+            }}
           />
           {help}
         </div>
       );
     case "boolean":
+      // Round-6 UX#2 finding: boolean rows used to render their own
+      // inline label without the shared `{label}` block, which carries
+      // the "🪆 expose" toggle for published-step authors. Publish a
+      // booleans-only step and the user couldn't expose any param.
+      // Render the shared label first, then the checkbox inline below.
       return (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={Boolean(value ?? spec.default)}
-            onChange={(e) => onSet(name, e.target.checked)}
-          />
-          <span>{spec.label}</span>
-        </label>
+        <div>
+          {label}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              id={inputId}
+              type="checkbox"
+              checked={Boolean(value ?? spec.default)}
+              onChange={(e) => onSet(name, e.target.checked)}
+            />
+            <span className="text-muted-foreground">{value ? "on" : "off"}</span>
+          </label>
+          {help}
+        </div>
       );
     case "enum":
       return (
         <div>
           {label}
           <select
+            id={inputId}
             className={inputCls}
             value={(value as string) ?? (spec.default as string) ?? ""}
             onChange={(e) => onSet(name, e.target.value)}
           >
-            <option value="">— choose —</option>
-            {spec.enumValues?.map((v) => (
-              <option key={String(v)} value={v as string | number}>
-                {String(v)}
-              </option>
-            ))}
+            {/* Round-9 fix: when this enum is required, the empty
+                placeholder is non-selectable so users can't reset to "" */}
+            <option value="" disabled={spec.required}>— choose —</option>
+            {spec.enumValues?.map((v) => {
+              // Round-6 UX#2: when the manifest carries `enumLabels`
+              // (parallel array, same length as `enumValues`), render
+              // each option with its rich label so requirements like
+              // "arc — needs 4 lat/lon cols" surface BEFORE the user
+              // selects. Fallback: bare value.
+              const idx = spec.enumValues!.indexOf(v);
+              const richLabel = spec.enumLabels?.[idx];
+              return (
+                <option key={String(v)} value={v as string | number}>
+                  {richLabel ? `${v} — ${richLabel}` : String(v)}
+                </option>
+              );
+            })}
           </select>
           {help}
         </div>
@@ -316,6 +365,7 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
         <div>
           {label}
           <select
+            id={inputId}
             className={inputCls}
             value={(value as string) ?? ""}
             onChange={(e) => onSet(name, e.target.value)}
@@ -333,8 +383,8 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
       const portCols = upstreamColumns[spec.columnFrom ?? "in"] ?? [];
       const selected = (value as string[]) ?? [];
       return (
-        <div>
-          {label}
+        <div role="group" aria-labelledby={`${inputId}-legend`}>
+          <span id={`${inputId}-legend`}>{label}</span>
           <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-input bg-background min-h-[40px]">
             {portCols.length === 0 && (
               <span className="text-xs text-muted-foreground italic">
@@ -419,23 +469,12 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
       );
     }
     case "object":
-      return (
-        <div>
-          {label}
-          <textarea
-            className={inputCls + " font-mono min-h-[80px] text-xs"}
-            value={JSON.stringify(value ?? {}, null, 2)}
-            onChange={(e) => {
-              try {
-                onSet(name, JSON.parse(e.target.value));
-              } catch {
-                /* leave invalid editor state until user fixes it */
-              }
-            }}
-          />
-          {help}
-        </div>
-      );
+      // Round-6 UX#2: the previous textarea silently kept the user's
+      // typing local when JSON.parse threw — looking saved but
+      // actually unsaved. Use a local draft + a parse-status badge so
+      // the user sees a red "invalid JSON" hint instead of a silent
+      // black hole.
+      return <ObjectParamField inputId={inputId} label={label} help={help} name={name} value={value} onSet={onSet} className={inputCls} />;
     default:
       return (
         <div>
@@ -448,6 +487,79 @@ function Field({ name, spec, value, onSet, upstreamColumns, exposed, onToggleExp
         </div>
       );
   }
+}
+
+function ObjectParamField({
+  inputId,
+  label,
+  help,
+  name,
+  value,
+  onSet,
+  className,
+}: {
+  inputId: string;
+  label: React.ReactNode;
+  help: React.ReactNode;
+  name: string;
+  value: unknown;
+  onSet: (n: string, v: unknown) => void;
+  className: string;
+}) {
+  // Local draft text so the user can type freely while we report parse
+  // status separately. We only resync from the parent ``value`` when the
+  // parent change did NOT originate from this textarea — otherwise every
+  // keystroke that produces valid JSON would round-trip through the
+  // parent and clobber the user's exact text with a re-stringified
+  // (pretty-printed, key-reordered) version.
+  const initial = useMemo(() => JSON.stringify(value ?? {}, null, 2), [value]);
+  const [draft, setDraft] = useState(initial);
+  const [err, setErr] = useState<string | null>(null);
+  // Tracks what we last *sent up*. If `initial` matches, the upstream
+  // change is the echo of our own onSet and we leave the draft alone.
+  const lastSentRef = useRef<string>(initial);
+  useEffect(() => {
+    if (initial !== lastSentRef.current) {
+      // Genuine external update (another tab, undo, programmatic reset).
+      setDraft(initial);
+      setErr(null);
+      lastSentRef.current = initial;
+    }
+  }, [initial]);
+  return (
+    <div>
+      {label}
+      <textarea
+        id={inputId}
+        className={[
+          className,
+          "font-mono min-h-[80px] text-xs",
+          err ? "border-rose-400" : "",
+        ].join(" ")}
+        value={draft}
+        onChange={(e) => {
+          const next = e.target.value;
+          setDraft(next);
+          try {
+            const parsed = next.trim() === "" ? {} : JSON.parse(next);
+            // Stamp the ref BEFORE onSet — the parent re-render fires
+            // synchronously and the useEffect must see the matching value.
+            lastSentRef.current = JSON.stringify(parsed, null, 2);
+            onSet(name, parsed);
+            setErr(null);
+          } catch (parseErr) {
+            setErr((parseErr as Error).message);
+          }
+        }}
+      />
+      {err ? (
+        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1 font-mono">
+          ❌ Invalid JSON · {err.slice(0, 120)}
+        </p>
+      ) : null}
+      {help}
+    </div>
+  );
 }
 
 /** Dropdown of global webhooks (by label). Used by webhook_trigger.

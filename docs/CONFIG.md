@@ -3,10 +3,17 @@
 Every `DIG_*` environment variable, what it does, what type of value it
 accepts, and where in the codebase to find the implementation.
 
-DIG reads configuration from the process environment only — there's no
-config file at OSS tier (Enterprise adds one). Set the variables you
-need in your shell, in a systemd unit, in a `.env` file your shell
-sources, or via the Mac .app / Linux .desktop wrappers.
+> **Looking for the JSON config file?** As of 1.0 DIG also reads a
+> persistent JSON config at `~/.config/dig/config.json` (managed via
+> `./scripts/dig_config.py`). Env vars still work and **override** the
+> file. The file's full schema, the precedence rules, and the on-disk
+> layout for an operator are documented in
+> [`ADMINISTRATION.md`](ADMINISTRATION.md). This page focuses on every
+> individual env var.
+
+Set the variables you need in your shell, in a systemd unit, in a
+`.env` file your shell sources, or via the Mac .app / Linux .desktop
+wrappers.
 
 ---
 
@@ -48,7 +55,7 @@ Everything else is power-user / operations territory.
 | `DIG_DATA_DIR` | `<repo>/data/` | Root of all user data: `dig.sqlite`, `outputs/`, `extensions/`, `.installed_version`. Move this to a faster disk for big workloads, or to a shared dir if you operate multiple checkouts. |
 | `DIG_DB_PATH` | `<DIG_DATA_DIR>/dig.sqlite` | Override for the SQLite file location specifically. |
 | `DIG_DB_ECHO` | `0` | Set to `1` to log every SQL statement SQLAlchemy executes. Noisy; debug only. |
-| `DIG_LOG_DIR` | `<DIG_DATA_DIR>/logs` | Where the lifecycle wrapper writes start / stop / status logs. |
+| `DIG_LOG_DIR` | `$TMPDIR` (or `/tmp` if unset) | Where the lifecycle wrapper writes `dig-api.log` / `dig-web.log`. The default is the OS temp dir; set this to a persistent location (e.g. `<DIG_DATA_DIR>/logs`) if you want logs to survive reboots. |
 | `DIG_LOCAL_FILE_ALLOW_ABSOLUTE` | `0` | Opt-in escape from the local-file path confinement. Set to `1` to let DIG ingest any file the process can read. **Risky** — only enable if you understand the implication. See [`SECURITY.md`](../SECURITY.md). |
 | `DIG_EXPORT_ALLOW_ABSOLUTE` | `0` | Same shape, for output sinks that write to absolute paths. |
 
@@ -58,7 +65,7 @@ Everything else is power-user / operations territory.
 |---|---|---|
 | `DIG_MAX_BODY_BYTES` | `33554432` (32 MiB) | HTTP request body cap. Returns 413 when exceeded. Raise for unusually large pipeline imports. |
 | `DIG_MAX_UPLOAD_MB` | `500` | Cap on dataset uploads via the upload endpoint. |
-| `DIG_MAX_DATASET_MB` | `1024` | Cap on datasets ingested from connectors. Larger sources need to be partitioned. |
+| `DIG_MAX_DATASET_MB` | `65536` (64 GiB) | Cap on in-memory size of a single ingested dataset. Aligns with the "up to ~50 GB" claim; raise further for larger sources, or lower to enforce a tighter ceiling on shared hosts. |
 | `DIG_MAX_PIPELINE_KB` | `2048` (2 MiB) | Cap on pipeline-document size at save / import. Pipelines this large usually indicate accidentally-pasted data. |
 | `DIG_WS_MAX_BYTES` | `1048576` (1 MiB) | WebSocket frame cap. Keeps a runaway publisher from OOM'ing the server. |
 | `DIG_VALIDATE_MAX_NODES` | `300` | `/validate` per-node compile probe cap. Pipelines with more nodes skip the probe. |

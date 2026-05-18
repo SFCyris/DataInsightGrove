@@ -28,7 +28,12 @@ class SampleRowsStep(Step):
             return f"SELECT * FROM {src} USING SAMPLE {n} ROWS (reservoir, {seed})"
         if kind == "random_pct":
             pct = float(params.get("pct") or 10)
-            return f"SELECT * FROM {src} USING SAMPLE {pct} PERCENT (bernoulli)"
+            # Round-8 fix: previously this called bernoulli without a seed,
+            # so the same pipeline produced different rows on each run —
+            # contradicting the manifest's ``deterministic: true``. Thread
+            # the seed param through so re-running yields the same sample.
+            seed = int(params.get("seed") or 42)
+            return f"SELECT * FROM {src} USING SAMPLE {pct} PERCENT (bernoulli, {seed})"
         return f"SELECT * FROM {src}"
 
 

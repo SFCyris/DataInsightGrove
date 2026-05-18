@@ -19,17 +19,65 @@ Cost discipline:
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import os
+import socket
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import polars as pl
 
 from dig.engine.step import PolarsContext, PolarsResult, Step
 
 log = logging.getLogger(__name__)
+
+
+def _is_private_address(host: str) -> bool:
+    """Same private-network guard as the REST + HTTPS connectors."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, socket.herror, OSError):
+        return True
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (
+            ip.is_loopback or ip.is_private or ip.is_link_local
+            or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+        ):
+            return True
+    return False
+
+
+def _assert_endpoint_safe(endpoint: str) -> None:
+    """Reject schemes other than http/https + private destinations so the
+    API key in the ``Authorization`` header can't be exfiltrated to a
+    cloud-metadata address or sibling service. The user can override
+    with ``DIG_EMBED_ALLOW_PRIVATE=1`` to point at a local Ollama, etc."""
+    parts = urlsplit(endpoint)
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(
+            f"embed_text: endpoint scheme {scheme!r} not allowed; "
+            "only http and https are permitted",
+        )
+    if not parts.hostname:
+        raise ValueError(f"embed_text: no host in endpoint {endpoint!r}")
+    if os.environ.get("DIG_EMBED_ALLOW_PRIVATE") == "1":
+        return
+    if _is_private_address(parts.hostname):
+        raise ValueError(
+            f"embed_text: endpoint host {parts.hostname!r} resolves to a "
+            "private / loopback / link-local address. Set "
+            "DIG_EMBED_ALLOW_PRIVATE=1 on a trusted host to allow local "
+            "Ollama / vLLM targets.",
+        )
 
 
 def _embed_batch(
@@ -47,17 +95,20 @@ def _embed_batch(
       POST /v1/embeddings  {model, input: [text1, text2, ...]}
       → {data: [{embedding: [...], index: 0}, ...]}
     """
+    _assert_endpoint_safe(endpoint)
     import httpx
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     payload = {"model": model, "input": texts}
-    with httpx.Client(timeout=timeout_s) as client:
+    # Disable redirects so a malicious server can't 302 to a private host
+    # AFTER we already attached the Authorization header.
+    with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
         r = client.post(endpoint, json=payload, headers=headers)
     if r.status_code == 429:
         # One retry with linear backoff for rate limits.
         time.sleep(2.0)
-        with httpx.Client(timeout=timeout_s) as client:
+        with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
             r = client.post(endpoint, json=payload, headers=headers)
     if not r.is_success:
         raise RuntimeError(

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json as _json
+import re
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
 from dig.engine.connector import Connector
+
+# Same identifier guard as the sqlite/postgres connectors.
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class MysqlConnector(Connector):
@@ -29,8 +33,18 @@ class MysqlConnector(Connector):
         if query:
             sql = query
         else:
-            # MySQL identifiers are backtick-quoted.
-            qualified = ".".join(f"`{p}`" for p in table.split("."))
+            # MySQL identifiers are backtick-quoted. Each piece must still be
+            # validated — a backtick inside the table name closes the quote
+            # and lets the rest of the string concatenate arbitrary SQL.
+            parts = table.split(".")
+            for p in parts:
+                if not _IDENT_RE.match(p):
+                    raise ValueError(
+                        f"mysql connector: table name part {p!r} must match "
+                        "^[A-Za-z_][A-Za-z0-9_]*$ (use the 'query' option for "
+                        "non-standard names)"
+                    )
+            qualified = ".".join(f"`{p}`" for p in parts)
             sql = f"SELECT * FROM {qualified}"
 
         try:

@@ -15,6 +15,7 @@ import {
   type ExpertiseLevel,
 } from "@/lib/settings";
 import { fmtInt } from "@/lib/format-number";
+import { getRecent, listFavorites } from "@/lib/recent-items";
 
 interface Action {
   id: string;
@@ -69,6 +70,10 @@ export function CommandPalette() {
   // Open / close keybindings + ⌘⇧E mode cycle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Round-4 UX#1 finding: holding ⌘K used to toggle the palette
+      // dozens of times via key-repeat. Ignore repeated keydowns so
+      // one keypress = one toggle.
+      if (e.repeat) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
@@ -162,8 +167,52 @@ export function CommandPalette() {
         run: () => router.push("/settings"),
       },
       {
+        id: "go:schedules", group: "Go to", label: "Schedules", emoji: "⏰",
+        run: () => router.push("/schedules"),
+      },
+      // Round-5 W5: create-flow verbs missing entirely. Users had to
+      // open the pipelines index and click the "+ New" button — ⌘K +
+      // "new" should be the shortest path.
+      {
+        id: "act:new-pipeline", group: "Create", label: "New blank pipeline", emoji: "✨",
+        run: async () => {
+          try {
+            const doc = await api.createPipeline("Untitled pipeline");
+            router.push(`/pipelines/${doc.id}`);
+          } catch (e) {
+            toast.error(`Could not create pipeline: ${(e as Error).message}`);
+          }
+        },
+      },
+      {
+        id: "act:new-from-template", group: "Create", label: "Browse templates", emoji: "📦",
+        run: () => router.push("/gallery"),
+      },
+      {
+        id: "act:upload-dataset", group: "Create", label: "Upload a dataset", emoji: "📥",
+        run: () => router.push("/datasets/new"),
+      },
+      {
+        id: "act:copy-link", group: "Actions",
+        label: "Copy current page URL",
+        emoji: "🔗",
+        run: () => {
+          try {
+            navigator.clipboard.writeText(window.location.href);
+            toast.success("Link copied");
+          } catch {
+            toast.error("Clipboard unavailable");
+          }
+        },
+      },
+      {
         id: "act:theme", group: "Actions",
-        label: `Theme: ${settings.theme} → next`,
+        // Round-9 fix: previously the label rendered the literal word
+        // "next" instead of the actual next theme value.
+        label: (() => {
+          const next = settings.theme === "system" ? "light" : settings.theme === "light" ? "dark" : "system";
+          return `Theme: ${settings.theme} → ${next}`;
+        })(),
         emoji: "🎨",
         run: () => {
           const next = settings.theme === "system" ? "light" : settings.theme === "light" ? "dark" : "system";
@@ -198,7 +247,13 @@ export function CommandPalette() {
         label: "Replay welcome tour",
         emoji: "🧭",
         run: () => {
-          try { localStorage.removeItem("dig.tour.home"); } catch { /* ignore */ }
+          // Match the Settings → Reset Onboarding shape: clear all three
+          // tour markers so welcome + editor + column-chevron all reappear.
+          try {
+            localStorage.removeItem("dig.tour.home");
+            localStorage.removeItem("dig.tour.editor.v1");
+            localStorage.removeItem("dig.tour.column_chevron");
+          } catch { /* ignore */ }
           router.push("/");
           toast("Tour will reopen on the home page");
         },
@@ -246,16 +301,150 @@ export function CommandPalette() {
         run: () => router.push(`/datasets/${d.id}`),
       });
     }
+    // Recent items group — shown at the TOP of the palette when the
+    // query is empty (CMDK natively sorts by command order). Round-5
+    // W5 finding: cmdk reset alphabetically every open, so frequent
+    // pipelines were never at the user's fingertips.
+    //
+    // Round-5 follow-up: prune entries whose live record no longer
+    // exists. After a reseed or manual delete, the localStorage cache
+    // would otherwise serve stale ULIDs and clicks would land on the
+    // 404 "pipeline not found" screen.
+    const livePipelineIds = new Set((pipelines.data ?? []).map((p) => p.id));
+    const liveDatasetIds = new Set((datasets.data ?? []).map((d) => d.id));
+    const recentPipelines = getRecent("pipeline").filter(
+      (r) => !pipelines.data || livePipelineIds.has(r.id),
+    );
+    const recentSet = new Set(recentPipelines.map((r) => r.id));
+    for (const r of recentPipelines) {
+      out.push({
+        id: `recent:pipe:${r.id}`,
+        group: "Recent",
+        label: r.label || r.id,
+        emoji: "🕒",
+        hint: "pipeline",
+        run: () => router.push(`/pipelines/${r.id}`),
+      });
+    }
+    const recentDatasets = getRecent("dataset").filter(
+      (r) => !datasets.data || liveDatasetIds.has(r.id),
+    );
+    for (const r of recentDatasets) {
+      out.push({
+        id: `recent:ds:${r.id}`,
+        group: "Recent",
+        label: r.label || r.id,
+        emoji: "🕒",
+        hint: "dataset",
+        run: () => router.push(`/datasets/${r.id}`),
+      });
+    }
+    const favPipelines = new Set(listFavorites("pipeline"));
     for (const p of pipelines.data ?? []) {
+      const star = favPipelines.has(p.id) ? "⭐ " : "";
       out.push({
         id: `pipe:${p.id}`,
         group: "Pipelines",
-        label: p.name,
+        label: `${star}${p.name}`,
         emoji: "🛤",
         hint: `${p.nodeCount} step${p.nodeCount === 1 ? "" : "s"}`,
         run: () => router.push(`/pipelines/${p.id}`),
       });
+      // Round-5 W5: per-pipeline action verbs. Recent items above keep
+      // navigation fast; these handle "do something to a pipeline I
+      // can name" without opening the canvas first.
+      out.push({
+        id: `pipe:run:${p.id}`,
+        group: "Pipeline actions",
+        label: `▶ Run ${p.name}`,
+        emoji: "▶️",
+        searchHints: p.id,
+        run: async () => {
+          try {
+            const run = await api.startRun(p.id);
+            toast.success(`Run started for ${p.name}`, {
+              action: {
+                label: "Open",
+                onClick: () => router.push(`/runs/${run.id}`),
+              },
+            });
+          } catch (e) {
+            toast.error(`Run failed: ${(e as Error).message}`);
+          }
+        },
+      });
+      out.push({
+        id: `pipe:dup:${p.id}`,
+        group: "Pipeline actions",
+        label: `📑 Duplicate ${p.name}`,
+        emoji: "📑",
+        searchHints: p.id,
+        run: async () => {
+          try {
+            const doc = await api.clonePipeline(p.id, `${p.name} (copy)`);
+            router.push(`/pipelines/${doc.id}`);
+          } catch (e) {
+            toast.error(`Could not duplicate: ${(e as Error).message}`);
+          }
+        },
+      });
+      out.push({
+        id: `pipe:schedule:${p.id}`,
+        group: "Pipeline actions",
+        label: `⏰ Schedule ${p.name}`,
+        emoji: "⏰",
+        searchHints: p.id,
+        run: () => router.push(`/schedules?pipeline=${p.id}`),
+      });
+      out.push({
+        id: `pipe:link:${p.id}`,
+        group: "Pipeline actions",
+        label: `🔗 Copy link to ${p.name}`,
+        emoji: "🔗",
+        searchHints: p.id,
+        run: () => {
+          try {
+            const url = `${window.location.origin}/pipelines/${p.id}`;
+            navigator.clipboard.writeText(url);
+            toast.success("Link copied");
+          } catch {
+            toast.error("Clipboard unavailable");
+          }
+        },
+      });
+      out.push({
+        id: `pipe:export:${p.id}`,
+        group: "Pipeline actions",
+        label: `⬇ Export ${p.name} as JSON`,
+        emoji: "⬇",
+        searchHints: `${p.id} download dpack`,
+        run: async () => {
+          // Round 8 security: previously we did
+          // ``window.open(`/api/pipelines/${id}/export.json?token=…`)``
+          // which exposes the bearer token in the Referer header on the
+          // next navigation + in browser history. Switch to fetch +
+          // blob-download so the token only ever rides in the
+          // ``Authorization`` header (handled by the api client).
+          try {
+            const blob = await api.exportPipeline(p.id);
+            const json = JSON.stringify(blob, null, 2);
+            const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${p.name}.dig.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            toast.error(`Export failed: ${(e as Error).message}`, { duration: 8000 });
+          }
+        },
+      });
     }
+    // Suppress duplicate "Pipelines" entries when a recent already
+    // surfaced them at the top.
+    void recentSet;
     for (const s of stepsQ.data ?? []) {
       // The `aliases` array is search-only — surfacing it through the
       // cmdk value prop makes typing "merge" find `join`, "predict"
@@ -273,7 +462,17 @@ export function CommandPalette() {
           s.id,
         ].join(" "),
         run: () => {
-          toast(`${s.label} (${s.id}) — open a pipeline editor and add it from the strip.`);
+          // Round-5 W1 finding: previously the palette only toasted a
+          // hint and did nothing. When the user is already in a
+          // pipeline editor, dispatch a custom event that the page
+          // listens for and adds the step at the focused position.
+          if (window.location.pathname.startsWith("/pipelines/")) {
+            const ev = new CustomEvent("dig:cmdk:add-step", { detail: { stepId: s.id } });
+            window.dispatchEvent(ev);
+            toast.success(`Added ${s.label}`);
+          } else {
+            toast(`${s.label} (${s.id}) — open a pipeline editor and add it from the strip.`);
+          }
         },
       });
     }
@@ -360,7 +559,14 @@ export function CommandPalette() {
                     {items.map((a) => (
                       <Command.Item
                         key={a.id}
-                        value={`${a.group} ${a.label} ${a.hint ?? ""} ${a.searchHints ?? ""}`}
+                        // Round-9 fix: previously folded `a.group` into
+                        // the searchable value so typing "Actions"
+                        // matched every Action regardless of label.
+                        // Group is already a separate cmdk axis.
+                        // We also append `a.id` so two items with the
+                        // same label (e.g. two "Untitled pipeline"
+                        // entries) don't dedupe to one selectable row.
+                        value={`${a.label} ${a.hint ?? ""} ${a.searchHints ?? ""} ${a.id}`}
                         onSelect={() => {
                           a.run();
                           setOpen(false);
@@ -380,9 +586,10 @@ export function CommandPalette() {
                   </Command.Group>
                 ))}
               </Command.List>
-              <footer className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex items-center gap-3">
+              <footer className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground flex items-center gap-3 flex-wrap">
                 <span><kbd className="font-mono">↑↓</kbd> navigate</span>
                 <span><kbd className="font-mono">↵</kbd> select</span>
+                <span><kbd className="font-mono">⇥</kbd> cycle focus</span>
                 <span><kbd className="font-mono">esc</kbd> close</span>
                 <span className="flex-1" />
                 <button
@@ -394,11 +601,12 @@ export function CommandPalette() {
                     toast.success(`Mode: ${EXPERTISE_LABEL[next]}`);
                   }}
                   title="Cycle expertise mode (⌘⇧E)"
-                  className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/30 transition-colors"
+                  className="px-1.5 py-0.5 rounded border border-border hover:border-foreground/30 transition-colors inline-flex items-center gap-1"
                 >
+                  <kbd className="font-mono opacity-70">⌘⇧E</kbd>
                   {EXPERTISE_LABEL[expertise.level]}
                 </button>
-                <span>⌘K to toggle</span>
+                <span><kbd className="font-mono">⌘K</kbd> toggle</span>
               </footer>
             </Command>
           </motion.div>

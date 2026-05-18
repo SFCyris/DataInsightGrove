@@ -57,6 +57,13 @@ def fresh_db(tmp_path, monkeypatch):
     yield
 
 
+def _run_async(coro):
+    """Run a coroutine on a fresh event loop. ``asyncio.get_event_loop()``
+    is deprecated since 3.10 (DeprecationWarning) and raises in 3.12+
+    when there is no current loop — use a dedicated runner per call."""
+    return asyncio.new_event_loop().run_until_complete(coro)
+
+
 def _save_pipeline(p: Pipeline) -> str:
     """Persist a pipeline doc to the DB; returns id."""
     async def _go():
@@ -67,7 +74,7 @@ def _save_pipeline(p: Pipeline) -> str:
             session.add(row)
             await session.commit()
         return p.id
-    return asyncio.get_event_loop().run_until_complete(_go())
+    return _run_async(_go())
 
 
 def _passthrough_pipeline(uri: str) -> Pipeline:
@@ -107,7 +114,7 @@ def test_subpipeline_cycle_self_reference(csv_path, monkeypatch, tmp_path):
             }]
             row.document = doc
             await session.commit()
-    asyncio.get_event_loop().run_until_complete(_patch())
+    _run_async(_patch())
 
     # Re-load + execute. Should raise (or fail run) cleanly, not recurse.
     async def _load_and_run():
@@ -115,7 +122,7 @@ def test_subpipeline_cycle_self_reference(csv_path, monkeypatch, tmp_path):
             row = await session.get(PipelineRow, pid)
             return Pipeline.model_validate(row.document)
 
-    p2 = asyncio.get_event_loop().run_until_complete(_load_and_run())
+    p2 = _run_async(_load_and_run())
     with pytest.raises(Exception) as exc:
         execute(p2, run_id=str(ULID()))
     msg = str(exc.value).lower()

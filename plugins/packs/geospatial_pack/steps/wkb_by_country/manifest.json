@@ -1,0 +1,70 @@
+{
+  "id": "wkb_by_country",
+  "version": "1.0.0",
+  "label": "🌍 Boundary by country",
+  "description": "Look up the WKB MULTIPOLYGON boundary of a country from an ISO 3166 code (alpha-2 / alpha-3 / numeric), the country name, or a lat/lon point. Output is ready to pipe into export_to_map (mode=choropleth) for world-scale maps.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "input_mode": {
+      "type": "enum",
+      "label": "Input mode",
+      "enumValues": ["text", "point", "auto"],
+      "enumLabels": [
+        "text · ISO code or country name column",
+        "point · separate lat + lon columns",
+        "auto · try text first, fall back to point"
+      ],
+      "default": "auto",
+      "required": true
+    },
+    "input_column": {
+      "type": "column_ref",
+      "label": "Country column",
+      "help": "Column with an ISO alpha-2 (US), alpha-3 (USA), numeric (840), or full country name (United States). Case-insensitive.",
+      "columnFrom": "in",
+      "visibleWhen": { "input_mode": ["text", "auto"] }
+    },
+    "lat_column": {
+      "type": "column_ref",
+      "label": "Latitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "lon_column": {
+      "type": "column_ref",
+      "label": "Longitude column",
+      "columnFrom": "in",
+      "columnTypes": ["double", "float", "integer"],
+      "visibleWhen": { "input_mode": ["point", "auto"] }
+    },
+    "output_column": {
+      "type": "string",
+      "label": "Output column name",
+      "default": "country_geometry",
+      "required": true,
+      "help": "Name of the WKB geometry column added to the output. Companion columns are <name>_name, <name>_alpha2, <name>_alpha3, <name>_centroid_lat, <name>_centroid_lon."
+    },
+    "resolution": {
+      "type": "enum",
+      "label": "Boundary resolution",
+      "enumValues": ["auto", "country", "world"],
+      "enumLabels": [
+        "auto · pick by input scope (recommended)",
+        "country · 10m high detail (4.7 MB, ~254 entities incl. microstates)",
+        "world · 110m simplified (130 KB, ~177 entities, microstates omitted)"
+      ],
+      "default": "auto",
+      "required": true,
+      "help": "How detailed should the returned polygons be? Auto picks 110m when the input's geographic span exceeds 60° (world-scale render — detail won't be visible) and 10m otherwise. The chosen resolution is reported in the step's lookup_summary artifact. Combined with the choropleth renderer's dot-proxy logic, dropped microstates still appear as graduated symbols at world scale."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "boundary", "choropleth", "country", "lookup", "wkb", "iso", "iso3166"],
+  "aliases": ["country geometry", "country polygon", "country shape", "choropleth country", "iso country boundary"]
+}

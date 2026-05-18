@@ -4,6 +4,20 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 
+/** Track prefers-reduced-motion at runtime — OS settings can flip mid-session. */
+function useReducedMotion(): boolean {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduce(mq.matches);
+    const onChange = () => setReduce(mq.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduce;
+}
+
 export interface TourStep {
   /** Short title shown at the top of the tooltip. */
   title: string;
@@ -32,6 +46,7 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
   const [idx, setIdx] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
 
   const step = steps[idx];
 
@@ -40,7 +55,8 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
     if (open) setIdx(0);
   }, [open]);
 
-  // Track the spotlight rect (re-measure on resize/scroll).
+  // Track the spotlight rect via ResizeObserver + MutationObserver
+  // instead of a 4Hz polling loop (round-4 UX#1 finding).
   useLayoutEffect(() => {
     if (!open || !step?.target) {
       setRect(null);
@@ -52,15 +68,48 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
       else setRect(null);
     };
     measure();
+    const ro = new ResizeObserver(measure);
+    const mo = new MutationObserver(measure);
+    const el = document.querySelector(step.target!);
+    if (el) ro.observe(el);
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true });
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
-    const t = setInterval(measure, 250); // simple way to follow async layouts
     return () => {
+      ro.disconnect();
+      mo.disconnect();
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
-      clearInterval(t);
     };
   }, [open, step?.target, idx]);
+
+  // ESC dismisses the tour. Move focus into the dialog on open so the
+  // user gets keyboard control without a Tab dance (round-4 UX#1 findings).
+  useEffect(() => {
+    if (!open) return;
+    // Defer one tick so the tooltip is mounted before we hunt for the
+    // primary button.
+    const focusTimer = window.setTimeout(() => {
+      const primary = tooltipRef.current?.querySelector<HTMLButtonElement>(
+        "[data-tour-primary]",
+      );
+      primary?.focus();
+    }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleSkip();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKey);
+    };
+    // handleSkip is stable enough; if storageKey changes between
+    // renders the cleanup will rebind.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, idx, storageKey]);
 
   if (!open || !step) return null;
 
@@ -162,7 +211,7 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
               stroke="rgba(180, 240, 200, 0.6)"
               strokeWidth={2}
               strokeDasharray="6 4"
-              className="animate-pulse"
+              className={reducedMotion ? "" : "animate-pulse"}
             />
           </svg>
         ) : (
@@ -209,7 +258,7 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
                   ← Back
                 </Button>
               )}
-              <Button size="sm" onClick={handleNext}>
+              <Button size="sm" onClick={handleNext} data-tour-primary>
                 {step.nextLabel ?? (isLast ? "Done ✓" : "Next →")}
               </Button>
             </div>

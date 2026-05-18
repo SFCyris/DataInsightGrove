@@ -85,8 +85,13 @@ export function ServerStatusOverlay() {
     };
   }, [status]);
 
-  if (status === "online") return null;
-  const spec = SPECS[status];
+  // Round-9 fix: keep the AnimatePresence parent mounted across status
+  // changes so the exit animation fires when status flips to "online".
+  // Previously `if (status === "online") return null` short-circuited
+  // BEFORE AnimatePresence rendered, so the green "recovered" band
+  // vanished abruptly.
+  const visible = status !== "online";
+  const spec = visible ? SPECS[status] : null;
 
   const initial = reduce ? false : { y: -28, opacity: 0 };
   const animate = { y: 0, opacity: 1 };
@@ -97,43 +102,47 @@ export function ServerStatusOverlay() {
 
   return (
     <AnimatePresence>
-      <motion.div
-        key="server-status-banner"
-        role="status"
-        aria-live="polite"
-        initial={initial}
-        animate={animate}
-        exit={exit}
-        transition={transition}
-        // Anchor below the Mac title-bar band when one exists. In a
-        // regular browser --dig-titlebar-h is 0 and the banner sits
-        // flush against the top edge as before; in the Mac wrapper it's
-        // 28px, so the banner sits below the brand strip instead of
-        // covering the traffic lights.
-        className={`fixed inset-x-0 z-[60] ${spec.band} shadow-md`}
-        style={{ top: "var(--dig-titlebar-h)" }}
-      >
-        <div className="max-w-screen-xl mx-auto px-4 py-2 flex items-center justify-center gap-3 text-sm">
-          {/* Pulse ring around the emoji for the persistent states. */}
-          <span className={`relative inline-flex items-center justify-center ${spec.text_cls}`}>
-            {spec.pulse && !reduce && (
-              <span
-                aria-hidden
-                className="absolute inset-0 rounded-full bg-current opacity-30 animate-ping"
-              />
-            )}
-            <span className="relative" aria-hidden>{spec.emoji}</span>
-          </span>
-          <span className={`font-medium ${spec.text_cls}`}>
-            {spec.text}
-            {downSince !== null && downSince >= 5 && (
-              <span className={`ml-2 opacity-80 font-normal text-xs tabular-nums ${spec.text_cls}`}>
-                ({downSince}s)
-              </span>
-            )}
-          </span>
-        </div>
-      </motion.div>
+      {visible && spec ? (
+        <motion.div
+          key="server-status-banner"
+          role="status"
+          // Round-9: assertive for "down" (user needs to know now);
+          // polite for connecting/recovered (less urgent).
+          aria-live={status === "down" ? "assertive" : "polite"}
+          initial={initial}
+          animate={animate}
+          exit={exit}
+          transition={transition}
+          // Anchor below the Mac title-bar band when one exists. In a
+          // regular browser --dig-titlebar-h is 0 and the banner sits
+          // flush against the top edge as before; in the Mac wrapper it's
+          // 28px, so the banner sits below the brand strip instead of
+          // covering the traffic lights.
+          className={`fixed inset-x-0 z-[60] ${spec.band} shadow-md`}
+          style={{ top: "var(--dig-titlebar-h)" }}
+        >
+          <div className="max-w-screen-xl mx-auto px-4 py-2 flex items-center justify-center gap-3 text-sm">
+            {/* Pulse ring around the emoji for the persistent states. */}
+            <span className={`relative inline-flex items-center justify-center ${spec.text_cls}`}>
+              {spec.pulse && !reduce && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-current opacity-30 animate-ping"
+                />
+              )}
+              <span className="relative" aria-hidden>{spec.emoji}</span>
+            </span>
+            <span className={`font-medium ${spec.text_cls}`}>
+              {spec.text}
+              {downSince !== null && downSince >= 5 && (
+                <span className={`ml-2 opacity-80 font-normal text-xs tabular-nums ${spec.text_cls}`}>
+                  ({downSince}s)
+                </span>
+              )}
+            </span>
+          </div>
+        </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 }

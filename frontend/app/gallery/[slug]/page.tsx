@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
-import { api } from "@/lib/api/client";
+import { api, ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { PositiveLoader } from "@/components/positive-loader";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -31,6 +33,7 @@ export default function GalleryDetailPage({ params }: PageProps) {
     queryKey: ["gallery", slug],
     queryFn: () => api.getGalleryTemplate(slug),
   });
+  useDocumentTitle(q.data?.title ? `${q.data.title} · Template` : "Template");
 
   const cloneM = useMutation({
     mutationFn: () => api.cloneGalleryTemplate(slug),
@@ -60,13 +63,36 @@ export default function GalleryDetailPage({ params }: PageProps) {
         </Link>
 
         {q.isLoading && (
-          <p className="mt-6 text-sm text-muted-foreground">Loading…</p>
+          <div className="mt-6 py-8 grid place-items-center">
+            <PositiveLoader variant="rendering" primary="Loading template…" size="md" showTimer={false} />
+          </div>
         )}
-        {q.error && (
-          <p className="mt-6 text-sm text-destructive">
-            Couldn't load template: {(q.error as Error).message}
-          </p>
-        )}
+        {q.error && (() => {
+          // Round-9 fix: distinguish 404 (slug doesn't exist) from
+          // network/5xx errors. The 404 case is a real empty state with
+          // a back-to-gallery affordance; everything else stays as a
+          // raw destructive banner so operators see the underlying msg.
+          const is404 = q.error instanceof ApiError && q.error.status === 404;
+          return is404 ? (
+            <div className="mt-8 text-center space-y-3">
+              <div className="text-5xl" aria-hidden>🌳</div>
+              <p className="text-sm font-medium">Template not found</p>
+              <p className="text-xs text-muted-foreground">
+                The link may be stale, or the template may have been deleted.
+              </p>
+              <Link
+                href="/gallery"
+                className="inline-block text-xs px-3 py-1.5 rounded-md border border-border bg-card hover:bg-muted"
+              >
+                ← Back to gallery
+              </Link>
+            </div>
+          ) : (
+            <p className="mt-6 text-sm text-destructive">
+              Couldn&apos;t load template: {(q.error as Error).message}
+            </p>
+          );
+        })()}
 
         {q.data && (
           <article className="mt-4">
@@ -136,6 +162,7 @@ export default function GalleryDetailPage({ params }: PageProps) {
                   readOnly
                   value={shareUrl}
                   suppressHydrationWarning
+                  aria-label="Shareable template URL"
                   className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-xs font-mono"
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />

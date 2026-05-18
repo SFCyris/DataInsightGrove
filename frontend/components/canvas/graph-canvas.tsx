@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
   Background, BackgroundVariant, Controls, MiniMap, ReactFlow,
   type Edge, type EdgeChange, type Node as RFNode, type NodeChange,
@@ -235,7 +236,113 @@ export function GraphCanvas({
   // input link on a node — for now we ignore edge changes (no inline editing).
   const onEdgesChange = useCallback((_changes: EdgeChange[]) => { /* noop */ }, []);
 
+  // Round-6 UX#2 + Round-8 hardening: drag-to-connect was visually
+  // present (every node renders `<Handle>`s) but `onConnect` was never
+  // wired, so dragging from a handle to another node did nothing. Round
+  // 6 wired it; round 8 added cycle detection, output-node targets, and
+  // proper port resolution for empty multi-input steps (join, etc.).
+  const onConnect = useCallback(
+    (params: { source: string; target: string; targetHandle?: string | null; sourceHandle?: string | null }) => {
+      if (!params.source || !params.target || params.source === params.target) {
+        return;
+      }
+
+      // Output-node target → update doc.outputs[i].from rather than a
+      // non-existent node.inputs. Output ids in the canvas are prefixed
+      // ``output_<id>``; strip the prefix to look up the doc.outputs row.
+      if (params.target.startsWith("output_")) {
+        const outId = params.target.slice("output_".length);
+        const existing = doc.outputs.find((o) => o.id === outId);
+        if (!existing) return;
+        const nextDoc: PipelineDocument = {
+          ...doc,
+          outputs: doc.outputs.map((o) =>
+            o.id === outId
+              ? { ...o, from: { ref: params.source, port: params.sourceHandle || "out" } }
+              : o,
+          ),
+        };
+        onUpdateDoc(nextDoc);
+        return;
+      }
+
+      const targetNode = doc.nodes.find((n) => n.id === params.target);
+      if (!targetNode) return;
+
+      // Cycle detection: walk forward from `target` and refuse if we can
+      // reach `source` — the new edge would close a cycle.
+      const successors = new Map<string, Set<string>>();
+      for (const n of doc.nodes) {
+        for (const ref of Object.values(n.inputs ?? {})) {
+          if (!ref?.ref) continue;
+          if (!successors.has(ref.ref)) successors.set(ref.ref, new Set());
+          successors.get(ref.ref)!.add(n.id);
+        }
+      }
+      const queue: string[] = [params.target];
+      const seen = new Set<string>([params.target]);
+      while (queue.length) {
+        const node = queue.shift()!;
+        if (node === params.source) {
+          toast.error("That connection would create a cycle in the pipeline");
+          return;
+        }
+        for (const next of successors.get(node) ?? []) {
+          if (!seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
+        }
+      }
+
+      // Port selection. Manifest is authoritative for multi-input
+      // steps (join → left/right). Preference order:
+      //   1. handle ReactFlow gave us (user dragged onto a specific port)
+      //   2. first manifest-declared port that is currently empty
+      //   3. first manifest-declared port (overwrite existing)
+      //   4. universal "in"
+      const manifest = manifests[targetNode.step];
+      const declared = manifest?.io.inputs.ports ?? [];
+      let targetPort = params.targetHandle || "";
+      if (!targetPort && declared.length) {
+        const existing = targetNode.inputs ?? {};
+        targetPort = declared.find((p) => !existing[p]) || declared[0];
+      }
+      if (!targetPort) {
+        targetPort = Object.keys(targetNode.inputs ?? {})[0] || "in";
+      }
+      const nextInputs = {
+        ...(targetNode.inputs || {}),
+        [targetPort]: { ref: params.source, port: params.sourceHandle || "out" },
+      };
+      const nextDoc: PipelineDocument = {
+        ...doc,
+        nodes: doc.nodes.map((n) =>
+          n.id === params.target ? { ...n, inputs: nextInputs } : n,
+        ),
+      };
+      onUpdateDoc(nextDoc);
+    },
+    [doc, manifests, onUpdateDoc],
+  );
+
   // Selection: clicking a node sets focused id; clicking the pane clears it.
+  const onNodeDoubleClick = useCallback(
+    (_e: React.MouseEvent, node: RFNode) => {
+      // Round-5 W2: double-clicking a ``pipeline:<id>`` sub-pipeline
+      // node opens that pipeline in a new tab so the user can drill
+      // in without losing place in the parent.
+      const data = node.data as { step?: string } | undefined;
+      const step = data?.step;
+      if (step && step.startsWith("pipeline:")) {
+        const sourceId = step.slice("pipeline:".length);
+        if (sourceId) {
+          window.open(`/pipelines/${sourceId}`, "_blank", "noopener");
+        }
+      }
+    },
+    [],
+  );
   const onNodeClick = useCallback(
     (_e: React.MouseEvent, node: RFNode) => onSelect(node.id),
     [onSelect],
@@ -269,26 +376,42 @@ export function GraphCanvas({
     [rfNodes, selectedId],
   );
 
-  // Fit view once the graph is built.
+  // Fit view ONLY on the first non-zero render (when the graph first
+  // becomes visible). Round-9 fix: previously this ran on every
+  // structural change (adding a step etc.), which yanked the user's
+  // pan/zoom mid-edit. A ref tracks "did we already fit?" so the user
+  // can drag and zoom freely after first paint.
+  const hasFitOnce = useRef(false);
   useEffect(() => {
     const inst = flowRef.current;
-    if (inst && rfNodes.length > 0) {
-      // Defer to next frame so React Flow has measured the nodes.
-      const t = setTimeout(() => inst.fitView({ padding: 0.2, duration: 280 }), 0);
+    if (inst && rfNodes.length > 0 && !hasFitOnce.current) {
+      const t = setTimeout(() => {
+        inst.fitView({ padding: 0.2, duration: 280 });
+        hasFitOnce.current = true;
+      }, 0);
       return () => clearTimeout(t);
     }
-    // Run only when the structural shape changes — not on every position drag.
   }, [rfNodes.length]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="w-full h-full bg-muted/10">
+    <div
+      className="w-full h-full bg-muted/10"
+      role="application"
+      aria-label="Pipeline graph canvas"
+    >
+      <span className="sr-only">
+        Pipeline graph. Tab to traverse nodes; Enter or Space to select;
+        Backspace or Delete to remove a selected node or edge.
+      </span>
       <ReactFlow
         nodes={nodesWithSelection}
         edges={rfEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
         onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
         onInit={(inst) => { flowRef.current = inst; }}
@@ -296,6 +419,12 @@ export function GraphCanvas({
         // selects a region. The page mirrors the selection so its
         // floating GroupActionBar knows what to group.
         onSelectionChange={onSelectionChangeStable}
+        // Round-4 UX#2: wire Backspace/Delete so keyboard users can
+        // remove a selected node/edge. ReactFlow translates these
+        // keycodes into the same change events `onNodesChange` /
+        // `onEdgesChange` already handle, so the page's onUpdateDoc
+        // path is exercised through the existing wiring.
+        deleteKeyCode={["Backspace", "Delete"]}
         // Default: drag selects a region (xyflow rubber-band). Hold
         // space (or use the trackpad two-finger pan) to pan the canvas.
         selectionOnDrag
@@ -326,8 +455,12 @@ export function GraphCanvas({
             pannable
             zoomable
             ariaLabel="Pipeline mini-map — drag to pan, scroll to zoom"
-            maskColor="rgba(244, 244, 245, 0.55)"
-            maskStrokeColor="rgba(15, 23, 42, 0.35)"
+            // Round-4 UX#2: previously hard-coded near-white mask
+            // colour (``rgba(244,244,245,0.55)``) blew out in dark
+            // mode. Use the CSS variable that already tracks the
+            // active theme so the mask stays subtle in both modes.
+            maskColor="color-mix(in srgb, var(--color-card) 55%, transparent)"
+            maskStrokeColor="color-mix(in srgb, var(--color-border) 80%, transparent)"
             maskStrokeWidth={1.5}
             nodeColor={(n) => {
               const d = (n.data ?? {}) as {
@@ -355,6 +488,11 @@ export function GraphCanvas({
             }}
             nodeStrokeWidth={1.5}
             nodeBorderRadius={4}
+            // Round-5 W2: clicking a node in the mini-map now selects
+            // it in the main canvas. The whole point of seeing a red
+            // dot in the minimap on a 30-step pipeline is being able to
+            // jump straight there.
+            onNodeClick={(_e, n) => onSelect(n.id)}
             className="!bg-card/85 backdrop-blur !border !border-border/70 !rounded-md !shadow-md"
           />
         )}

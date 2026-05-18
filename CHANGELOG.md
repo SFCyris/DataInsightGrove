@@ -6,6 +6,65 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+Workflow + interaction polish from the round-4 / round-5 audit waves.
+No structural change; everything is additive.
+
+### Added
+
+- **Command palette**: per-pipeline verbs (▶ run, 📑 duplicate, ⏰ schedule, 🔗 copy link, ⬇ export), Recent group at the top of the palette, "New blank pipeline" / "Browse templates" / "Upload a dataset" create-flow shortcuts, and a global `/` shortcut that focuses the palette search. Typing a step name while inside the editor now inserts it; previously the palette only toasted a hint.
+- **G-chord navigation**: `g h` / `g p` / `g d` / `g r` / `g c` / `g s` jump to Home / Pipelines / Datasets / Runs / Catalog / Settings (Linear / GitHub convention). 1-second timeout; disarmed silently if the second key isn't mapped.
+- **Recent items**: `localStorage`-backed FIFO of the last 10 pipelines + 10 datasets, populated automatically on every open. Surfaces on the home page (when present) and at the top of the command palette.
+- **Favorites / pinning**: ⭐ on every pipeline card; pinned items sort to the top of the list and read with a `⭐` prefix in the palette.
+- **Run cancel**: new `POST /runs/{id}/cancel` endpoint + a 🛑 Stop button that replaces ▶ Run while a run is in flight. CancelledError now flips Run status to `cancelled` (separate from `failed`) and fires webhooks + events for the new state.
+- **Split-button sample picker**: run-on-sample sizes (1k / 10k / 100k / 1M / full) sit flush with the Run button — picking a size for a one-off no longer dirties the pipeline doc.
+- **Run-detail → editor focus jump**: failed runs build `?focus=<nodeId>` links; the editor now consumes that param on mount, scrolls to the failing node, then clears the URL.
+- **WS reattach on reload**: refreshing the editor mid-run re-subscribes to the in-flight WebSocket instead of going dark.
+- **Multi-file dataset upload**: dropzone accepts an arbitrary number of files at once; each becomes its own dataset. On success, a "Imported N datasets" toast offers a one-click jump to the catalog (the natural place to join them).
+- **Dataset name conflict**: backend now returns 409 with `{ code: "dataset_name_in_use", existingId }` when uploading a dataset whose name already exists. Frontend resolves into a sonner confirm: **Replace** (re-ingest in place, keep the dataset ID) / **Keep both** / Cancel. Set `on_name_conflict=allow` to opt out of the prompt.
+- **Dataset refresh**: new `POST /datasets/{id}/refresh` endpoint + a 🔄 Refresh button on the dataset detail header. Re-runs the connector against the existing `source_uri` and preserves the dataset_id so downstream pipelines stay attached. The failed-ingest panel now also offers Retry.
+- **Variable templating hint at ingest**: the REST-connector URL field surfaces `{{ today }}` / `{{ now }}` / `{{ vars.region }}` inline with a link to `docs/VARIABLES.md`.
+- **Notification rule dry-run**: `POST /notification-rules/test` replays a rule's `event_kind` + filters against the last N events. Rule editor gains a 🧪 panel that surfaces "M of N events would have fired this rule" so authors can preview before save.
+- **Notification deep-links**: when an event carries `run_id` / `pipeline_id` in its context, the inbox row surfaces 🔍 Run / 🛤 Pipeline links — no more copying ULIDs out of the foldable JSON.
+- **Running-count chip on home**: pulses while any pipeline is running anywhere in the workspace; clicking opens the runs grid filtered to queued + running.
+- **Multi-tab guard**: a `BroadcastChannel` heartbeat warns when the same pipeline is open in two tabs.
+- **Editor keyboard shortcuts**: `⌫` / `Delete` deletes selected nodes via ReactFlow's native `deleteKeyCode`. Double-clicking a sub-pipeline node opens its source in a new tab.
+- **Editor before-unload guard**: closing the tab with unsaved keystrokes shows the browser's "leave site?" prompt; clears as soon as the 500ms autosave succeeds.
+- **Step picker**: query persists across reopens via sessionStorage; AI ribbon stays visible regardless of query; "✨ Generate a custom step" link lives at the bottom of the picker; the toast after adding a step lists any required-but-undefaulted params (e.g. join's `keys`).
+- **MiniMap interactions**: clicking a node in the mini-map selects it in the main canvas; mask + stroke colours now follow the theme tokens instead of being hard-coded light.
+- **Run-history popover**: ARIA `role="listbox"`, ticking duration for in-flight runs, and a "See all N runs →" link when the cap of 25 truncates.
+- **Settings search**: an in-page search input filters the sidebar by label / help / id.
+- **Notification inbox**: timestamps render in local time with the UTC value in `title=`; table wrapper has `role="log" aria-live="polite"`.
+
+### Backend
+
+- `JobManager` honours a `_shutting_down` flag so submissions arriving mid-cancel are rejected with 503 instead of leaking past the shutdown.
+- `Pipeline.id` Pydantic constraint (`min_length=1`, `max_length=64`, `[A-Za-z0-9_:-]`) — previously any string.
+- `dq_drift` skips anomaly emission when historical mean < 1 (zero-baseline pipelines no longer noisy on every recovery).
+- `PipelineHistory` snapshot caps document size at 512 KiB.
+- `discard_staged` validates pack version + `.resolve()` containment.
+- AI safety lint resolves `from X import Y as Z` aliases, walrus operators, and plain reassignments before testing against the banned-names set. Also rejects metaclasses + `__init_subclass__` / `__set_name__` / `__class_getitem__`.
+- Extension entry-point loads have a 10s deadline; manifest depth + item count capped (32 / 10,000).
+- `/metrics`: NaN/inf observations rejected (and counted in `dig_metric_observations_dropped_total`), negative counter increments rejected, special floats render as Prometheus-spec `+Inf` / `-Inf` / `NaN`, and the metric-name space is process-wide-capped at 1,000.
+- `/health` redacts extension package + version + path for unauthenticated callers.
+- Cron list parsing uses `rfind("# DIG_SCHED:")` + ULID validation so quoted-arg marker hijacks can't spoof pipeline IDs.
+- REST connector + webhook dispatch share a `_validate_header_pair` allow-list (rejects CRLF / NUL / control bytes in names + values).
+- `upgrade.sh` parses pyproject via `tomllib` instead of regex.
+
+### Changed
+
+- `webhook_trigger` step no longer opens an orphan event loop — it submits to the main API loop via `run_coroutine_threadsafe`. Payload now carries `pipelineId` + `pipelineName`.
+- Editor toolbar primary action reads "▶ Run pipeline" (not "Run on backend"); the live grid no longer surfaces a "🌐 via backend" badge. Per the brand rule that processing surface stays transparent.
+
+## [1.0.0-rc2] — 2026-05-11
+
+Audit-driven hardening on top of rc1. No structural change.
+
+- Closed the export_to_map XSS chain, AI/webhook SSRF gaps, and the upgrade.sh heredoc injection.
+- Fixed three rc1 regressions: upgrade.sh marker timing, the variables-demo datetime crash, and the path-safety gate having no test coverage.
+- Tightened templating, metrics, extension loader, schema-migration race handling.
+- Aligned the user-visible version surface and demo-count copy across README + UI + CHANGELOG.
+- Regenerated the frontend openapi types so the new `/health.extensions` + `RunOut.nanOrigins` are properly typed.
+
 ## [1.0.0-rc1] — 2026-05-11
 
 First release-candidate of the 1.0 line. The structural decisions are

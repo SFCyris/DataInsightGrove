@@ -112,10 +112,30 @@ export function PacksSection() {
   };
 
   const onUninstall = async (p: InstalledPack) => {
-    if (!confirm(
-      `Uninstall ${p.label} v${p.version}?\n\nThis removes ${p.steps.length} step(s) ` +
-      `from your DIG instance. Pipelines that reference these steps will fail to load.`,
-    )) return;
+    // Round-4 UX#3: native ``confirm()`` is unstylable, blocks the
+    // event loop, and breaks the modern-UI vow. Use a sonner
+    // confirm-style toast so the affirmation stays inline with the
+    // rest of the modern UI surface. The toast resolves a Promise
+    // via the action button; we await it before proceeding.
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const id = toast.warning(`Uninstall ${p.label} v${p.version}?`, {
+        description:
+          `This removes ${p.steps.length} step(s) from your DIG instance. ` +
+          `Pipelines that reference these steps will fail to load.`,
+        action: {
+          label: "Uninstall",
+          onClick: () => { resolve(true); toast.dismiss(id); },
+        },
+        cancel: {
+          label: "Cancel",
+          onClick: () => { resolve(false); toast.dismiss(id); },
+        },
+        duration: 30_000,
+        onDismiss: () => resolve(false),
+        onAutoClose: () => resolve(false),
+      });
+    });
+    if (!confirmed) return;
     try {
       await api.uninstallPack(p.id);
       toast.success(`Uninstalled ${p.label}`);

@@ -9,7 +9,8 @@
  * services configure trigger conditions.
  */
 
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { confirmAction } from "@/lib/confirm-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -124,10 +125,13 @@ export function NotificationRulesSection() {
         rules={customs}
         onEdit={setEditing}
         onToggle={(id) => toggleM.mutate(id)}
-        onDelete={(id) => {
-          if (confirm("Delete this rule? This cannot be undone.")) {
-            deleteM.mutate(id);
-          }
+        onDelete={async (id) => {
+          const ok = await confirmAction({
+            title: "Delete this notification rule?",
+            description: "This cannot be undone.",
+            confirmLabel: "Delete",
+          });
+          if (ok) deleteM.mutate(id);
         }}
       />
 
@@ -323,7 +327,21 @@ function RuleEditModal({
   const [name, setName] = useState(rule?.name ?? "");
   const [description, setDescription] = useState(rule?.description ?? "");
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
-  const [eventKind, setEventKind] = useState(rule?.event_kind ?? "run.failed");
+  // Round-8 fix: previously defaulted to the literal "run.failed" even
+  // when the backend's eventKinds list didn't include it; the select
+  // then rendered with no matching option and silently saved a broken
+  // rule. Fall back to the first available kind so the value is always
+  // valid.
+  const [eventKind, setEventKind] = useState(
+    rule?.event_kind ?? eventKinds[0] ?? "run.failed",
+  );
+
+  // Round-8 a11y: ESC closes the modal so keyboard users aren't stuck.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const [filtersText, setFiltersText] = useState(
     rule?.filters ? JSON.stringify(rule.filters, null, 2) : "",
   );
@@ -388,6 +406,9 @@ function RuleEditModal({
       onClick={onClose}
     >
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rule-edit-title"
         initial={{ opacity: 0, y: 12, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, scale: 0.97 }}
@@ -397,7 +418,7 @@ function RuleEditModal({
       >
         <header className="px-5 py-4 border-b border-border flex items-center gap-2">
           <span aria-hidden className="text-xl">📐</span>
-          <h3 className="text-base font-semibold">
+          <h3 id="rule-edit-title" className="text-base font-semibold">
             {isNew ? "New notification rule" : "Edit notification rule"}
           </h3>
           {rule?.is_builtin && (
@@ -458,14 +479,30 @@ function RuleEditModal({
               </select>
             </FormField>
             <FormField label="Cooldown (seconds, optional)" hint="Min gap between fires per target">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={cooldown}
-                onChange={(e) => setCooldown(e.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="e.g. 600"
-                className="w-full px-2.5 py-1.5 rounded border border-border bg-background"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={cooldown}
+                  onChange={(e) => {
+                    // Round-4 UX#3: previously silently stripped non-
+                    // digits so pasting "10 min" rewrote to "10" with no
+                    // feedback — the user thought they entered minutes
+                    // but it was 10 seconds. Keep the same input shape
+                    // but render a unit suffix so the read-back is
+                    // unambiguous.
+                    setCooldown(e.target.value.replace(/[^0-9]/g, ""));
+                  }}
+                  placeholder="e.g. 600"
+                  className="w-full px-2.5 py-1.5 pr-10 rounded border border-border bg-background"
+                />
+                <span
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none select-none"
+                  aria-hidden
+                >
+                  s
+                </span>
+              </div>
             </FormField>
           </div>
 
@@ -489,6 +526,14 @@ function RuleEditModal({
               </p>
             )}
           </FormField>
+
+          {/* Round-5 W4: dry-run the current event_kind + filters
+              against the last 50 events so the user can see what
+              would have fired BEFORE saving the rule. */}
+          <TestRulePanel
+            eventKind={eventKind}
+            filters={filtersValid && filtersText.trim() ? JSON.parse(filtersText) : null}
+          />
 
           <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono">
@@ -550,6 +595,32 @@ function RuleEditModal({
             </FormField>
           </div>
 
+          {/* Round-6 UX#4: live preview of the rendered notification.
+              Substitutes a representative sample context so the user
+              can see what the final inbox row will read like BEFORE
+              saving + waiting for a real event. */}
+          {(title.trim() || (message ?? "").trim()) && (
+            <div className="rounded-lg border border-border bg-muted/10 p-3">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono mb-1.5">
+                👀 Preview
+              </p>
+              <p className="text-sm font-medium">
+                {renderTemplatePreview(
+                  title.trim() || "{event_kind}",
+                  eventKind,
+                )}
+              </p>
+              {message && (
+                <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">
+                  {renderTemplatePreview(message, eventKind)}
+                </p>
+              )}
+              <p className="text-[10px] text-muted-foreground/70 mt-1.5 italic">
+                Sample context — real events will substitute their own values.
+              </p>
+            </div>
+          )}
+
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
@@ -605,5 +676,99 @@ function FormField({
         </span>
       )}
     </label>
+  );
+}
+
+// ---- Round-5 W4 test-rule preview ---------------------------------------
+
+function TestRulePanel({
+  eventKind,
+  filters,
+}: {
+  eventKind: string;
+  filters: Record<string, unknown> | null;
+}) {
+  const [result, setResult] = React.useState<{ sampled: number; matched: number; hits: Array<{ event_id: string; event_kind: string; created_at: string; context: Record<string, unknown> }>} | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const runTest = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await notificationRulesApi.test(
+        { event_kind: eventKind, filters: filters ?? undefined },
+        50,
+      );
+      setResult(r);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-mono">
+          🧪 Test against recent events
+        </p>
+        <button
+          type="button"
+          onClick={runTest}
+          disabled={busy || !eventKind}
+          className="text-[11px] px-2 py-1 rounded border border-border bg-card hover:bg-muted disabled:opacity-50"
+        >
+          {busy ? "Running…" : "Run dry-run"}
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-rose-600 dark:text-rose-400">{error}</p>}
+      {result && (
+        <div className="text-[11px] text-muted-foreground">
+          <p>
+            <strong className="text-foreground">{result.matched}</strong> of {result.sampled} recent events
+            would have fired this rule.
+          </p>
+          {result.hits.length > 0 && (
+            <ul className="mt-1.5 space-y-1 max-h-32 overflow-y-auto">
+              {result.hits.slice(0, 10).map((h) => (
+                <li key={h.event_id} className="font-mono text-[10px]">
+                  {new Date(h.created_at).toLocaleTimeString()} · {h.event_kind}
+                </li>
+              ))}
+            </ul>
+          )}
+          {result.matched === 0 && result.sampled > 0 && (
+            <p className="mt-1 italic">
+              No matches in the last {result.sampled} events. Loosen filters or wait for a real event.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Render a rule-template string with a representative sample context so
+ * the editor's preview block has something concrete to show. Mirrors the
+ * backend's `_render()` substitution shape (`{name}` only — no attribute
+ * walking, no format specs).
+ */
+function renderTemplatePreview(template: string, eventKind: string): string {
+  const sampleContext: Record<string, string> = {
+    event_kind: eventKind,
+    pipeline_id: "01HZZZZSAMPLEPIPELINEID0000",
+    pipeline_name: "📊 Sample pipeline",
+    run_id: "01HZZZZSAMPLERUNID0000000000",
+    target_label: "owner@example.com",
+    error: "ValueError: column 'price' not found",
+    error_type: "ValueError",
+    user_id: "user@example.com",
+    severity: "warning",
+    level: "warning",
+  };
+  return template.replace(
+    /\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+    (_full, key: string) => sampleContext[key] ?? `<sample ${key}>`,
   );
 }

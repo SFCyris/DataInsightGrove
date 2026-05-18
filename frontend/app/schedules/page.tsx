@@ -17,6 +17,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, schedulesApi, ApiError } from "@/lib/api/client";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/use-document-title";
+import { explainCron, nextFireTime, describeRelative } from "@/lib/cron-explain";
+import { PositiveLoaderInline } from "@/components/positive-loader";
+import { confirmAction } from "@/lib/confirm-toast";
 
 const PRESETS = [
   { label: "Every 15 min", cron: "*/15 * * * *" },
@@ -27,6 +31,7 @@ const PRESETS = [
 ];
 
 export default function SchedulesPage() {
+  useDocumentTitle('Schedules');
   const reduce = useReducedMotion();
   const fadeUp = reduce
     ? { initial: false as const, animate: { opacity: 1, y: 0 } }
@@ -59,6 +64,10 @@ export default function SchedulesPage() {
       toast.success("Schedule added");
       setPid("");
       setSample("");
+      // Round-9 fix: also reset cron back to the default so the form
+      // doesn't look "still ready to submit" with stale text after a
+      // successful add.
+      setCron("0 8 * * *");
     } catch (e) {
       const msg =
         e instanceof ApiError
@@ -66,13 +75,35 @@ export default function SchedulesPage() {
             ? String((e.detail as { detail: unknown }).detail)
             : e.message
           : (e as Error).message;
-      toast.error(msg);
+      // Round-4 UX#3: the backend "can never fire" / range error is
+      // accurate but reads as raw debug text. Surface a friendlier
+      // hint where we can detect the impossible-day case; the raw
+      // message still goes via the toast description.
+      const friendly = (() => {
+        if (/can never fire/i.test(msg)) {
+          return "That cron expression can never fire — usually a day/month combination that doesn't exist (e.g. Feb 31). Pick a different day or use one of the presets above.";
+        }
+        if (/out of range/i.test(msg)) {
+          return "One of the cron fields is out of range. Allowed ranges: minute 0–59, hour 0–23, day-of-month 1–31, month 1–12, day-of-week 0–7.";
+        }
+        return msg;
+      })();
+      toast.error(friendly, { description: friendly !== msg ? msg : undefined });
     } finally {
       setSubmitting(false);
     }
   };
 
   const onRemove = async (pipelineId: string) => {
+    // Round-9 fix: schedules used to delete on a single click with no
+    // confirmation. Match the dataset / pipeline cards' confirm-toast
+    // pattern so an accidental click can't silently kill a cron.
+    const ok = await confirmAction({
+      title: "Remove schedule?",
+      description: "Stops the cron entry. The pipeline itself stays — you can re-schedule later.",
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
     try {
       await schedulesApi.remove(pipelineId);
       qc.invalidateQueries({ queryKey: ["schedules"] });
@@ -89,15 +120,15 @@ export default function SchedulesPage() {
           <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">← Home</Link>
           <h1 className="text-2xl font-semibold tracking-tight mt-1">⏰ Pipeline schedules</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Cron-backed. Schedules live in your host's crontab and run via <code className="font-mono text-foreground/80">dig-run.sh</code>.
-            Survives DIG restarts; requires the host's cron daemon to be running.
+            Survives DIG restarts. Runs even when the editor is closed —
+            requires the host to be on at the scheduled time.
           </p>
         </div>
       </motion.header>
 
       <motion.section {...fadeUp} className="rounded-lg border border-border bg-card p-5 space-y-4 mb-6">
         <h2 className="font-medium">Add a schedule</h2>
-        <div className="grid grid-cols-[1fr_2fr] gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3">
           <div>
             <label className="text-[11px] uppercase tracking-widest text-muted-foreground block mb-1">Pipeline</label>
             <select
@@ -121,6 +152,25 @@ export default function SchedulesPage() {
               placeholder="0 8 * * *"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
             />
+            {/* Round-6 UX#4: human-readable readback under the cron input
+                so the user can confidence-check what `0 8 * * *` means
+                before clicking Add — without leaving the page or doing
+                mental cron parsing. */}
+            {(() => {
+              const phrase = explainCron(cron);
+              const next = nextFireTime(cron);
+              if (!phrase && !next) return null;
+              return (
+                <div className="mt-1.5 text-[11px] text-muted-foreground leading-snug">
+                  {phrase ? <span>📅 Fires {phrase}</span> : null}
+                  {next ? (
+                    <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+                      · next: {describeRelative(next)} ({next.toLocaleString()})
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })()}
             <div className="flex flex-wrap gap-1 mt-2">
               {PRESETS.map((p) => (
                 <button
@@ -136,7 +186,7 @@ export default function SchedulesPage() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_2fr] gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3 sm:items-end">
           <div>
             <label className="text-[11px] uppercase tracking-widest text-muted-foreground block mb-1">
               Sample rows (optional)
@@ -163,9 +213,15 @@ export default function SchedulesPage() {
 
       <motion.section {...fadeUp} className="space-y-2">
         <h2 className="font-medium">Active schedules</h2>
-        {schedules.isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
+        {schedules.isLoading && (
+          <PositiveLoaderInline variant="rendering" text="Loading schedules…" />
+        )}
         {schedules.data && schedules.data.length === 0 && (
-          <p className="text-sm text-muted-foreground italic">No schedules yet.</p>
+          <div className="rounded-md border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground space-y-2">
+            <div className="text-3xl" aria-hidden>⏰</div>
+            <p>No schedules yet.</p>
+            <p className="text-[11px]">Pick a pipeline below and click <span className="font-mono">➕ Add schedule</span> to start one.</p>
+          </div>
         )}
         {(schedules.data ?? []).map((s) => (
           <div
@@ -180,6 +236,16 @@ export default function SchedulesPage() {
               <p className="text-[11px] text-muted-foreground font-mono">
                 {s.cron}{s.sample_rows ? ` · sample ${s.sample_rows.toLocaleString("en-US")}` : ""}
               </p>
+              {/* Round-6 UX#4: next-fire preview per schedule row. */}
+              {(() => {
+                const next = nextFireTime(s.cron);
+                if (!next) return null;
+                return (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                    📅 Next: {describeRelative(next)} ({next.toLocaleString()})
+                  </p>
+                );
+              })()}
             </div>
             <Link
               href={`/pipelines/${s.pipeline_id}`}
