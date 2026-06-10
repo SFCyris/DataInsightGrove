@@ -55,3 +55,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# ─── Internal working notes — not part of the public source tree ───────────
+internal/
+Internal/
+Step-Pack-internal/
