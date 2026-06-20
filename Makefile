@@ -4,7 +4,7 @@
         config config-init config-show \
         typecheck backend-typecheck frontend-typecheck \
         docs gen-steps-doc gen-third-party e2e clean-tests \
-        mac-app clean
+        mac-app package clean
 
 help:
 	@echo "DataInsightGrove tasks:"
@@ -36,6 +36,9 @@ help:
 	@echo ""
 	@echo "  Mac app"
 	@echo "    make mac-app            Build DataInsightGrove.app (Mac only; Xcode CLT)"
+	@echo ""
+	@echo "  Distribution"
+	@echo "    make package            Build the downloadable release zip (installer/dist/)"
 	@echo ""
 	@echo "  Cleanup"
 	@echo "    make clean              Remove venv, node_modules, build artifacts"
@@ -131,6 +134,9 @@ clean-tests:
 
 mac-app:
 	./mac/build.sh
+
+package:
+	./installer/package.sh
 
 linux-install:
 	./linux/install.sh
