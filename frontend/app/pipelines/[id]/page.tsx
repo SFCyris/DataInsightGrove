@@ -2445,7 +2445,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           {datasetPickerOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-[calc(100%+4px)] w-[300px] max-h-[360px] overflow-auto z-[60] rounded-md border border-border bg-popover shadow-lg p-1 flex flex-col"
+              className="absolute right-0 top-[calc(100%+4px)] w-[min(300px,calc(100vw-2rem))] max-h-[360px] overflow-auto z-[60] rounded-md border border-border bg-popover shadow-lg p-1 flex flex-col"
             >
               {(datasetsQ.data ?? []).length === 0 ? (
                 <div className="text-xs text-muted-foreground p-3 text-center">

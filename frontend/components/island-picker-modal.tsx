@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError, type Dataset } from "@/lib/api/client";
@@ -41,6 +41,7 @@ interface Props {
  * then pick an island (if multi-island). One-island sheets skip both.
  */
 export function IslandPickerModal({ dataset, onPicked, onCancel }: Props) {
+  const reduce = useReducedMotion();
   const islands = (dataset.availableIslands ?? []) as unknown as IslandPreview[];
   const [picked, setPicked] = useState<string>(islands[0]?.range_a1 ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -81,10 +82,10 @@ export function IslandPickerModal({ dataset, onPicked, onCancel }: Props) {
       />
       <motion.div
         key="island-modal"
-        initial={{ opacity: 0, y: 8, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.97 }}
-        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
+        animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+        exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+        transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 360, damping: 28 }}
         className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[640px] max-w-[92vw] max-h-[88vh] bg-card border border-border rounded-lg shadow-2xl p-5 space-y-4 flex flex-col"
         role="dialog"
         aria-label="Pick data island"

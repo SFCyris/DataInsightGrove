@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, searchApi } from "@/lib/api/client";
@@ -36,6 +36,7 @@ interface Action {
  *   - search across registered steps (so you can recall what's available)
  */
 export function CommandPalette() {
+  const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const router = useRouter();
@@ -532,10 +533,10 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
-            initial={{ opacity: 0, y: 12, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 320, damping: 28 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.97 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.97 }}
+            transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 320, damping: 28 }}
             className="absolute left-1/2 top-[18vh] -translate-x-1/2 w-[min(620px,92vw)] rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl overflow-hidden"
           >
             <Command className="flex flex-col" shouldFilter>
