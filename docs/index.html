@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2026 Sebastian Cyris · DataInsightGrove™ / DIG™
+     The 🌳 emoji is generic Unicode (U+1F333), not a trademark.
+     Self-contained user manual — inline CSS + JS, references ../images/ only.
+     Offline-safe: no external fonts, scripts, or network calls. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DataInsightGrove — User Manual</title>
+<meta name="description" content="The DataInsightGrove (DIG) user manual: install, configure, ingest, shape, visualize, and export data with a self-hosted, plugin-first, dual-engine pipeline tool. Six worked examples, the full step and pack reference, and a glossary.">
+<style>
+/* ════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — emerald brand, dark-first with a light theme.
+   Mirrors the DIG app palette (--ring emerald). Switch via [data-theme].
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --emerald-300:#6ee7b7; --emerald-400:#34d399; --emerald-500:#10b981;
+  --emerald-600:#059669; --emerald-700:#047857;
+  --cyan:#38bdf8; --amber:#fbbf24; --violet:#a78bfa; --rose:#fb7185;
+  --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --sans: "Geist",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --maxw: 1080px;
+  --r-sm:7px; --r:10px; --r-lg:14px;
+  --spring: cubic-bezier(.22,1,.36,1);
+}
+/* ── Dark (default) ── */
+html[data-theme="dark"] {
+  --bg0:#0a0f0d; --bg1:#0f1512; --bg2:#151c18; --bg3:#1d2723; --bg4:#27332d;
+  --text0:#e7efe9; --text1:#a6b6ac; --text2:#7a8a80;
+  --accent:var(--emerald-400); --accent-strong:var(--emerald-300);
+  --accent-dim:var(--emerald-700);
+  --accent-glow:rgba(52,211,153,.22);
+  --border:rgba(160,210,180,.10); --border-bright:rgba(160,210,180,.20);
+  --code-bg:#070b09; --card-grad:linear-gradient(180deg,var(--bg2),var(--bg1));
+  --shadow:0 24px 60px rgba(0,0,0,.55);
+}
+/* ── Light ── */
+html[data-theme="light"] {
+  --bg0:#f6faf7; --bg1:#ffffff; --bg2:#f1f6f2; --bg3:#e6efe9; --bg4:#d8e6dd;
+  --text0:#0f1f17; --text1:#3b4d43; --text2:#647469;
+  --accent:var(--emerald-600); --accent-strong:var(--emerald-700);
+  --accent-dim:var(--emerald-500);
+  --accent-glow:rgba(5,150,105,.16);
+  --border:rgba(6,80,50,.12); --border-bright:rgba(6,80,50,.22);
+  --code-bg:#0c1410; --card-grad:linear-gradient(180deg,#ffffff,var(--bg2));
+  --shadow:0 18px 44px rgba(20,60,40,.14);
+}
+
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; scroll-padding-top:88px; }
+body {
+  margin:0; background:var(--bg0); color:var(--text0);
+  font-family:var(--sans); font-size:16.5px; line-height:1.7;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto;} }
+
+/* ── Layered animated background ───────────────────────────────────────── */
+.bg-field {
+  position:fixed; inset:0; z-index:-3; pointer-events:none;
+  background:
+    radial-gradient(1200px 700px at 80% -10%, var(--accent-glow), transparent 60%),
+    radial-gradient(900px 600px at 6% 14%, rgba(56,189,248,.06), transparent 55%),
+    radial-gradient(1100px 800px at 50% 120%, rgba(16,185,129,.05), transparent 60%);
+}
+.bg-grid {
+  position:fixed; inset:0; z-index:-2; pointer-events:none; opacity:.5;
+  background-image:
+    linear-gradient(rgba(120,170,140,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,170,140,.05) 1px, transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(circle at 50% 28%, #000 30%, transparent 90%);
+          mask-image:radial-gradient(circle at 50% 28%, #000 30%, transparent 90%);
+}
+#dataflow { position:fixed; inset:0; width:100vw; height:100vh; z-index:-1; pointer-events:none; }
+@media (prefers-reduced-motion:reduce){ #dataflow{ display:none; } }
+
+/* ── Reading progress bar ──────────────────────────────────────────────── */
+#progress {
+  position:fixed; top:0; left:0; height:3px; width:0%; z-index:60;
+  background:linear-gradient(90deg,var(--accent-dim),var(--accent-strong));
+  box-shadow:0 0 12px var(--accent-glow); transition:width .1s linear;
+}
+
+/* ── Top nav ───────────────────────────────────────────────────────────── */
+.topnav {
+  position:sticky; top:0; z-index:40; display:flex; align-items:center;
+  gap:16px; flex-wrap:wrap; padding:11px clamp(14px,4vw,40px);
+  background:color-mix(in srgb, var(--bg0) 80%, transparent);
+  backdrop-filter:blur(12px) saturate(140%);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
+  border-bottom:1px solid var(--border);
+}
+.brand { display:flex; align-items:center; gap:9px; text-decoration:none; color:var(--text0);
+  font-family:var(--mono); font-weight:700; letter-spacing:.02em; }
+.brand .leaf { font-size:22px; filter:drop-shadow(0 0 10px var(--accent-glow)); }
+.brand b { color:var(--accent); }
+.brand .ver { color:var(--text2); font-size:.7em; border:1px solid var(--border);
+  padding:1px 7px; border-radius:999px; white-space:nowrap; }
+.nav-right { margin-left:auto; display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; justify-content:flex-end; }
+.sec-nav { display:flex; gap:3px; flex-wrap:wrap; }
+.sec-nav a {
+  color:var(--text1); text-decoration:none; font-size:13.5px; font-family:var(--mono);
+  padding:5px 10px; border-radius:8px; border:1px solid transparent; white-space:nowrap;
+}
+.sec-nav a:hover { color:var(--text0); border-color:var(--border); background:var(--bg2); }
+.nav-tool {
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+  font-family:var(--mono); font-size:13px; color:var(--text1);
+  background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:6px 10px;
+}
+.nav-tool:hover { color:var(--text0); border-color:var(--border-bright); }
+#search { min-width:150px; background:var(--bg2); }
+#search input { all:unset; width:100%; color:var(--text0); font-family:var(--mono); font-size:13px; }
+#search input::placeholder { color:var(--text2); }
+@media (min-width:1481px){ .topnav .sec-nav { display:none; } }
+@media (max-width:760px){
+  .nav-right { width:100%; flex-wrap:nowrap; overflow-x:auto; justify-content:flex-start; gap:5px 10px; padding-bottom:3px; }
+  .sec-nav { flex-wrap:nowrap; }
+  html { scroll-padding-top:124px; }
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:3px; }
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+.wrap { max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,32px); }
+main { padding-bottom:90px; }
+section { padding:60px 0; border-top:1px solid var(--border); scroll-margin-top:88px; }
+section.hero { border-top:none; }
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.hero { text-align:center; padding:80px 0 46px; }
+.hero .eyebrow { font-family:var(--mono); font-size:12.5px; letter-spacing:.32em;
+  text-transform:uppercase; color:var(--cyan); margin-bottom:20px; }
+.hero h1 { font-size:clamp(40px,7.6vw,82px); line-height:1.02; margin:0 0 18px;
+  font-weight:800; letter-spacing:-.02em; }
+.hero h1 .glow { color:var(--accent); text-shadow:0 0 34px var(--accent-glow); }
+.hero .lede { font-size:clamp(17px,2.2vw,21px); color:var(--text1); max-width:730px; margin:0 auto 28px; }
+.hero .cta-row { display:flex; gap:13px; justify-content:center; flex-wrap:wrap; margin-bottom:26px; }
+.hero .stat-row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+
+/* ── Buttons / chips / badges ─────────────────────────────────────────── */
+.btn { font-family:var(--mono); font-size:14px; font-weight:600; text-decoration:none;
+  padding:11px 22px; border-radius:var(--r); border:1px solid var(--border-bright);
+  color:var(--text0); background:var(--bg2); display:inline-flex; align-items:center; gap:8px;
+  cursor:pointer; transition:transform .14s var(--spring), box-shadow .2s, background .2s; }
+.btn:hover { transform:translateY(-1px); }
+.btn.primary { background:linear-gradient(180deg,var(--accent),var(--accent-dim));
+  border-color:var(--accent); color:#04140d; box-shadow:0 8px 28px var(--accent-glow); }
+.btn.primary:hover { box-shadow:0 12px 38px var(--accent-glow); }
+.badge { display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
+  letter-spacing:.05em; text-transform:uppercase; padding:2px 8px; border-radius:6px;
+  border:1px solid currentColor; vertical-align:middle; }
+.badge.beta{ color:var(--amber);} .badge.new{ color:var(--accent);} .badge.opt{ color:var(--cyan);}
+.statpill { font-family:var(--mono); font-size:13px; color:var(--text1);
+  background:var(--bg2); border:1px solid var(--border); border-radius:999px; padding:6px 14px; }
+.statpill b { color:var(--accent); }
+
+/* ── Headings / text ───────────────────────────────────────────────────── */
+h2.sec { font-size:clamp(27px,4vw,40px); margin:0 0 6px; letter-spacing:-.01em; font-weight:800; }
+h2.sec .num { font-family:var(--mono); color:var(--accent); font-size:.5em; vertical-align:super; margin-right:10px; opacity:.85; }
+.sec-sub { color:var(--text1); font-size:17px; margin:0 0 28px; max-width:780px; }
+h3 { font-size:22px; margin:38px 0 10px; letter-spacing:-.01em; }
+h4 { font-size:17px; margin:22px 0 8px; }
+p { margin:0 0 16px; }
+a { color:var(--cyan); text-decoration:none; border-bottom:1px solid color-mix(in srgb,var(--cyan) 35%,transparent); transition:color .15s,border-color .15s; }
+a:hover { color:var(--accent-strong); border-color:var(--accent); }
+strong { color:var(--text0); }
+ul,ol { padding-left:22px; } li { margin:5px 0; }
+code { font-family:var(--mono); font-size:.88em; background:var(--bg2); border:1px solid var(--border);
+  padding:1px 6px; border-radius:5px; color:var(--accent-strong); }
+hr.glow { border:none; height:1px; background:linear-gradient(90deg,transparent,var(--accent-dim),transparent); margin:46px 0; }
+.muted{ color:var(--text2);} .center{ text-align:center; }
+.lede-block { font-size:18px; color:var(--text1); }
+
+/* ── Cards / grids ─────────────────────────────────────────────────────── */
+.grid { display:grid; gap:18px; }
+.grid.cols-3 { grid-template-columns:repeat(3,1fr); }
+.grid.cols-2 { grid-template-columns:repeat(2,1fr); }
+.grid.cols-4 { grid-template-columns:repeat(4,1fr); }
+@media (max-width:880px){ .grid.cols-3,.grid.cols-4{ grid-template-columns:1fr 1fr; } }
+@media (max-width:600px){ .grid.cols-2,.grid.cols-3,.grid.cols-4{ grid-template-columns:1fr; } }
+.card { background:var(--card-grad); border:1px solid var(--border); border-radius:var(--r-lg);
+  padding:22px; transition:transform .16s var(--spring), border-color .2s, box-shadow .2s; }
+.card:hover { transform:translateY(-3px); border-color:var(--accent-dim); box-shadow:0 14px 40px -16px var(--accent-glow); }
+.card .ico { font-size:26px; margin-bottom:10px; display:block; filter:drop-shadow(0 0 10px var(--accent-glow)); }
+.card h4 { margin:0 0 6px; font-size:17px; }
+.card p { color:var(--text1); font-size:14.5px; margin:0; }
+
+/* ── Figures / screenshots + lightbox ─────────────────────────────────── */
+figure { margin:28px 0; }
+figure .frame { position:relative; border-radius:var(--r-lg); overflow:hidden;
+  border:1px solid var(--border-bright); background:var(--bg1);
+  box-shadow:var(--shadow), 0 0 50px -22px var(--accent-glow); cursor:zoom-in; }
+figure .frame .chrome { display:flex; gap:6px; padding:9px 12px; background:var(--bg2); border-bottom:1px solid var(--border); }
+figure .frame .chrome i { width:11px; height:11px; border-radius:50%; display:inline-block; }
+figure .frame .chrome i:nth-child(1){ background:#ef6b6b; }
+figure .frame .chrome i:nth-child(2){ background:#f0c23a; }
+figure .frame .chrome i:nth-child(3){ background:#74e09a; }
+figure .frame img { display:block; width:100%; height:auto; }
+figure figcaption { margin-top:11px; color:var(--text2); font-size:14px; font-family:var(--mono); text-align:center; }
+figure figcaption b { color:var(--accent); }
+.fig-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+@media (max-width:760px){ .fig-2{ grid-template-columns:1fr; } }
+#lightbox { position:fixed; inset:0; z-index:80; display:none; place-items:center;
+  background:rgba(3,8,6,.86); backdrop-filter:blur(6px); padding:4vw; cursor:zoom-out; }
+#lightbox.open { display:grid; }
+#lightbox img { max-width:96vw; max-height:92vh; border-radius:var(--r-lg); border:1px solid var(--border-bright); box-shadow:var(--shadow); }
+
+/* ── Step list (numbered cards) ───────────────────────────────────────── */
+ol.steps { counter-reset:step; list-style:none; padding:0; margin:22px 0; }
+ol.steps > li { position:relative; padding:3px 0 22px 50px; border-left:1px solid var(--border); margin-left:18px; }
+ol.steps > li:last-child { border-left-color:transparent; padding-bottom:2px; }
+ol.steps > li::before { counter-increment:step; content:counter(step);
+  position:absolute; left:-18px; top:-3px; width:36px; height:36px; border-radius:50%;
+  display:grid; place-items:center; font-family:var(--mono); font-weight:700; font-size:15px;
+  background:var(--bg2); border:1px solid var(--accent-dim); color:var(--accent); box-shadow:0 0 18px var(--accent-glow); }
+ol.steps > li b { color:var(--text0); }
+ol.steps > li p { margin:4px 0 0; color:var(--text1); font-size:15px; }
+
+/* ── Code blocks + copy ───────────────────────────────────────────────── */
+.codewrap { position:relative; margin:18px 0; }
+pre { background:var(--code-bg); border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:var(--r); padding:15px 18px; overflow-x:auto; font-family:var(--mono);
+  font-size:13.5px; line-height:1.62; color:#dbe7df; margin:0; }
+pre .c{ color:#6a7d72; } pre .k{ color:var(--emerald-300); } pre .a{ color:var(--amber); } pre .s{ color:var(--cyan); }
+.copy-btn { position:absolute; top:8px; right:8px; font-family:var(--mono); font-size:11.5px;
+  color:var(--text1); background:var(--bg3); border:1px solid var(--border); border-radius:6px;
+  padding:3px 9px; cursor:pointer; opacity:0; transition:opacity .15s, color .15s; }
+.codewrap:hover .copy-btn { opacity:1; }
+.copy-btn:hover { color:var(--accent); border-color:var(--accent-dim); }
+.copy-btn.ok { color:var(--accent); }
+
+/* ── Chips / fact rows ────────────────────────────────────────────────── */
+.chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }
+.chip { font-family:var(--mono); font-size:12.5px; padding:4px 10px; border-radius:var(--r-sm);
+  background:var(--bg2); border:1px solid var(--border); color:var(--text1); }
+.chip b { color:var(--accent); font-weight:600; }
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+.tablewrap { overflow-x:auto; margin:22px 0; border:1px solid var(--border); border-radius:var(--r-lg); }
+table { width:100%; border-collapse:collapse; font-size:14.5px; }
+table th, table td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top; }
+table th { font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--text2); background:var(--bg2); position:sticky; top:0; }
+table tr:last-child td { border-bottom:none; }
+table tbody tr:hover td { background:color-mix(in srgb,var(--accent) 5%,transparent); }
+table td code { color:var(--accent); white-space:nowrap; }
+
+/* ── Callouts ─────────────────────────────────────────────────────────── */
+.note { border-left:3px solid var(--cyan); background:color-mix(in srgb,var(--cyan) 8%,transparent);
+  padding:13px 18px; border-radius:0 var(--r) var(--r) 0; margin:20px 0; font-size:15px; }
+.note.tip { border-left-color:var(--accent); background:color-mix(in srgb,var(--accent) 9%,transparent); }
+.note.warn { border-left-color:var(--amber); background:color-mix(in srgb,var(--amber) 10%,transparent); }
+.note.danger { border-left-color:var(--rose); background:color-mix(in srgb,var(--rose) 10%,transparent); }
+.note b { color:var(--text0); }
+.note .lbl { font-family:var(--mono); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:4px; }
+.note.tip .lbl{ color:var(--accent);} .note .lbl{ color:var(--cyan);} .note.warn .lbl{ color:var(--amber);} .note.danger .lbl{ color:var(--rose);}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+.tabs { margin:22px 0; }
+.tabs .tab-btns { display:flex; gap:4px; flex-wrap:wrap; border-bottom:1px solid var(--border); margin-bottom:0; }
+.tabs .tab-btn { font-family:var(--mono); font-size:13px; color:var(--text1); background:none;
+  border:1px solid transparent; border-bottom:none; padding:8px 14px; cursor:pointer;
+  border-radius:var(--r-sm) var(--r-sm) 0 0; }
+.tabs .tab-btn[aria-selected="true"] { color:var(--accent); background:var(--bg2);
+  border-color:var(--border); position:relative; top:1px; }
+.tabs .tab-panel { display:none; border:1px solid var(--border); border-radius:0 var(--r) var(--r) var(--r); padding:18px; background:var(--bg1); }
+.tabs .tab-panel.active { display:block; }
+
+/* ── Accordion ────────────────────────────────────────────────────────── */
+details.acc { border:1px solid var(--border); border-radius:var(--r); background:var(--bg1); margin:12px 0; overflow:hidden; }
+details.acc > summary { cursor:pointer; padding:14px 18px; font-weight:600; list-style:none; display:flex; align-items:center; gap:10px; }
+details.acc > summary::-webkit-details-marker { display:none; }
+details.acc > summary::before { content:"▸"; color:var(--accent); transition:transform .18s var(--spring); }
+details.acc[open] > summary::before { transform:rotate(90deg); }
+details.acc > summary:hover { background:var(--bg2); }
+details.acc .acc-body { padding:0 18px 16px; color:var(--text1); }
+
+/* ── Reference (addendum) cards ───────────────────────────────────────── */
+.ref { border:1px solid var(--border); border-radius:var(--r-lg);
+  background:linear-gradient(180deg,var(--bg1),color-mix(in srgb,var(--bg1) 50%,transparent));
+  padding:22px 24px; margin:18px 0; }
+.ref .ref-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+.ref h3 { margin:0; font-size:20px; }
+.ref .era { font-family:var(--mono); font-size:12px; color:var(--amber); border:1px solid color-mix(in srgb,var(--amber) 35%,transparent); padding:1px 9px; border-radius:999px; }
+
+/* ── Glossary tooltip terms ───────────────────────────────────────────── */
+.gterm { border-bottom:1px dotted var(--accent); cursor:help; color:inherit; }
+.gtip { position:fixed; z-index:90; max-width:300px; background:var(--bg3); color:var(--text0);
+  border:1px solid var(--border-bright); border-radius:var(--r); padding:10px 13px;
+  font-size:13.5px; line-height:1.5; box-shadow:var(--shadow); pointer-events:none;
+  opacity:0; transform:translateY(4px); transition:opacity .14s, transform .14s; }
+.gtip.show { opacity:1; transform:translateY(0); }
+.gtip b { color:var(--accent); }
+
+/* ── Keyboard cheatsheet overlay ──────────────────────────────────────── */
+.kbd { font-family:var(--mono); font-size:.82em; background:var(--bg3); border:1px solid var(--border-bright);
+  border-bottom-width:2px; border-radius:5px; padding:1px 6px; color:var(--text0); white-space:nowrap; }
+#cheats { position:fixed; inset:0; z-index:85; display:none; place-items:center; background:rgba(3,8,6,.8); backdrop-filter:blur(6px); padding:5vw; }
+#cheats.open { display:grid; }
+#cheats .panel { background:var(--bg1); border:1px solid var(--border-bright); border-radius:var(--r-lg);
+  padding:26px 30px; max-width:680px; width:100%; max-height:84vh; overflow:auto; box-shadow:var(--shadow); }
+#cheats h3 { margin-top:0; }
+#cheats .kgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px 26px; }
+@media (max-width:560px){ #cheats .kgrid{ grid-template-columns:1fr; } }
+#cheats .krow { display:flex; justify-content:space-between; gap:12px; padding:5px 0; border-bottom:1px solid var(--border); font-size:14px; }
+
+/* ── In-page scrollspy TOC rail ───────────────────────────────────────── */
+.page-toc { position:fixed; top:100px; width:170px; left:calc(50vw + 556px);
+  max-height:calc(100vh - 150px); overflow-y:auto; z-index:30; padding:2px 0 2px 14px; border-left:1px solid var(--border); }
+.page-toc .toc-head { font-family:var(--mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--text2); margin:0 0 10px; }
+.page-toc a { display:block; font-family:var(--mono); font-size:12px; line-height:1.3; color:var(--text2);
+  text-decoration:none; border-bottom:none; padding:5px 0 5px 12px; border-left:2px solid transparent;
+  margin-left:-15px; transition:color .15s, border-color .15s; }
+.page-toc a .n { color:var(--text2); margin-right:7px; opacity:.7; }
+.page-toc a:hover { color:var(--text0); }
+.page-toc a.active { color:var(--accent); border-left-color:var(--accent); }
+.page-toc a.active .n { color:var(--accent); opacity:1; }
+@media (max-width:1480px){ .page-toc{ display:none; } }
+
+/* ── Search dimming ───────────────────────────────────────────────────── */
+body.searching section:not(.search-hit){ opacity:.12; transition:opacity .2s; }
+body.searching .search-hit mark{ background:var(--accent); color:#04140d; border-radius:3px; padding:0 2px; }
+
+/* ── Footer ───────────────────────────────────────────────────────────── */
+footer { border-top:1px solid var(--border); padding:40px 0 80px; color:var(--text2); font-size:14px; }
+footer .wrap { display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between; }
+footer a { color:var(--text1); }
+
+/* ── Print ────────────────────────────────────────────────────────────── */
+@media print {
+  .bg-field,.bg-grid,#dataflow,#progress,.topnav,.page-toc,.nav-tool,#cheats,#lightbox,.copy-btn{ display:none !important; }
+  body{ background:#fff; color:#000; font-size:11pt; }
+  section{ break-inside:avoid-page; border-top:1px solid #ccc; padding:18px 0; }
+  figure .frame{ box-shadow:none; border:1px solid #ccc; }
+  a{ color:#000; border:none; } .tabs .tab-panel{ display:block !important; }
+}
+</style>
+</head>
+<body>
+<div class="bg-field"></div>
+<div class="bg-grid"></div>
+<canvas id="dataflow" aria-hidden="true"></canvas>
+<div id="progress"></div>
+
+<!-- ═══ TOP NAV ═══ -->
+<header class="topnav">
+  <a class="brand" href="#top">
+    <span class="leaf" aria-hidden="true">🌳</span>
+    <span><b>DataInsightGrove</b></span>
+    <span class="ver">User Manual · v1.0.0-rc3</span>
+  </a>
+  <div class="nav-right">
+    <nav class="sec-nav" aria-label="Sections">
+      <a href="#intro">Intro</a>
+      <a href="#install">Install</a>
+      <a href="#interface">UI</a>
+      <a href="#settings">Settings</a>
+      <a href="#ingestion">Ingest</a>
+      <a href="#manipulation">Shape</a>
+      <a href="#viz">Visualize</a>
+      <a href="#output">Output</a>
+      <a href="#examples">Examples</a>
+      <a href="#packs">Packs</a>
+      <a href="#glossary">Glossary</a>
+    </nav>
+    <label id="search" class="nav-tool" title="Filter sections">
+      <span aria-hidden="true">🔍</span>
+      <input type="search" id="search-input" placeholder="Search…" aria-label="Search the manual">
+    </label>
+    <button class="nav-tool" id="cheats-btn" title="Keyboard shortcuts (press ?)" aria-label="Keyboard shortcuts">⌨ <span class="kbd">?</span></button>
+    <button class="nav-tool" id="theme-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">🌙</button>
+  </div>
+</header>
+
+<!-- ═══ SCROLLSPY RAIL ═══ -->
+<aside class="page-toc" aria-label="On this page">
+  <p class="toc-head">On this page</p>
+  <a href="#intro"><span class="n">01</span>Introduction</a>
+  <a href="#install"><span class="n">02</span>Installation</a>
+  <a href="#interface"><span class="n">03</span>The interface</a>
+  <a href="#settings"><span class="n">04</span>Settings</a>
+  <a href="#ingestion"><span class="n">05</span>Data ingestion</a>
+  <a href="#manipulation"><span class="n">06</span>Data manipulation</a>
+  <a href="#viz"><span class="n">07</span>Visualization</a>
+  <a href="#output"><span class="n">08</span>Data output</a>
+  <a href="#examples"><span class="n">09</span>Worked examples</a>
+  <a href="#packs"><span class="n">10</span>Packs</a>
+  <a href="#glossary"><span class="n">11</span>Glossary</a>
+</aside>
+
+<a id="top"></a>
+<main>
+<div class="wrap">
+
+<!-- ═══ HERO ═══ -->
+<section class="hero" id="hero">
+  <p class="eyebrow">Self-hosted · Plugin-first · Yours</p>
+  <h1>Shape data,<br>the <span class="glow">visual</span> way.</h1>
+  <p class="lede">DataInsightGrove (DIG) is a self-hosted data-preparation studio. Drop in a file, shape it with direct manipulation, and every move becomes a step in a portable pipeline — the <strong>same</strong> pipeline that previews in your browser and runs full-scale on the backend. This manual takes you from install to your sixth worked example.</p>
+  <div class="cta-row">
+    <a class="btn primary" href="#install">🚀 Install DIG</a>
+    <a class="btn" href="#intro">📖 Start reading</a>
+    <a class="btn" href="#examples">🧪 Jump to examples</a>
+  </div>
+  <div class="stat-row">
+    <span class="statpill"><b>62</b> built-in steps</span>
+    <span class="statpill"><b>6</b> packs</span>
+    <span class="statpill"><b>20</b> connectors</span>
+    <span class="statpill"><b>2</b> engines, 1 pipeline</span>
+    <span class="statpill"><b>0</b> data leaves your machine</span>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     01 · INTRODUCTION
+     ════════════════════════════════════════════════════════════════════ -->
+<section id="intro">
+  <h2 class="sec"><span class="num">01</span>Introduction &amp; first steps</h2>
+  <p class="sec-sub">What DIG is, the five words you need, and your first pipeline in five minutes.</p>
+
+  <p class="lede-block">DIG is a <strong>self-hosted, plugin-first data-preparation tool</strong>. You work the way you'd work in a spreadsheet — click a column, filter it, cast it, group it — but behind every move DIG records a <span class="gterm" data-term="Step">step</span> in a real, portable <span class="gterm" data-term="Pipeline">pipeline</span>. Nothing you do is a dead end: undo anything, replay it on new data, share it as a small JSON file, or schedule it to run every morning.</p>
+
+  <h3>The one idea that makes DIG different</h3>
+  <p>Most tools force a choice: a snappy in-browser toy that can't handle real data, <em>or</em> a heavyweight server tool with no live feedback. DIG refuses the trade-off with a <strong>dual-engine architecture</strong>. The exact same pipeline runs two ways:</p>
+  <div class="grid cols-2">
+    <div class="card"><span class="ico">⚡</span><h4>In your browser</h4><p>DuckDB-WASM previews every edit on a <span class="gterm" data-term="Sample">sample</span> of your data, sub-second, as you type — no round-trip to a server.</p></div>
+    <div class="card"><span class="ico">🗄️</span><h4>On the backend</h4><p>When you press <strong>Run</strong>, DuckDB (or Polars) executes the same steps over the <em>full</em> dataset and writes results to disk.</p></div>
+  </div>
+  <div class="note tip"><span class="lbl">Why it matters</span>DIG ships byte-for-byte <strong>parity tests</strong> for every step, so the preview you trust in the browser is the result you get on the backend. A pipeline describes <em>what</em> to do, never <em>where</em> to run it.</div>
+
+  <h3>Five words you'll see everywhere</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Word</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td><b>Dataset</b></td><td>An imported file or external source — the rows-and-columns input to your work.</td></tr>
+      <tr><td><b>Pipeline</b></td><td>A graph of <em>steps</em> that turns one or more datasets into an output.</td></tr>
+      <tr><td><b>Step</b></td><td>One transformation: filter, cast, group, join, derive, chart, export…</td></tr>
+      <tr><td><b>Run</b></td><td>One backend execution of a pipeline over the full data; writes results to disk.</td></tr>
+      <tr><td><b>Output</b></td><td>What a run writes — Parquet by default, plus any sinks you add.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">The full vocabulary lives in the <a href="#glossary">Glossary</a> (§11). Hover any <span class="gterm" data-term="Profile">dotted term</span> in this manual for a quick definition.</p>
+
+  <h3>Privacy posture: your data stays put</h3>
+  <p>DIG is <strong>local-first by design</strong>. Datasets live in your own data directory; the backend runs on <code>127.0.0.1</code>; no telemetry, no upload, no account. The optional AI assistant is <em>off by default</em> and, when enabled, talks only to the provider you point it at (including a fully-local Ollama). DIG is licensed <strong>AGPL-3.0-or-later</strong>.</p>
+
+  <h3>Your first five minutes</h3>
+  <ol class="steps">
+    <li><b>Install &amp; launch.</b><p>Run <code>./install.sh</code>, then open <a href="#install">§2</a> if you want the detail. DIG opens at <code>http://localhost:3000</code>.</p></li>
+    <li><b>Try with sample data.</b><p>On the Home screen, click <strong>🌱 Try with sample data</strong> — DIG imports a demo dataset and drops you into the editor with a starter pipeline.</p></li>
+    <li><b>Shape a column.</b><p>Click any column header → choose an action (filter, sort, cast, group…). Watch the <span class="gterm" data-term="Live Grid">live grid</span> update instantly. That action just became a step in the bottom strip.</p></li>
+    <li><b>Press Run.</b><p>Hit <strong>▶ Run</strong> to execute the whole pipeline on the backend over the full dataset. The result is written as Parquet to your data directory.</p></li>
+    <li><b>Keep going.</b><p>Everything else in this manual builds on that loop: <strong>Ingest → Shape → Run</strong>. The six <a href="#examples">worked examples</a> (§9) take it end-to-end.</p></li>
+  </ol>
+
+  <figure>
+    <div class="frame"><div class="chrome"><i></i><i></i><i></i></div>
+      <img src="images/02-home.png" alt="DIG Home screen — the Ingest, Shape, Run start path with the build chip in the header."></div>
+    <figcaption>The <b>Home</b> screen — the <b>Ingest → Shape → Run</b> start path. Everything begins here.</figcaption>
+  </figure>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     02 · INSTALLATION
+     ════════════════════════════════════════════════════════════════════ -->
+<section id="install">
+  <h2 class="sec"><span class="num">02</span>Installation, step by step</h2>
+  <p class="sec-sub">One command on a supported OS. The guided installer detects what you have, shows a plan, asks once, then leaves DIG running.</p>
+
+  <h3>Before you start — what you need</h3>
+  <div class="grid cols-3">
+    <div class="card"><span class="ico">🐍</span><h4>Python 3.11+</h4><p>The backend engine. The installer can add it for you (Homebrew / apt / dnf / pacman / zypper).</p></div>
+    <div class="card"><span class="ico">📦</span><h4>pnpm + Node</h4><p>For the web UI. The installer sets this up too.</p></div>
+    <div class="card"><span class="ico">💾</span><h4>A few GB free</h4><p>For the virtualenv, <code>node_modules</code>, and your data cache.</p></div>
+  </div>
+  <div class="note"><span class="lbl">Supported platforms</span><strong>macOS</strong> (Apple Silicon + Intel via Homebrew). <strong>Linux</strong>: Debian 12+, Ubuntu 22.04+, Fedora 39+, RHEL/Rocky/Alma 9+, RHEL/CentOS 7, Arch/Manjaro, openSUSE. <strong>Windows</strong>: run the installer inside <strong>WSL2</strong> with Ubuntu 24.04+.</div>
+
+  <h3>The one-command install</h3>
+  <p>From the project root, run the guided installer. It's <strong>idempotent</strong> — re-run it any time to verify or repair; already-installed tools are reported as ✓ and skipped.</p>
+  <div class="codewrap"><pre><span class="c"># clone, then from the project root:</span>
+./install.sh</pre></div>
+  <p>The installer walks four phases, printing what it's about to do and asking once before changing anything:</p>
+  <ol class="steps">
+    <li><b>System tools.</b><p>Homebrew on macOS, Python 3.11+, and pnpm — installed only if missing.</p></li>
+    <li><b>Optional JDBC extras.</b><p>cmake + a Temurin JDK + Apache Ant + <code>jpype1</code>, for the JDBC connector and the <code>export_to_jdbc</code> step. Skippable.</p></li>
+    <li><b>Project dependencies.</b><p>The backend <code>.venv</code> and the frontend <code>node_modules</code>.</p></li>
+    <li><b>Start DIG.</b><p>Brings the API + web UI up in the background and prints the URLs.</p></li>
+  </ol>
+
+  <h3>Open it</h3>
+  <p>When the installer finishes, DIG is already running. Open the web UI and click <strong>🌱 Try with sample data</strong>:</p>
+  <div class="chips">
+    <span class="chip">Web UI <b>http://localhost:3000</b></span>
+    <span class="chip">API <b>http://localhost:8090</b></span>
+    <span class="chip">HTTPS (opt-in) <b>:3443 / :8443</b></span>
+  </div>
+  <div class="note tip"><span class="lbl">HTTP and HTTPS</span>DIG serves plain HTTP on <code>3000</code>/<code>8090</code> out of the box. A self-signed TLS path on <code>3443</code>/<code>8443</code> is available for LAN access — see <a href="#settings">Settings → Server &amp; TLS</a> (§4).</div>
+
+  <h3>Day-to-day commands</h3>
+  <p>Power users and CI can drive DIG with discrete commands instead of the installer:</p>
+  <div class="tabs" data-tabs>
+    <div class="tab-btns" role="tablist">
+      <button class="tab-btn" role="tab" aria-selected="true">Make targets</button>
+      <button class="tab-btn" role="tab" aria-selected="false">Shell scripts</button>
+      <button class="tab-btn" role="tab" aria-selected="false">Custom ports</button>
+    </div>
+    <div class="tab-panel active" role="tabpanel">
+      <div class="codewrap"><pre><span class="k">make</span> setup     <span class="c"># one-time: backend venv + pnpm install</span>
+<span class="k">make</span> start     <span class="c"># detached; writes a PID file, prints URLs</span>
+<span class="k">make</span> status    <span class="c"># is it up? where?</span>
+<span class="k">make</span> stop      <span class="c"># graceful TERM, escalates to KILL after 5s</span>
+<span class="k">make</span> dev       <span class="c"># foreground (Ctrl-C to stop)</span>
+<span class="k">make</span> restart   <span class="c"># stop + start</span></pre></div>
+    </div>
+    <div class="tab-panel" role="tabpanel">
+      <div class="codewrap"><pre>./start.sh                 <span class="c"># start in the background</span>
+./scripts/dig-status.sh    <span class="c"># status + URLs</span>
+./scripts/dig-stop.sh      <span class="c"># stop</span>
+./upgrade.sh               <span class="c"># pull + migrate to a newer version</span></pre></div>
+    </div>
+    <div class="tab-panel" role="tabpanel">
+      <div class="codewrap"><pre>./scripts/dig-start.sh --api-port 9000 --web-port 4000   <span class="c"># one shot</span>
+./scripts/dig-start.sh --api-port 9000 --save            <span class="c"># persist to config</span>
+./scripts/dig_config.py show                             <span class="c"># effective config</span></pre></div>
+    </div>
+  </div>
+
+  <h3>Native launchers (optional)</h3>
+  <p>Both wrappers run the same shell scripts and the same <code>~/.config/dig/config.json</code>:</p>
+  <div class="codewrap"><pre><span class="k">make</span> mac-app        <span class="c"># builds DataInsightGrove.app (macOS)</span>
+./linux/install.sh   <span class="c"># adds the .desktop entry (Linux)</span></pre></div>
+
+  <h3>Upgrading</h3>
+  <p>Run <code>./upgrade.sh</code> to fetch a newer version; DIG auto-migrates its config and on-disk state on the next boot. See <a href="#settings">Settings</a> for where that state lives.</p>
+  <div class="note warn"><span class="lbl">If a step fails</span>Re-run <code>./install.sh</code> — it diagnoses and repairs rather than starting over. For a clean slate, <code>./install.sh --rebuild</code> nukes <code>.venv</code> + <code>node_modules</code> first.</div>
+</section>
+
+<!-- SECTION:interface -->
+<section id="interface"><h2 class="sec"><span class="num">03</span>Overview of the UI</h2><p class="sec-sub">Navigate the app shell, explore the pipeline editor layout, and master the keyboard shortcuts.</p>
+
+<h3>The seven main pages</h3>
+<p>Every page in DIG is reachable via the <span class="kbd">⌘K</span> command palette or the global <code>g</code> chord (press <code>g</code>, then a letter within 1 second). The seven main sections are:</p>
+
+<div class="grid cols-3">
+<div class="card"><span class="ico">🏠</span><h4>Home</h4><p>Overview of datasets, pipelines, and recent activity. Tour and quick links.</p></div>
+<div class="card"><span class="ico">📥</span><h4>Datasets</h4><p>Upload CSV, Parquet, REST connectors. Profile every column — types, nulls, distributions.</p></div>
+<div class="card"><span class="ico">✂️</span><h4>Pipelines</h4><p>Create, edit, run, schedule pipelines. The core workspace.</p></div>
+<div class="card"><span class="ico">🧩</span><h4>Catalog</h4><p>Browse step library — built-in, packs, and user-defined steps with schemas.</p></div>
+<div class="card"><span class="ico">▶️</span><h4>Runs</h4><p>History of executed pipelines. Filter by status, view outputs, trace lineage.</p></div>
+<div class="card"><span class="ico">⏰</span><h4>Schedules</h4><p>Recurring pipeline triggers. Cron syntax, manual or API-driven webhooks.</p></div>
+<div class="card"><span class="ico">📖</span><h4>Settings</h4><p>Appearance (dark/light), expertise mode, performance tuning, storage backends.</p></div>
+</div>
+
+<h3>The pipeline editor layout</h3>
+<p>When you open a pipeline for editing, the screen splits into three regions: <b>data-first</b> (top), <b>steps</b> (bottom), and <b>settings</b> (right).</p>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/06-pipeline-editor.png" alt="Pipeline editor showing the Live Grid at the top, the Strip view at the bottom with numbered steps, and a right-side Params panel.">
+</div>
+<figcaption>The <b>live grid</b> (top) shows real-time data. The <b>🛤 Strip</b> (bottom) lists steps linearly. The <b>Params panel</b> (right) edits the selected step.</figcaption>
+</figure>
+
+<h4>Top region: Live Grid</h4>
+<p>The grid shows the output of whichever step you've selected in the strip. It updates automatically as you edit — no separate Preview button. Click a column name to open the <b>Column Profile drawer</b>: see the type, nulls, cardinality, histogram (for numerics), top-N values, and quick-filter buttons. Right-click a column header (or click the <span class="kbd">⋯</span> menu) to sort, filter, cast, drop, or derive from that column — actions are inserted as new steps directly in the pipeline.</p>
+
+<div class="chips">
+<span class="chip">Interactive: <b>click column name</b> → Profile drawer</span>
+<span class="chip">Interactive: <b>⌘+click cell</b> → Filter to value</span>
+<span class="chip">Interactive: <b>⌘+Alt+click</b> → Exclude value</span>
+</div>
+
+<h4>Bottom region: Strip and Graph views</h4>
+<p>The pipeline's steps are arranged in two complementary views, toggled via a button in the editor header:</p>
+
+<div class="tabs" data-tabs>
+<div class="tab-btns" role="tablist">
+<button class="tab-btn" role="tab" aria-selected="true">🛤 Strip (default)</button>
+<button class="tab-btn" role="tab" aria-selected="false">🕸 Graph (DAG)</button>
+</div>
+
+<div class="tab-panel active" role="tabpanel">
+<p><b>Strip view</b> is linear and sequential. Every step is a numbered card showing the category emoji, label, status badge (✅ success, ❌ error, ⏳ running, ⏸ paused), row count, and time since last run. It's the quickest way to scan the pipeline flow and click a step to edit it.</p>
+<p>The Strip has a fixed 58px height and never scrolls off-screen — the data grid above scrolls internally, keeping the steps always visible.</p>
+</div>
+
+<div class="tab-panel" role="tabpanel">
+<p><b>Graph view</b> is the true DAG: nodes (datasets, steps, outputs) with edges showing data flow. Useful for joins, unions, and complex multi-input pipelines. You can drag nodes to rearrange them; positions persist in the document. A resize handle above the graph (visible on hover) lets you adjust its height (120–700px). The graph includes a mini-map (top-right corner) and a zoom/pan toolbar.</p>
+<p>Both views show the same pipeline — switching between them doesn't change the document, just how you see it.</p>
+</div>
+</div>
+
+<h4>Node types and visual cues</h4>
+<p>Every card in Strip and Graph view carries a top-of-card colored strip when the node has run — emerald for success, rose for error, amber for stale (outdated), sky for running. Below the card, a small clock emoji + relative time ("42m ago") and row count tell you when it last ran and what it produced.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Node</th><th>Icon</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><b>Dataset</b></td><td>📥</td><td>Source data (CSV, Parquet, REST connector). No inputs; one output.</td></tr>
+<tr><td><b>Step</b></td><td>Category emoji (✂️ 🧹 ➕ 🔗 📊 etc.)</td><td>Transform step. One or more inputs; one output. Shows category label and description.</td></tr>
+<tr><td><b>Output</b></td><td>📤</td><td>Sink (write to Parquet, S3, database, or chart export). One input; no outputs.</td></tr>
+<tr><td><b>Group</b></td><td>📦</td><td>Named container (Phase A Layer 4). Dashed border. Click the title chip to edit the group's name or move steps into it.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Right-side panels</h3>
+<p>The right sidebar has three tabbed panels. Click a tab to switch; the content refreshes instantly. When you select a step in the Strip, the panel defaults to <b>🎛 Params</b>.</p>
+
+<h4>Params — edit step configuration</h4>
+<p>Shows the selected step's parameters (filter expression, column mappings, aggregation functions, etc.) in form controls tailored to each step type. Changes apply immediately to the live preview. A green pulsing dot indicates the preview is auto-updating; a static green dot means it's ready. At the bottom is a free-form <b>💬 Note</b> field (saved with the pipeline) for documenting why the step exists, edge cases, or links to related docs.</p>
+
+<p><b>Expose parameters:</b> the <span class="kbd">🪆 expose</span> toggle on each parameter field lets you declare that parameter as an input when you <a href="#publish-as-step">publish this pipeline as a reusable step</a>. Exposed params appear in the published-step's form when other pipelines consume it.</p>
+
+<h4>Hints — AI suggestions and metadata</h4>
+<p>When you focus on a step or dataset, the Hints panel shows:</p>
+<ul>
+<li><b>AI suggestions:</b> click <b>✨ Suggest next steps</b> to let the LLM propose downstream transformations based on the current schema and data sample.</li>
+<li><b>AI explain:</b> click <b>🧠 Explain this pipeline</b> to get a natural-language walkthrough of what the whole pipeline does.</li>
+<li><b>📊 Profile:</b> when focused on a dataset, see top-N values, null counts, and data-type breakdowns (live for in-browser samples, backend-computed for large datasets).</li>
+<li><b>Quick-add buttons:</b> cards for common transformations (filter, sort, rename, derive) that jump you straight to the Params panel with pre-filled defaults.</li>
+</ul>
+
+<h4>Lineage — trace data provenance</h4>
+<p>Shows the column-level lineage of the focused step. Click <b>🧬 Trace lineage</b> from a column's context menu (in the Live Grid), and this panel opens to show which upstream columns feed into it, step by step, all the way back to the source dataset. Useful for auditing "where did this number come from?"</p>
+
+<h3>Expertise mode</h3>
+<p>DIG auto-adapts its UI complexity to your skill level. Toggle expertise via <span class="kbd">⌘⇧E</span> or in Settings > Expertise mode.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Mode</th><th>Icon</th><th>Behavior</th></tr></thead>
+<tbody>
+<tr><td><b>🌱 Beginner</b></td><td>Seedling</td><td>Simplified step library, fewer advanced toggles (Live SQL, auto-review hidden), "show me more" promote buttons on every advanced affordance. Auto-promotes to Builder after a threshold of actions.</td></tr>
+<tr><td><b>🪴 Builder</b></td><td>Potted plant</td><td>Full step library unlocked, all core features visible. The default tier after you've learned the basics.</td></tr>
+<tr><td><b>🌳 Engineer</b></td><td>Tree</td><td>Unlocks: Live SQL view (⌘⇧L), raw JSON document editor, auto-review on save (suggestions panel), column DNA deep-dives, advanced lineage visualizations. For power users.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+Beginner mode is forgiving — you'll never hit a wall. Every gated feature has a "promote for this session" button so you can unlock it on-demand without switching your global mode.
+</div>
+
+<h3>Command palette and global search</h3>
+<p>Press <span class="kbd">⌘K</span> anywhere to open the <b>Command palette</b>. Search by action name, step name, pipeline name, or dataset name. The palette shows:</p>
+<ul>
+<li><b>Recent:</b> your last 10 pipelines and datasets, auto-populated.</li>
+<li><b>Create flows:</b> "New blank pipeline", "Browse templates", "Upload a dataset".</li>
+<li><b>Per-pipeline actions:</b> when you type a pipeline name, see <code>▶ Run</code>, <code>📑 Duplicate</code>, <code>⏰ Schedule</code>, <code>🔗 Copy link</code>, <code>⬇ Export as JSON</code>.</li>
+<li><b>Step search:</b> type a step name (e.g., "join", "aggregate"). Inside the editor, it inserts the step; outside, it hints where to find it.</li>
+</ul>
+
+<p>Press <code>/</code> (forward slash) to open the palette pre-focused on search mode. Press <span class="kbd">Esc</span> to close any overlay.</p>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/09-command-palette.png" alt="Command palette with search results showing recent pipelines and step suggestions.">
+</div>
+<figcaption>The <b>Command palette</b> (⌘K) surfaces actions, pipelines, datasets, and steps. Keyboard-first.</figcaption>
+</figure>
+
+<h3>Keyboard shortcuts</h3>
+<p>DIG is designed for keyboard power users. Press <span class="kbd">?</span> anywhere outside a text input to see the <b>keyboard cheatsheet overlay</b>.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Keys</th><th>Action</th><th>Context</th></tr></thead>
+<tbody>
+<tr><td><span class="kbd">⌘K</span> / <span class="kbd">Ctrl+K</span></td><td>Open command palette</td><td>Global</td></tr>
+<tr><td><code>/</code></td><td>Palette pre-focused on search</td><td>Global</td></tr>
+<tr><td><span class="kbd">?</span></td><td>Show keyboard cheatsheet</td><td>Global (outside inputs)</td></tr>
+<tr><td><span class="kbd">Esc</span></td><td>Close any overlay / dialog / menu</td><td>Global</td></tr>
+<tr><td><span class="kbd">g h</span></td><td>Jump to Home</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">g p</span></td><td>Jump to Pipelines</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">g d</span></td><td>Jump to Datasets</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">g r</span></td><td>Jump to Runs</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">g c</span></td><td>Jump to Catalog</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">g s</span></td><td>Jump to Settings</td><td>Global (g-chord)</td></tr>
+<tr><td><span class="kbd">⌘⇧E</span></td><td>Cycle expertise (🌱 → 🪴 → 🌳)</td><td>Global</td></tr>
+<tr><td><span class="kbd">⌘Z</span></td><td>Undo</td><td>Pipeline editor</td></tr>
+<tr><td><span class="kbd">⌘⇧Z</span> / <span class="kbd">⌘Y</span></td><td>Redo</td><td>Pipeline editor</td></tr>
+<tr><td><span class="kbd">⌘S</span></td><td>Save (labeled checkpoint)</td><td>Pipeline editor</td></tr>
+<tr><td><span class="kbd">⌘⇧S</span></td><td>Save As (clone pipeline)</td><td>Pipeline editor</td></tr>
+<tr><td><span class="kbd">⌫</span> / <span class="kbd">Delete</span></td><td>Delete selected step or edge</td><td>Pipeline editor</td></tr>
+<tr><td>Click column name</td><td>Open Column Profile drawer</td><td>Live Grid</td></tr>
+<tr><td>Click <span class="kbd">⋯</span> or right-click header</td><td>Open column menu (filter / sort / cast / drop / …)</td><td>Live Grid</td></tr>
+<tr><td><span class="kbd">⌘</span>+click cell</td><td>Filter to this value</td><td>Live Grid</td></tr>
+<tr><td><span class="kbd">⌘+Alt</span>+click cell</td><td>Exclude this value</td><td>Live Grid</td></tr>
+<tr><td><span class="kbd">Alt+←</span> / <span class="kbd">Alt+→</span></td><td>Reorder focused column header</td><td>Live Grid</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+<span class="lbl">G-chord notes</span>
+Press <code>g</code> first, then the second letter within 1 second. The chord is dropped silently if the second key isn't mapped. G-chords are disabled while a text input or contenteditable element is focused.
+</div>
+
+<h3>Dark mode and appearance</h3>
+<p>DIG respects your system theme (via <code>prefers-color-scheme</code>) and lets you override it in Settings > Appearance. Both dark and light themes are first-class — every component was designed to work beautifully in both. The emerald accent color stays consistent; text contrast is WCAG AA.</p>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/11-editor-dark.png" alt="Pipeline editor in dark mode, showing the pipeline layout with emerald accents.">
+</div>
+<figcaption>Dark mode is the default and fully polished. Light mode available in Settings.</figcaption>
+</figure>
+
+<h3>The Profile drawer</h3>
+<p>Click any column name in the Live Grid to open a side drawer showing rich statistics about that column:</p>
+<ul>
+<li><b>Type:</b> logical (string, integer, date, etc.) and physical (DECIMAL(18,4), HUGEINT, etc.).</li>
+<li><b>Position:</b> which column number it is in the dataset.</li>
+<li><b>Nulls / NaN:</b> count and percentage. If the step did type conversions, see "X were conversion failures" for each source column.</li>
+<li><b>Cardinality:</b> distinct value count.</li>
+<li><b>Histogram:</b> for numeric columns, a distribution chart. Click a bar to range-filter; a new <code>filter_rows</code> step is inserted downstream.</li>
+<li><b>Top-N values:</b> for strings and other types, the most common values with their counts. Click a value to filter rows EQ that value; right-click to exclude it.</li>
+<li><b>Annotation:</b> free-form note (persisted with the pipeline) to document what the column means or why it matters.</li>
+</ul>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/phase-a-pro/08-profile-drawer.png" alt="Column Profile drawer showing type, nulls, cardinality, histogram, and top-N values.">
+</div>
+<figcaption>The <b>Profile drawer</b> opens when you click a column name. Rich stats + quick-filter buttons.</figcaption>
+</figure>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+The histogram and top-N are interactive: click a bar or value to auto-insert a filter step. No typing required.
+</div>
+
+<h3>Graph view and the canvas minimap</h3>
+<p>When you switch to <b>🕸 Graph view</b>, the canvas shows your pipeline as a true DAG. A small minimap appears in the top-right corner, letting you navigate large pipelines at a glance. Pan with middle-click or right-click (not left-click, which selects nodes). Zoom with the toolbar buttons or your scroll wheel. Double-click a <span class="gterm" data-term="Pipeline">sub-pipeline</span> node to open its source pipeline in a new tab.</p>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/phase-a-pro/01-canvas-minimap.png" alt="Graph canvas showing a DAG with nodes and edges, a minimap in the top-right corner.">
+</div>
+<figcaption>Graph view with <b>minimap</b> (top-right) for navigating large DAGs. Drag to pan, scroll to zoom.</figcaption>
+</figure>
+
+</section>
+
+<!-- SECTION:settings -->
+<section id="settings">
+<h2 class="sec"><span class="num">04</span>Settings</h2>
+<p class="sec-sub">Server-side preferences, appearance, AI, JDBC drivers, webhooks, step packs, and boot-time configuration.</p>
+
+<h3>Settings overview</h3>
+<p>DIG's configuration is split into 14 panels, navigable via the sidebar search. Most settings persist to <code>~/.config/dig/config.json</code> and survive restarts. Some (marked below) require a restart to take effect.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Panel</th><th>What it controls</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><strong>Appearance</strong></td><td>Theme (System, Light, Dark) and motion preferences</td><td>Per-browser; respects OS "reduce motion" setting</td></tr>
+<tr><td><strong>Expertise mode</strong></td><td>Beginner, Builder, or Engineer — UI complexity level</td><td>Auto-promotes to Builder after 100 actions. Unlocks Live SQL, lineage, raw JSON in Engineer mode</td></tr>
+<tr><td><strong>Browser preview</strong></td><td>DuckDB-WASM live grid: auto-recompute toggle and sample size</td><td>Lower sample size = snappier grid; higher = more representative. Options: 10K to 1M rows</td></tr>
+<tr><td><strong>Storage & paths</strong></td><td><code>Input directory</code>, <code>Output directory</code>, <code>Run history retention (days)</code></td><td>Input defaults to <code>data/inputs/</code>; output to <code>data/outputs/&lt;run-id&gt;</code></td></tr>
+<tr><td><strong>Performance</strong></td><td><code>Default sample rows</code>, <code>Default preview row limit</code>, <code>Max concurrent runs</code>, <code>DuckDB threads</code>, <code>Log level</code>, auto-detect toggles</td><td><code>DuckDB threads</code> defaults to 0 (auto). <code>Max concurrent runs</code> should match CPU cores</td></tr>
+<tr><td><strong>Server & TLS</strong></td><td><code>Log directory</code>, <code>Log file size limit</code>, <code>Log rotations kept</code>, HTTPS enabled, auto-trust, API &amp; web HTTPS ports</td><td><strong>Boot-time:</strong> requires restart. TLS proxy forwards HTTPS (ports 8443 API, 3443 web) to HTTP ports (8090, 3000)</td></tr>
+<tr><td><strong>AI assistant</strong></td><td><code>Enable AI assistant</code>, <code>AI provider</code>, <code>Allow non-local AI providers</code>, <code>Endpoint URL</code>, <code>Model</code>, <code>API key</code>, <code>Max output tokens</code>, <code>Temperature</code>, <code>Ping interval</code></td><td>Default: OFF. Local Ollama recommended (privacy). OpenAI-compatible endpoints for Anthropic, OpenAI, Groq. Non-local access gated by UI toggle</td></tr>
+<tr><td><strong>JDBC drivers</strong></td><td>Register and manage JDBC driver JARs and classes</td><td>Upload into DIG's library (recommended) or reference a server path. Test connection before saving</td></tr>
+<tr><td><strong>Global webhooks</strong></td><td>URLs that fire on every pipeline's terminal status</td><td>Trigger on: always, succeeded, failed, or step-triggered. Optional HMAC signing</td></tr>
+<tr><td><strong>Step Packs</strong></td><td>Install and remove <code>.dpack</code> bundles</td><td>Add third-party or custom step plugins. Manage versions and dependencies</td></tr>
+<tr><td><strong>Notifications</strong></td><td>System and runtime event log</td><td>Run start, completion, errors, warnings</td></tr>
+<tr><td><strong>Notification rules</strong></td><td>Trigger rules mapping events to notifications</td><td>Create conditions to fire webhooks, emails, or in-app alerts</td></tr>
+<tr><td><strong>Security & API</strong></td><td>Authentication tokens, API endpoints, permissions</td><td><code>DIG_AUTH_TOKEN</code> required for non-loopback exposure</td></tr>
+<tr><td><strong>About</strong></td><td>Version info, license, external links</td><td>Read-only</td></tr>
+</tbody>
+</table></div>
+
+<h3>Browser preview — DuckDB-WASM sample size</h3>
+<p>The live grid recomputes as you edit, powered by DuckDB running in your browser. <strong>Sample size</strong> controls how many rows the in-browser engine scans — the options are 10,000 | 50,000 | 100,000 | 500,000 | 1,000,000.</p>
+<p>Lower samples (10K–50K) keep the grid responsive on slower machines and dense datasets. Higher samples (500K–1M) show more representative data but trade latency. For development, 100K is a practical middle ground. Toggle <strong>Auto-recompute on every edit</strong> off on very slow machines to only run the grid when you explicitly click.</p>
+
+<h3>Server & TLS — ports and HTTPS setup</h3>
+<p>DIG serves both HTTP and HTTPS automatically. The backend runs on HTTP ports (API: 8090, Web: 3000) and an optional TLS proxy terminates HTTPS on separate ports (API: 8443, Web: 3443), forwarding decrypted traffic back to the HTTP ports.</p>
+<p><strong>Boot-time settings</strong> (require restart):</p>
+<ul>
+<li><code>Log directory</code> — where rotating log streams live. Defaults to <code>/var/log/DIG</code> (Unix); falls back to <code>~/Library/Logs/DIG</code> (macOS) or <code>~/.local/state/DIG/logs</code> (Linux) if sudo is declined.</li>
+<li><code>Log file size limit (bytes)</code> — per-stream rotation threshold. Default 10 MB; logs roll from <code>.log</code> → <code>.log.1</code> → <code>.log.2</code>, etc.</li>
+<li><code>Log rotations kept</code> — how many rolled files to retain per stream. Default 5, meaning up to 50 MB history per stream.</li>
+<li><code>HTTPS enabled</code> — when on (default), the TLS proxy runs alongside HTTP. When off, only <code>http://</code> is available.</li>
+<li><code>Auto-install cert in system trust store</code> — on first start, prompts for sudo to install the self-signed cert into the system keychain. Happens exactly once; re-trigger with <code>./scripts/dig_tls.py trust</code>.</li>
+<li><code>API HTTPS port</code> and <code>Web HTTPS port</code> — ports the TLS proxy listens on. Defaults 8443 (API) and 3443 (Web).</li>
+</ul>
+
+<h3>AI assistant — local and cloud providers</h3>
+<p><strong>Default: disabled.</strong> When enabled, DIG offers natural-language help for pipeline editing: explain a column, fix an expression, or generate a connector.</p>
+<p><strong>Local (recommended)</strong>: Run <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Ollama</a> on your machine. No API key, data stays private. Setup:</p>
+<ol class="steps">
+<li><b>Install and start Ollama.</b><p>macOS: <code>brew install ollama</code> then <code>ollama serve</code>. Linux / Windows: see ollama.com/download.</p></li>
+<li><b>Pull a model.</b><p>Example: <code>ollama pull gemma4:e4b</code> (~7 GB, recommended). Or <code>ollama pull gemma3:4b</code> (~3 GB, edge-optimized).</p></li>
+<li><b>Configure DIG.</b><p>Set <code>AI provider</code> = <code>local</code>, <code>Endpoint URL</code> = <code>http://localhost:11434/v1</code> (Ollama's default), <code>Model</code> = your chosen model, then toggle <code>Enable AI assistant</code> on.</p></li>
+<li><b>Test connection.</b><p>Click the Test connection button; a green check means the LLM is reachable.</p></li>
+</ol>
+<p><strong>Cloud / OpenAI-compatible</strong>: For Anthropic, OpenAI, Groq, or OpenRouter, set <code>AI provider</code> = <code>openai_compat</code>, paste your API key into <code>API key</code>, and point <code>Endpoint URL</code> at the provider:</p>
+<ul>
+<li>Anthropic: <code>https://api.anthropic.com/v1</code> (model: <code>claude-haiku-4-5</code>)</li>
+<li>OpenAI: <code>https://api.openai.com/v1</code> (model: <code>gpt-4o-mini</code>)</li>
+<li>Groq: <code>https://api.groq.com/openai/v1</code> (model: <code>llama-3.1-70b-versatile</code>)</li>
+</ul>
+<p><strong>Data access control</strong>: By default, <code>Allow non-local AI providers</code> is OFF, so only <code>127.0.0.1</code> (localhost) endpoints are reachable — your pipeline data never leaves the box. Turn the toggle ON to permit cloud APIs and LAN hosts (e.g., Ollama on another machine). Link-local and cloud-metadata addresses stay blocked regardless; only set <code>DIG_AI_ALLOW_PRIVATE=1</code> if you have an internal trusted model host.</p>
+<p>Optional tuning: <code>Max output tokens</code> (default 4096), <code>Temperature</code> (default 0.0 for deterministic code generation), and <code>Ping interval</code> (in seconds, to keep local models warm).</p>
+
+<h3>JDBC drivers — managed library vs. path reference</h3>
+<p>Register a driver JAR and class once, then pipelines using the jdbc connector or <code>export_to_jdbc</code> step pick from the list instead of typing paths. Two modes:</p>
+<p><strong>Upload (recommended):</strong> Copy the JAR into DIG's managed library (<code>data/jdbc-drivers/</code>). It travels with your DIG state during backup or migration, and you never expose a filesystem path.</p>
+<p><strong>Reference (advanced):</strong> Point at a JAR already on the server (e.g., a shared network mount). The path is not copied, so the operator owns keeping it available.</p>
+<p>For each driver, record:</p>
+<ul>
+<li><strong>Display name</strong> — human label (e.g., "Oracle 19c")</li>
+<li><strong>Driver class</strong> — JDBC class name (e.g., <code>oracle.jdbc.OracleDriver</code>)</li>
+<li><strong>Driver JAR</strong> — upload a .jar or reference a filesystem path</li>
+<li><strong>URL template (optional)</strong> — example JDBC URL the UI pre-fills (e.g., <code>jdbc:oracle:thin:@//&lt;host&gt;:1521/&lt;service&gt;</code>)</li>
+<li><strong>Notes (optional)</strong> — compatibility info</li>
+</ul>
+<p>After adding a driver, use <strong>Test connection</strong> to verify the JAR loads and (optionally) try a real connection with a test URL and credentials. The test URL and creds are never saved — they're ad-hoc and only used to validate the driver works before it's used in a pipeline.</p>
+
+<h3>Step Packs — install plugin bundles</h3>
+<p>DIG's core steps can be extended with <code>.dpack</code> bundles — packages of custom steps, connectors, or templates. Install a pack to add new affordances to the pipeline editor. Uninstall to clean up unused plugins. Each pack declares its dependencies and versions; DIG auto-installs Python requirements by default (set <code>DIG_PACK_AUTO_INSTALL_DEPS=0</code> to manage them manually).</p>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/08-settings.png" alt="Settings panel showing the 14 sections in a sidebar, with the Appearance section active displaying theme toggles (System, Light, Dark).">
+</div>
+<figcaption>Settings panel with sidebar navigation. Shown: <b>Appearance</b> section with theme selector.</figcaption>
+</figure>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+Use the search field at the top of the sidebar to fuzzy-filter settings by name or description — instantly jump to "JDBC" or "Log level" without scrolling.
+</div>
+
+<div class="note">
+<span class="lbl">Config file reference</span>
+Boot-time settings (Server & TLS) are read from <code>~/.config/dig/config.json</code> by <code>scripts/dig-start.sh</code> before the API starts. Runtime settings (AI, Storage, Performance, etc.) live in DIG's SQLite metadata database. Environment variables (e.g., <code>DIG_AUTH_TOKEN</code>, <code>DIG_API_PORT</code>) override both. See <code>docs/CONFIG.md</code> for the full reference.
+</div>
+
+</section>
+
+<!-- SECTION:ingestion -->
+<section id="ingestion"><h2 class="sec"><span class="num">05</span>Data ingestion</h2><p class="sec-sub">Import files and external sources — DIG profiles every column as data lands.</p>
+
+<h3>Two ways data enters DIG</h3>
+
+<p>DIG handles both direct file uploads and references to files without copying them — your data stays yours.</p>
+
+<div class="grid cols-2">
+<div class="card">
+<span class="ico">📥</span>
+<h4>Drag-and-drop upload</h4>
+<p>Drop a file onto the Datasets page. DIG copies it into your local <code>~/.local/share/dig/</code> folder and profiles every column.</p>
+</div>
+<div class="card">
+<span class="ico">🔗</span>
+<h4>Reference external data</h4>
+<p><strong>Input data is sacred.</strong> Reference a file on disk, a remote URL, or a database query without copying. DIG reads it fresh on every pipeline run.</p>
+</div>
+</div>
+
+<h3>20 connectors across five families</h3>
+
+<p>DIG ships five families of connectors, grouped by data origin. Pick a format or system, and DIG handles the ingestion — type and meta-type detection runs on ingest.</p>
+
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Connectors</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Text</strong></td>
+<td><code>csv</code> · <code>excel</code> · <code>json</code> · <code>parquet</code> · <code>feather</code></td>
+<td>CSV auto-detects delimiters (<code>.dat</code>, <code>.data</code>, <code>.tab</code>, <code>.psv</code>). Excel reads multi-sheet files and auto-detects data islands.</td>
+</tr>
+<tr>
+<td><strong>Scientific binary</strong> <span class="badge opt">[science]</span></td>
+<td><code>numpy</code> · <code>hdf5</code> · <code>matlab</code> · <code>netcdf</code> · <code>fits</code></td>
+<td>Optional extra (<code>pip install -e .[science]</code>). Read <code>.npy</code>, <code>.npz</code>, <code>.h5</code>, <code>.mat</code>, <code>.nc</code>, <code>.fits</code> directly.</td>
+</tr>
+<tr>
+<td><strong>Network + database</strong></td>
+<td><code>https</code> · <code>rest_api</code> · <code>sqlite</code> · <code>postgres</code> · <code>mysql</code> · <code>jdbc</code></td>
+<td><code>rest_api</code> supports auth, JSONPath extraction, and pagination. <code>jdbc</code> connects to Oracle, MS SQL Server, Snowflake, DB2, Teradata, and others — see <a href="JDBC_SETUP.md">JDBC setup guide</a>.</td>
+</tr>
+<tr>
+<td><strong>Warehouse &amp; reverse-ETL</strong></td>
+<td><code>snowflake</code> · <code>bigquery</code> · <code>sheets</code> · <code>dbt</code></td>
+<td>Write-only sinks via <code>export_to_db</code>. To <em>read</em> from Snowflake or BigQuery, use <code>jdbc</code> or a warehouse query URI.</td>
+</tr>
+</tbody>
+</table></div>
+
+<h3>Automatic type detection and profiling</h3>
+
+<p>When you ingest a <span class="gterm" data-term="Dataset">dataset</span>, DIG profiles every column and detects its data type. The system recognizes <strong>29 data types</strong: six base physical types (<code>string</code>, <code>integer</code>, <code>double</code>, <code>boolean</code>, <code>date</code>, <code>datetime</code>) and 23 meta-types that describe what values <em>mean</em> — coordinates (geographic, polar, Cartesian), currency with exact decimal arithmetic, UUID, email, URL, IP address, color, phone number, timezone, scientific notation, vectors, JSON, and more.</p>
+
+<p>The <span class="gterm" data-term="Profile">profile</span> shows per-column statistics (null fraction, distinct count, min/max, top values, distribution) and drives the auto-detection of meta-types. A column that looks like geographic coordinates, email addresses, or currency is labeled accordingly — even when stored as plain strings or numbers. You can always override the auto-detection from the column menu (<strong>⋯ → 🔄 Cast to…</strong>).</p>
+
+<h3>Sampling for live preview</h3>
+
+<p>The pipeline editor renders a live preview on a <span class="gterm" data-term="Sample">sample</span> of your data — not the full dataset. This keeps the editor snappy. Pick how that sample is drawn from the toolbar's <strong>🧪 sampling</strong> button:</p>
+
+<ul>
+<li><strong>🔝 Head</strong> — first N rows (default, fastest, same as SQL LIMIT).</li>
+<li><strong>🔚 Tail</strong> — last N rows (for time-series "most recent" inspection).</li>
+<li><strong>🎲 Random</strong> — uniform random sample with optional reproducibility seed (best for representative previews).</li>
+<li><strong>📐 Systematic</strong> — every Nth row, preserves ordering trends across the dataset.</li>
+</ul>
+
+<p>The sampling setting travels with the pipeline (saved in the document) so each workflow can use a different method. Full-data backend runs always use 100% of your data, regardless of preview sampling.</p>
+
+<h3>Add a dataset</h3>
+
+<ol class="steps">
+<li>
+<b>Open the Datasets page.</b>
+<p>Click <strong>Datasets</strong> in the sidebar (or use keyboard shortcut <span class="kbd">g d</span>) to see all imported data.</p>
+</li>
+<li>
+<b>Drag a file or click to upload.</b>
+<p>Drop a file onto the page, or click the upload button. Supported formats: CSV, Excel, JSON, Parquet, Feather, SQLite, and scientific binaries (NumPy, HDF5, MATLAB, NetCDF, FITS if the <code>[science]</code> extra is installed).</p>
+</li>
+<li>
+<b>Or add a reference to external data.</b>
+<p>Click <strong>Add dataset</strong> and choose a <span class="gterm" data-term="Connector">connector</span> — HTTPS URL, REST API with auth, Postgres, MySQL, JDBC, Snowflake, BigQuery, Google Sheets, or dbt models. Enter the connection details and DIG fetches rows on demand, no copy stored locally.</p>
+</li>
+<li>
+<b>Review the profile.</b>
+<p>DIG shows the column list with detected types, null counts, and top values. Click a column header to expand its full statistics (distribution, distinct values, sample rows). Toggle between <strong>🔄 Cast to…</strong> to override any auto-detection.</p>
+</li>
+<li>
+<b>Create a pipeline or add to an existing one.</b>
+<p>Click <strong>New pipeline</strong> (or add to an existing pipeline from the Pipelines page) to start transforming. Your dataset appears as the first input node.</p>
+</li>
+</ol>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/03-datasets.png" alt="Datasets page showing a table of imported files with type, row count, and size; column-type badges visible in the detail view">
+</div>
+<figcaption>The <b>Datasets page</b> lists all imported data. Click any dataset to see column profiles, detect types, and add it to a pipeline.</figcaption>
+</figure>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/04-dataset-detail.png" alt="Dataset detail panel showing column list with detected types, null fractions, and cast-type picker with smart-pick alternates">
+</div>
+<figcaption>The <b>column profile</b> displays statistics and detected meta-types. Click <strong>Cast to…</strong> to override auto-detection or pick a smart-pick alternate.</figcaption>
+</figure>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+The auto-detected type is just a starting point. DIG surfaces alternate types that scored ≥ 0.5 confidence as <strong>✨ +N</strong> badges — click one to re-cast instantly without reopening the full picker. If you import a `date` column that DIG reads as `string`, look for a +1 badge to jump to the right type in one click.
+</div>
+
+</section>
+
+<!-- SECTION:manipulation -->
+<section id="manipulation"><h2 class="sec"><span class="num">06</span>Data manipulation</h2><p class="sec-sub">Shape, clean, derive, combine, aggregate, analyze, and validate with 62 built-in steps across 11 categories. Undo any change with ⌘Z.</p>
+
+<h3>The mental model</h3>
+<p>Every column transformation — selecting, casting, filtering, computing, combining — becomes a <span class="gterm" data-term="Step">step</span>. Steps chain left-to-right in the editor's strip; data flows through them. Each step is undoable: press <span class="kbd">⌘Z</span> to rewind any action back through the entire run history. This means you can experiment fearlessly — add a step to explore, then undo if it doesn't lead anywhere.</p>
+
+<div class="note tip"><span class="lbl">Tip</span>Think of steps as column-level operations. To select columns, use <b>Select columns</b>. To filter rows, use <b>Filter rows</b>. To add a computed column, use <b>Derive column</b> or <b>Add runtime column</b>. To reshape, pack, unpack, or transpose, reach for the shape family.</div>
+
+<h3>The step library — 11 categories</h3>
+
+<p>DIG ships 62 built-in steps organised by what they do. The 6 bundled packs extend the library with specialized, domain-specific steps for time-series, statistics, business charts, and more — adding 40+ installable steps (§10), for roughly 100 once every pack is enabled.</p>
+
+<div class="tablewrap"><table><thead><tr><th>Category</th><th>Emoji</th><th>For what</th><th>Key steps (sample)</th></tr></thead><tbody>
+<tr><td><b>Shape</b></td><td>✂️</td><td>Select, reorder, rename, filter, sort, split, flatten, unnest, pack, unpack, transpose, invert</td><td><code>Select columns</code>, <code>Filter rows</code>, <code>Sort rows</code>, <code>Split column</code>, <code>Pack into struct</code>, <code>Unnest array</code>, <code>Matrix transpose</code></td></tr>
+<tr><td><b>Clean</b></td><td>🧹</td><td>Type conversion, whitespace trimming, deduplication, text substitution, binning, column coalescing</td><td><code>Cast type</code>, <code>Clean whitespace</code>, <code>Deduplicate</code>, <code>Replace text</code>, <code>Bin numeric</code>, <code>Coalesce columns</code></td></tr>
+<tr><td><b>Derive</b></td><td>➕</td><td>Add computed columns: SQL expressions, math, dates, strings, coordinates, text embeddings, ML vectors</td><td><code>Derive column</code>, <code>Add runtime column</code>, <code>Math equation</code>, <code>Extract date parts</code>, <code>Convert coordinates</code>, <code>Rolling window</code>, <code>PCA</code>, <code>K-Means</code>, <code>DBSCAN</code>, <code>Forecast</code>, <code>Seasonal decompose</code></td></tr>
+<tr><td><b>Combine</b></td><td>🔗</td><td>Join two inputs by matching keys; stack datasets; embed sub-pipelines</td><td><code>Join</code>, <code>Union</code>, <code>Sub-pipeline</code></td></tr>
+<tr><td><b>Aggregate</b></td><td>📊</td><td>Group & summarise; pivot; time-bucket; window functions; resample</td><td><code>Group & aggregate</code>, <code>Pivot wider</code>, <code>Pivot longer</code>, <code>Resample (time bucket aggregate)</code>, <code>Window aggregate</code></td></tr>
+<tr><td><b>Analyze</b></td><td>🔬</td><td>Correlation is built-in; the hypothesis tests &amp; time-series diagnostics ship in the <code>stats_pro</code> and <code>time_series_pro</code> packs (§10).</td><td><code>correlation_matrix</code>, <code>t_test</code>, <code>anova</code>, <code>chi_square</code>, <code>anomaly_zscore</code>, <code>changepoint_detection</code></td></tr>
+<tr><td><b>Model</b></td><td>🧠</td><td>Clustering, regression, dimensionality reduction, forecasting, decomposition</td><td><code>K-Means clustering</code>, <code>DBSCAN clustering</code>, <code>PCA (dimensionality reduction)</code>, <code>Forecast (time-series)</code>, <code>Seasonal decomposition</code>, <code>Linear regression</code>, <code>t-SNE (2-D embedding)</code>, <code>UMAP (2-D embedding)</code></td></tr>
+<tr><td><b>Validate</b></td><td>✅</td><td>Data quality rules: uniqueness, nullness, ranges, regex patterns, row counts</td><td><code>Data quality expectations</code></td></tr>
+<tr><td><b>Visualize</b></td><td>📈</td><td>Charts, maps, heatmaps, gauge; export as PNG/SVG or interactive HTML</td><td><code>Export to image</code>, <code>Export to map</code>, <code>Pareto chart</code>, <code>Funnel chart</code>, <code>Waterfall chart</code></td></tr>
+<tr><td><b>Output</b></td><td>📤</td><td>Write to file (CSV, Parquet, Excel, JSON, NDJSON), database, JDBC sink, webhooks</td><td><code>Export to file</code>, <code>Export to database</code>, <code>Export to JDBC</code>, <code>Trigger webhook</code></td></tr>
+<tr><td><b>Custom</b></td><td>🧩</td><td>Identity placeholder; sub-pipelines published as reusable steps</td><td><code>Passthrough</code></td></tr>
+</tbody></table></div>
+
+<h3>Joins: Combining two datasets by matching keys</h3>
+
+<p>A <span class="gterm" data-term="Step">join</span> matches rows from two inputs — a dataset, an upstream <span class="gterm" data-term="Step">step</span>, or both — using one or more key columns. The <b>Join</b> step's panel is hand-built to surface the row-count consequences before you commit.</p>
+
+<figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/joins/tc1-01-overview.png" alt="Full editor with the join panel showing inputs, cardinality strip, join type icons, keys with match-quality bars, and result columns grid"></div><figcaption>The <b>Join</b> step panel. Top: inputs (left/right sources). Middle: cardinality strip, join-type selector, keys, and match-quality bars. Bottom: result columns with provenance chips.</figcaption></figure>
+
+<h4>Join type (cardinality)</h4>
+
+<p>Six join types control which rows survive:</p>
+
+<ul>
+<li><b>Inner</b> — matching rows only.</li>
+<li><b>Left</b> — keep all rows from the left input; right rows that don't match become NULLs.</li>
+<li><b>Right</b> — keep all rows from the right input; left rows that don't match become NULLs.</li>
+<li><b>Full</b> — keep both sides' rows (outer join). Unmatched pairs get NULLs.</li>
+<li><b>Anti-left</b> — rows on the left WITHOUT a matching right row (useful for 'find unmatched').</li>
+<li><b>Anti-right</b> — mirror of anti-left.</li>
+</ul>
+
+<figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/joins/tc1-03-cardinality-keys.png" alt="Cardinality strip showing left/right row counts, estimated match percentage, and projected result rows; join-type icons with one outlined in green; keys with rose-colored match-quality bars"></div><figcaption><b>Cardinality strip</b> estimates row-count consequences before you commit. The strip shows estimated result size, match percentage (from a sample), and the row-fit warning. Match-quality bars (rose = low overlap, green = high) alert you if a key column is unlikely to match.</figcaption></figure>
+
+<h4>Key pairs</h4>
+
+<p>For each key pair <code>[left column] [op] [right column]</code>, the panel shows:</p>
+<ul>
+<li><b>Column</b> — the column name from each side.</li>
+<li><b>Op</b> — <code>=</code> (equality, most common), or <code>&lt;</code> / <code>&lt;=</code> / <code>&gt;</code> / <code>&gt;=</code> for range joins.</li>
+<li><b>Match-quality bar</b> — green (high overlap) to rose (low overlap) on the sample. Click to see the overlap percentage inline.</li>
+<li><b>Remove (✕)</b> — delete the key pair.</li>
+</ul>
+
+<p>Equality keys (op = <code>=</code>) collapse in the output: the right side is dropped because its values are always identical to the left. Range-key pairs carry both sides.</p>
+
+<h4>Result columns</h4>
+
+<p>At the bottom, a grid shows every output column with <b>provenance chips</b> (L for left, R for right, C for coalesced). You can <b>exclude</b> columns (checkbox) or <b>rename</b> them inline. Provenance identifiers are stable — your renames and exclusions survive changes to the join kind, suffix rules, or collision strategy.</p>
+
+<h3>Variables: Substitution in URIs and cell content</h3>
+
+<p>Pipelines support <code>{{ variable }}</code> templating in three places: dataset URIs (to parameterise input paths), output-sink URIs (to date-stamp exports), and cell values via <b>Add runtime column</b>.</p>
+
+<h4>Built-in variables</h4>
+
+<div class="chips">
+<span class="chip">Time/date (UTC) <b>{{ today }}, {{ now }}, {{ year }}, {{ month }}, {{ day }}, {{ utime }}</b></span>
+<span class="chip">Time/date (local) <b>{{ today_local }}, {{ now_local }}, {{ ltime }}</b></span>
+<span class="chip">Run context <b>{{ run_id }}, {{ run_started_at }}, {{ pipeline_id }}, {{ pipeline_name }}, {{ user }}, {{ env }}</b></span>
+<span class="chip">User-defined <b>{{ vars.region }}, {{ vars.bucket }}</b> (from pipeline metadata)</span>
+</div>
+
+<h4>Example: Dated output folder</h4>
+
+<p>Sink URI: <code>file://exports/{{ pipeline_name }}/{{ year }}/{{ month }}/{{ day }}/{{ utime | replace(':', '-') }}.parquet</code><br>Rendered: <code>file://exports/customer-overview/2026/05/11/14-23-07.parquet</code></p>
+
+<h4>Filters</h4>
+
+<ul>
+<li><code>upper</code> — ASCII uppercase.</li>
+<li><code>lower</code> — ASCII lowercase.</li>
+<li><code>strftime('fmt')</code> — reformat dates, e.g. <code>{{ today | strftime('%Y/%m/%d') }}</code>.</li>
+<li><code>replace('old', 'new')</code> — substring replace.</li>
+<li><code>default('value')</code> — fallback when variable is missing.</li>
+<li><code>slug</code> — filesystem-safe lowercase slug.</li>
+<li><code>safe</code> — path-safety check (rejects traversal, forbidden chars).</li>
+</ul>
+
+<h3>Sub-pipelines: Publish a pipeline as a reusable step</h3>
+
+<p>Any pipeline can be <b>published as a step</b> and installed in other pipelines. The published pipeline becomes a single node in the consumer's strip; at compile time, DIG inlines it into the flat DAG.</p>
+
+<h4>Publishing</h4>
+
+<p>In the editor toolbar, click <b>🪆 Publish</b>. Fill in:</p>
+
+<ul>
+<li><b>Step label</b> — the name consumers see in the picker.</li>
+<li><b>Emoji</b> — the icon (defaults to 🪆).</li>
+<li><b>Description</b> — one-sentence explanation.</li>
+<li><b>Category</b> — ✂️ Shape, 🧹 Clean, ➕ Derive, 📊 Aggregate, 🔗 Combine, 🔬 Analyze, 🧠 Model, ✅ Validate, 📈 Visualize, 🧩 Custom.</li>
+</ul>
+
+<p>Once published, every other pipeline's step picker shows the new <code>pipeline:<id></code> entry tinted emerald, and a synthesised manifest is exposed at <code>GET /steps/pipeline:<id></code>.</p>
+
+<h4>Pinned versions</h4>
+
+<p>When you install a sub-pipeline step, the parent records a specific source version (<code>pinnedEtag</code>). The parent's behaviour is locked until you explicitly click <b>⬆ Upgrade</b>. Three pin states:</p>
+
+<ul>
+<li><b>Up to date with source.</b> — pinned etag matches the source's live version.</li>
+<li><b>n versions behind source (v<live>).</b> — source has advanced; click ⬆ to bump.</li>
+<li><b>Source pipeline unavailable.</b> — the source was deleted; remove this node or republish a replacement.</li>
+</ul>
+
+<h4>Exposed parameters</h4>
+
+<p>Most reusable sub-pipelines need a few knobs. Open any node in your source pipeline → params panel → each param's row has a <span class="badge opt">🪆 expose</span> pill:</p>
+
+<ul>
+<li><b>Default (grey)</b> — param is hidden from consumers.</li>
+<li><b>Click once (violet)</b> — param is exposed with a consumer-facing alias. Defaults to the param key.</li>
+<li><b>Click again</b> — unexpose; the alias is dropped.</li>
+</ul>
+
+<p>Consumers see the exposed aliases as regular params on the step; their values flow into the inner nodes at inline-expansion time.</p>
+
+<h4>Cycle detection</h4>
+
+<p>DIG automatically detects and blocks circular references. When you save or start a run, the system checks whether any sub-pipeline references create a loop (direct or transitive). If so, you get a clear error with the offending chain. The picker also blocks self-cycles immediately with a 7-second toast.</p>
+
+<h3>Hints: One-click rule-based composites</h3>
+
+<p><span class="gterm" data-term="Hint">Hints</span> are AI-suggested <span class="gterm" data-term="Step">step</span> sequences that you can apply in one click. They recognize common patterns — like raw latitude/longitude columns — and bundle the right steps together. For example, the <b>(lat, lon) → pack & cast</b> hint detects a pair of lat/lon columns and suggests packing them into a struct, then casting to a geographic type so downstream steps can use them as a single geographic column.</p>
+
+<p>When DIG detects a pattern matching a known hint in your current <span class="gterm" data-term="Dataset">dataset</span>, a suggestion appears in the sidebar. Click <b>Apply</b> to insert the composite, or <b>Apply as branch</b> to try it on a fork of your current <span class="gterm" data-term="Pipeline">pipeline</span> without modifying your working version.</p>
+
+<figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/07-check-step.png" alt="Data quality check step showing rule editor with unique, not_null, between, in, regex_match, and row_count_between options"></div><figcaption>Example: <b>Data quality expectations</b> step lets you declare validation rules inline. Each rule produces a result; violations surface in the run's artifacts. Optional <b>fail_on_violation</b> flag halts the pipeline on any error-severity breach.</figcaption></figure>
+
+</section>
+
+<!-- SECTION:viz -->
+<section id="viz"><h2 class="sec"><span class="num">07</span>Data visualization</h2><p class="sec-sub">Render charts and maps as production artifacts—explore patterns with matplotlib + seaborn, or geospatial layers via Leaflet.</p><h3>Charts via export_to_image</h3><p>The <code>export_to_image</code> step renders static, publication-grade charts to PNG or SVG using matplotlib + seaborn. Feed it one to three numeric or categorical columns, pick a chart kind, and DIG outputs an image artifact you can embed in reports, dashboards, or presentations.</p><p><b>The <code>kind</code> parameter</b> selects your chart type. With <code>kind = "auto"</code>, DIG inspects your columns and picks sensibly: one numeric column → histogram, one categorical → bar chart, two numerics → scatter, and so on.</p><div class="tablewrap"><table><thead><tr><th>Chart kind</th><th>What it shows</th><th>Required columns</th></tr></thead><tbody><tr><td><code>histogram</code></td><td>Distribution of one numeric variable, binned automatically</td><td><code>x</code> (numeric)</td></tr><tr><td><code>density</code></td><td>Smoothed distribution via kernel-density estimation</td><td><code>x</code> (numeric)</td></tr><tr><td><code>box</code> / <code>violin</code></td><td>Spread and quartiles per group</td><td><code>x</code> (categorical or numeric) ± <code>hue</code></td></tr><tr><td><code>bar_counts</code></td><td>Bar height = row count per category</td><td><code>x</code> (categorical)</td></tr><tr><td><code>stacked_bar</code></td><td>Bars divided by a second category</td><td><code>x</code> (categorical) + <code>hue</code> (categorical)</td></tr><tr><td><code>percent_stacked_bar</code></td><td>Stacked bars normalized to 100%</td><td><code>x</code> (categorical) + <code>hue</code> (categorical)</td></tr><tr><td><code>scatter</code></td><td>Points in 2-D space</td><td><code>x</code> + <code>y</code> (both numeric) ± <code>hue</code></td></tr><tr><td><code>line</code></td><td>Time series or ordinal trends</td><td><code>x</code> (ordinal/date) + <code>y2</code> (numeric) ± <code>hue</code></td></tr><tr><td><code>hexbin</code></td><td>2-D density hexagons (scatter alternative for overplotting)</td><td><code>x</code> + <code>y3</code> (both numeric)</td></tr><tr><td><code>heatmap</code></td><td>Color grid of cell values</td><td><code>x</code> (categorical) + <code>y4</code> (categorical) + <code>value</code> (numeric)</td></tr><tr><td><code>scatter3d</code></td><td>Points in three-dimensional space</td><td><code>x</code>, <code>y5</code>, <code>z</code> (all numeric)</td></tr><tr><td><code>pair</code></td><td>Pairwise scatter grid across many numeric columns</td><td><code>columns</code> (list of column names)</td></tr><tr><td><code>joint</code></td><td>Scatter + marginal histograms on X and Y axes</td><td><code>x</code> + <code>y</code> (both numeric)</td></tr><tr><td><code>bubble</code></td><td>Scatter with bubble size encoding a fourth dimension</td><td><code>x</code> + <code>y</code> (both numeric) + <code>value</code> (sets size) ± <code>hue</code></td></tr></tbody></table></div><p>All kinds accept optional <code>title</code>, <code>width</code>, <code>height</code>, <code>dpi</code>, and <code>hue</code> (to color-group points or bars). Use <code>max_points</code> to sample down before rendering and keep 200k-row scatters fast.</p><div class="fig-2"><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/tutorials/tutorial-bar-by-region.png" alt="Bar chart showing revenue by region in grouped bars"></div><figcaption>Bar chart: <b>revenue by region</b> (kind=bar_counts)</figcaption></figure><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/tutorials/tutorial-heatmap-sales.png" alt="Heatmap showing weekly sales per department, color-coded by intensity"></div><figcaption>Heatmap: <b>sales by department × day</b> (kind=heatmap)</figcaption></figure></div><div class="fig-2"><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/tutorials/tutorial-pca-flowers.png" alt="Scatter plot of Iris flower features in 2-D PCA space, colored by species"></div><figcaption>Scatter: <b>PCA embedding colored by species</b> (kind=scatter)</figcaption></figure><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/v062/healthcare_vitals.png" alt="Multi-panel healthcare dashboard combining line charts and bar charts"></div><figcaption>Multi-panel: <b>vital signs trend + daily averages</b> (combined layout)</figcaption></figure></div><h3>Maps via export_to_map</h3><p>The <code>export_to_map</code> step renders lat/lon points, color-coded regions, kernel-density heatmaps, and arc routes using either interactive Leaflet HTML or static matplotlib PNG. Choose your visualization mode based on your data shape and what patterns you want to reveal.</p><h4>Mode 1: Points markers (default)</h4><p>One marker per row at a given latitude and longitude. Supports interactive tooltips with name and comment fields.</p><div class="chips"><span class="chip">Format <b>lat_lon</b> (e.g., "37.77,-122.42")</span><span class="chip">or <b>lon_lat</b> or <b>wkt_point</b> or <b>separate_columns</b></span></div><div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Notes</th></tr></thead><tbody><tr><td><code>mode</code></td><td>✓</td><td>Set to <code>"points"</code></td></tr><tr><td><code>location</code></td><td>✓ (unless <code>separate_columns</code>)</td><td>Column containing coordinates in chosen format</td></tr><tr><td><code>lat_col</code>, <code>lon_col</code></td><td>✓ (only if <code>format=separate_columns</code>)</td><td>Two separate numeric columns</td></tr><tr><td><code>name_col</code></td><td></td><td>Tooltip headline (optional)</td></tr><tr><td><code>comment_col</code></td><td></td><td>Tooltip body (optional)</td></tr><tr><td><code>marker_color</code></td><td></td><td>CSS color hex, named color, or <code>rgb()</code></td></tr><tr><td><code>tile_provider</code></td><td></td><td><code>osm</code> · <code>carto-light</code> · <code>carto-dark</code> · <code>esri-natgeo</code></td></tr><tr><td><code>format_out</code></td><td></td><td><code>html</code> (interactive) or <code>png</code> (static)</td></tr></tbody></table></div><h4>Mode 2: Choropleth (color-coded regions)</h4><p>Color each polygon by a numeric value—perfect for state-by-state metrics, district-level metrics, or any region-level aggregation. Requires a geometry column holding WKT-string or WKB-encoded polygon boundaries.</p><div class="chips"><span class="chip">Geometry <b>WKT polygon</b> (auto-coerced from WKT strings)</span><span class="chip">or <b>WKB bytes</b> (already binary-encoded)</span></div><div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Notes</th></tr></thead><tbody><tr><td><code>mode</code></td><td>✓</td><td>Set to <code>"choropleth"</code></td></tr><tr><td><code>geometry_col</code></td><td>✓</td><td>Column holding WKB or WKT polygons</td></tr><tr><td><code>value_col</code></td><td>✓</td><td>Numeric column that drives the color ramp</td></tr><tr><td><code>name_col</code></td><td></td><td>Tooltip headline per region (optional)</td></tr><tr><td><code>color_scale</code></td><td></td><td><code>viridis</code> · <code>magma</code> · <code>cividis</code> · <code>plasma</code> · <code>Greens</code> · <code>Blues</code> · <code>Reds</code> · <code>OrRd</code> · <code>YlGnBu</code></td></tr></tbody></table></div><p>Each row must hold one complete, well-formed polygon per region (no leading whitespace, no MULTIPOLYGON splits). If you have tick-level geometry data, pre-aggregate upstream.</p><h4>Mode 3: Heat (kernel-density heatmap)</h4><p>Build a smoothed density overlay from lat/lon points—lighter than 10k+ individual markers. Optionally weight each point by a column.</p><div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Notes</th></tr></thead><tbody><tr><td><code>mode</code></td><td>✓</td><td>Set to <code>"heat"</code></td></tr><tr><td><code>location</code> (or <code>lat_col</code>+<code>lon_col</code>)</td><td>✓</td><td>Same lat/lon formats as points mode</td></tr><tr><td><code>value_col</code></td><td></td><td>Optional: weight each point by this numeric column</td></tr></tbody></table></div><h4>Mode 4: Arc (origin → destination)</h4><p>Draw curved lines on a globe connecting origin and destination coordinates. Useful for flight routes, shipment lanes, migration flows, or supply-chain visualization.</p><div class="tablewrap"><table><thead><tr><th>Parameter</th><th>Required</th><th>Notes</th></tr></thead><tbody><tr><td><code>mode</code></td><td>✓</td><td>Set to <code>"arc"</code></td></tr><tr><td><code>origin_lat_col</code>, <code>origin_lon_col</code></td><td>✓</td><td>Start point coordinates</td></tr><tr><td><code>dest_lat_col</code>, <code>dest_lon_col</code></td><td>✓</td><td>End point coordinates</td></tr></tbody></table></div><p>Each row must have all four coordinates—no aggregation possible. Error messages guide you if columns are missing.</p><div class="fig-2"><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/v062/housing_price.png" alt="Interactive map showing housing prices across US cities with colored point markers"></div><figcaption>Points map: <b>listing prices by location</b> (mode=points)</figcaption></figure><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/v062/housing_inventory.png" alt="Choropleth map of US states colored by inventory level"></div><figcaption>Choropleth: <b>housing inventory by state</b> (mode=choropleth)</figcaption></figure></div><h3>Where charts appear</h3><p>When you focus a visualization step in the editor, DIG renders a preview in the step card—no manual "run" needed. Zoom in to inspect the chart, then export it as a PNG or HTML artifact that lands in your run directory under <code>data/outputs/&lt;run_id&gt;/&lt;step_name&gt;.png</code> (or <code>.html</code> for interactive maps). Use the <code>path</code> parameter to write to a custom location.</p><div class="note tip"><span class="lbl">Tip</span>Charts render headless via matplotlib—no browser automation, no JS overhead. PNG output is deterministic and embeds cleanly in reports and slides.</div></section>
+
+<!-- SECTION:output -->
+<section id="output"><h2 class="sec"><span class="num">08</span>Storing results &amp; data output</h2><p class="sec-sub">Write artifacts to disk, database, or image; version your pipeline checkpoints; trace column lineage across your workspace.</p><h3>First-class outputs: the Run</h3><p>Every pipeline run writes <strong>Parquet by default</strong> to the run's output folder. To add extra sinks—spreadsheets, databases, charts—connect <span class="gterm" data-term="Step">output steps</span> to the final node and run once. All artifacts land in a single run folder.</p><div class="grid cols-3"><div class="card"><span class="ico">📥</span><h4>export_to_file</h4><p>CSV, Parquet, Excel, JSON, NDJSON — pick the format that fits your audience and downstream tool.</p></div><div class="card"><span class="ico">🗄️</span><h4>export_to_db</h4><p>Write directly to SQLite, Postgres, or MySQL with schema control (<code>append</code>, <code>replace</code>, <code>fail</code>).</p></div><div class="card"><span class="ico">🖼</span><h4>export_to_image</h4><p>Matplotlib + seaborn charts: PNG or SVG. Pick a kind (bar, scatter, heatmap, line, 3D) and fill the axes.</p></div></div><h3>export_to_file formats</h3><p>Each format makes a different trade-off between human-readability, file size, and downstream tooling.</p><div class="tablewrap"><table><thead><tr><th>Format</th><th>Pros</th><th>Cons</th><th>Use when</th></tr></thead><tbody><tr><td><code>csv</code></td><td>Universal, opens anywhere, human-readable</td><td>No types, large files, no nesting</td><td>Sharing with humans or spreadsheets</td></tr><tr><td><code>parquet</code></td><td>Columnar, typed, zstd-compressed, fast</td><td>Needs a parquet reader</td><td>Feeding another data tool or long-term storage</td></tr><tr><td><code>excel</code></td><td>Non-technical stakeholders understand it</td><td>~1M row limit, slow on large data</td><td>Executive / finance handoffs</td></tr><tr><td><code>json</code></td><td>Preserves nested structure</td><td>Bulky, no compression</td><td>API mocks, document stores</td></tr><tr><td><code>ndjson</code></td><td>Line-streamable, append-friendly</td><td>Bulky</td><td>Logs, queue feeds, streaming consumers</td></tr></tbody></table></div><div class="codewrap"><pre><span class="c"># Export to CSV</span>
+{
+  <span class="s">"step"</span>: <span class="s">"export_to_file"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"format"</span>: <span class="s">"csv"</span>,
+    <span class="s">"path"</span>: <span class="s">"active-customers.csv"</span>
+  }
+}</pre></div><p><strong>Path tip:</strong> paths are relative to the run output dir (<code>data/outputs/&lt;run_id&gt;/</code>). Use absolute paths only when you intentionally want to write outside that—e.g. into a mounted share. To enable absolute paths, set <code>DIG_EXPORT_ALLOW_ABSOLUTE=1</code> in the operator config.</p><h3>export_to_db to your warehouse</h3><p>Drop the final dataframe into a SQL table—SQLite for local work, Postgres or MySQL for production.</p><div class="codewrap"><pre><span class="c"># SQLite example</span>
+{
+  <span class="s">"step"</span>: <span class="s">"export_to_db"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"uri"</span>: <span class="s">"sqlite:///data/local.db"</span>,
+    <span class="s">"table"</span>: <span class="s">"customers_clean"</span>,
+    <span class="s">"if_exists"</span>: <span class="s">"replace"</span>
+  }
+}</pre></div><div class="tablewrap"><table><thead><tr><th><code>if_exists</code></th><th>Behavior</th></tr></thead><tbody><tr><td><code>append</code></td><td>Add rows; fails if schemas don't match</td></tr><tr><td><code>replace</code></td><td>Drop and re-create the table</td></tr><tr><td><code>fail</code></td><td>Error if table exists (safest for one-shot loads)</td></tr></tbody></table></div><div class="note"><span class="lbl">Security</span>Credentials in the URI are redacted in run artifacts (<code>...://user:***@host</code>), so screenshots can be shared without leaking passwords.</div><h3>export_to_image: charts ready to share</h3><p>Render publication-grade charts via matplotlib + seaborn. No web bundle—just deterministic PNG or SVG you paste into slides or embed in reports.</p><div class="codewrap"><pre><span class="c"># Bar chart: customer count by region</span>
+{
+  <span class="s">"step"</span>: <span class="s">"export_to_image"</span>,
+  <span class="s">"params"</span>: {
+    <span class="s">"kind"</span>: <span class="s">"bar_counts"</span>,
+    <span class="s">"x"</span>: <span class="s">"region"</span>,
+    <span class="s">"title"</span>: <span class="s">"💰 Revenue by region"</span>,
+    <span class="s">"format"</span>: <span class="s">"png"</span>
+  }
+}</pre></div><p>Set <code>kind</code> to pick a chart type: <code>auto</code> (guesses from your columns), <code>histogram</code>, <code>density</code>, <code>box</code>, <code>violin</code>, <code>bar_counts</code>, <code>stacked_bar</code>, <code>percent_stacked_bar</code>, <code>scatter</code>, <code>line</code>, <code>hexbin</code>, <code>heatmap</code>, <code>scatter3d</code>, <code>pair</code>, <code>joint</code>, or <code>bubble</code>. Then fill the required axes: single-axis charts need <code>x</code>; scatter and line need <code>x</code> + <code>y2</code>; heatmap needs <code>x</code> + <code>y4</code> + <code>value</code>. Optional: <code>hue</code> (colors by group), <code>title</code>, <code>width</code>, <code>height</code>, <code>dpi</code>, <code>max_points</code> (for large datasets).</p><h3>Saving &amp; checkpoints</h3><p>DIG keeps your work safe by splitting saves into two buckets: <strong>autosaves</strong> (transient, crash recovery) and <strong>labelled saves</strong> (checkpoints you intend to keep).</p><div class="chips"><span class="chip">Autosave <b>⌘S / Ctrl-S trigger</b> → every edit</span><span class="chip">Stored as <b>last 5 only</b></span><span class="chip">Labelled save <b>💾 button + label</b></span><span class="chip">Stored as <b>up to 50</b></span><span class="chip">Clone <b>📋 Save As / ⌘⇧S</b></span><span class="chip">New pipeline <b>fresh id, independent history</b></span></div><p>Click <strong>💾 Save</strong> (keyboard: <span class="kbd">⌘S</span> or <span class="kbd">Ctrl-S</span>) to open a dialog with an optional label—e.g. "before adding rolling-window step". The label is shown in run history and your labelled saves are never evicted by autosaves. Even an empty label creates a locked checkpoint.</p><p><strong>📋 Save As</strong> (keyboard: <span class="kbd">⌘⇧S</span> or <span class="kbd">Ctrl-Shift-S</span>) clones the entire pipeline—datasets, nodes, params, metadata—into a new pipeline with its own fresh id and independent history. Useful for branching experiments.</p><h3>The Runs list &amp; detail</h3><p>Every time you execute a <span class="gterm" data-term="Run">run</span>, DIG snapshots the pipeline state and logs all outputs, metrics, and artifacts.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/11-runs-list.png" alt="Run history list showing labelled saves anchored across autosaves"></div><figcaption>Run history list — <b>labelled saves</b> are anchored and never evicted by autosaves</figcaption></figure><p>Click any run to open the detail view. Here you see all outputs, per-node metrics, artifacts (PNGs, Parquets), and if something failed, the exact node and error message.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/12-run-detail.png" alt="Run detail showing outputs, metrics, and artifacts"></div><figcaption>Run detail — outputs, <b>per-node metrics</b>, artifacts, and error context if the run failed</figcaption></figure><h3>Catalog &amp; lineage: trace column flow</h3><p>DIG tracks column origins at three zoom levels. Pick the view that answers your question.</p><div class="tablewrap"><table><thead><tr><th>Zoom level</th><th>View</th><th>Use when</th></tr></thead><tbody><tr><td>Workspace</td><td><strong>Catalog</strong></td><td>"Which pipelines feed which datasets?"</td></tr><tr><td><span class="gterm" data-term="Pipeline">Pipeline</span></td><td><strong>Sankey</strong></td><td>"Which steps and columns flow into this terminal?"</td></tr><tr><td>Column</td><td><strong>Column DNA</strong></td><td>"Which upstream values shaped this single output column?"</td></tr></tbody></table></div><h4>The Catalog — workspace-wide view</h4><p>Open the Catalog from the workspace menu. Nodes are pipelines; edges are datasets. Each edge is labelled with the dataset name and (when the schema is registered) the number of columns flowing through.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/06-catalog-column-edges.png" alt="Catalog graph showing pipelines as nodes and column-aware dataset edges"></div><figcaption>Catalog — <b>column-aware edges</b> between pipelines show dataset names and column counts</figcaption></figure><p>Click an edge or node to open a detail panel showing the payload (columns, schema). Tags (set in the editor toolbar) appear as a chip strip above the canvas—click any tag to filter pipelines by intersection.</p><h4>Sankey — pipeline-scoped flow</h4><p>Inside the editor, switch to the <strong>Sankey</strong> tab to see the active pipeline as a column-by-column flow diagram. Bands widen with row count; hover any band to see which input column it came from. The selection state is shared with the canvas: clicking a band highlights the step in the strip, and vice versa.</p><h4>Column DNA — the bipartite walk</h4><p>Open the <strong>Column DNA</strong> drawer (right-hand panel) to answer the focused question: <em>what made this single column?</em> The bipartite layout pairs columns on the left with the steps that produced them on the right, with arrows showing the per-column dependency.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/03-dna-zoom-pan.png" alt="Column DNA bipartite layout showing upstream dependency"></div><figcaption>Column DNA — <b>bipartite layout</b> traces a single column's upstream lineage</figcaption></figure><p>Toggle the walk direction: <strong>upstream</strong> (what shaped this column) or <strong>downstream</strong> (which columns inherit from it). Use downstream before renaming a column—it shows "what will I break?" at a glance.</p><h4>The impact badge</h4><p>When you rename, drop, or recast a column in the editor, an amber <strong>impact badge</strong> appears next to the affected node. It counts the downstream columns that inherit from the change and links straight to Column DNA with the walk pre-loaded—covering both direct references and transitive ones through joins, aggregates, and CTEs.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/phase-a-pro/05-impact-badge.png" alt="Impact badge showing count of affected downstream columns"></div><figcaption>Impact badge — surfaced on <b>column-rename / drop / recast</b>, shows downstream impact</figcaption></figure></section>
+
+<!-- SECTION:examples -->
+<section id="examples">
+  <h2 class="sec"><span class="num">09</span>Worked examples</h2>
+  <p class="sec-sub">Six end-to-end walkthroughs, each chosen to show off a different best-of-class feature. Every step name is real — open DIG alongside and follow along.</p>
+  <div class="note tip"><span class="lbl">How to follow along</span>Each example imports a bundled demo dataset (Home → <strong>🌱 Try with sample data</strong>, or the Templates gallery). The numbered steps map one-to-one to steps you add in the editor; the screenshot shows where you should land.</div>
+<h3>Example 1: Customer churn risk score</h3>
+
+<p><b>Goal:</b> Start from a raw customer table, compute a per-customer churn risk score, group it by plan, and render a chart.</p>
+
+<div class="chips">
+<span class="chip">Dataset <b>customers-demo.csv</b></span>
+<span class="chip">Key steps <b>cast_type · derive_column · expectations · group_aggregate · export_to_image</b></span>
+<span class="chip">Output <b>bar chart (avg risk by plan)</b></span>
+<span class="chip">Best feature <b>AI Pipeline Review + live diff</b></span>
+</div>
+
+<ol class="steps">
+<li><b>Import the dataset.</b><p>Datasets → Import, drop <code>customers-demo.csv</code>. The profile generates and you'll see histograms above each column header.</p></li>
+<li><b>New pipeline.</b><p>Pipelines → ➕ New pipeline. Name it <code>Churn risk by plan</code>.</p></li>
+<li><b>Add <code>cast_type</code> for <code>last_login</code>.</b><p>The CSV reads it as a string; cast to date. Connect to the dataset and set <b>Column:</b> <code>last_login</code>, <b>Target type:</b> <code>date</code>.</p></li>
+<li><b>Add <code>derive_column</code> — <code>days_since_login</code>.</b><p>Connect downstream of the cast. Set <b>Name:</b> <code>days_since_login</code>, <b>Expression:</b> <code>DATE_DIFF('day', last_login, CURRENT_DATE)</code>.</p></li>
+<li><b>Add <code>derive_column</code> — <code>churn_risk</code>.</b><p>Connect after the previous derive. Set <b>Name:</b> <code>churn_risk</code>, <b>Expression:</b> <code>(CASE WHEN status &lt;&gt; 'active' THEN 40 ELSE 0 END) + (CASE WHEN days_since_login &gt; 30 THEN 30 ELSE 0 END) + (CASE WHEN monthly_revenue = 0 THEN 20 ELSE 0 END) + (CASE WHEN plan = 'free' THEN 10 ELSE 0 END)</code>. Click the column header after the live preview updates — the inline sparkline shows a bimodal distribution.</p></li>
+<li><b>Add <code>expectations</code> step.</b><p>This is the data-quality gate. Connect after the derive. Set <b>Assertions:</b> <code>churn_risk &gt;= 0 AND churn_risk &lt;= 100</code> (sanity) and <code>customer_id IS NOT NULL</code>.</p></li>
+<li><b>Add <code>group_aggregate</code>.</b><p>Connect downstream. Set <b>By:</b> <code>plan</code>, <b>Aggregations:</b> <code>customer_id · count · alias n_customers</code>, <code>churn_risk · mean · alias avg_risk</code>, <code>churn_risk · max · alias max_risk</code>.</p></li>
+<li><b>Add <code>export_to_image</code>.</b><p>Connect from the aggregate. Set <b>Chart kind:</b> <code>bar_counts</code>, <b>X column:</b> <code>plan</code>, <b>Y column:</b> <code>avg_risk</code>, <b>Title:</b> <code>Average churn risk by plan</code>.</p></li>
+<li><b>Add an output</b><p>Point it at the image step.</p></li>
+<li><b>▶️ Run on backend.</b><p>When the run finishes, the artifacts panel shows the bar chart.</p></li>
+</ol>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/tutorials/advanced/01-churn-editor-overview.png" alt="Tutorial 1 finished pipeline with group &amp; aggregate output showing sparklines on categorical and numeric columns">
+</div>
+<figcaption>Completed pipeline in the editor: all steps connected, live preview showing inline sparklines on the <b>plan</b> column and aggregate outputs</figcaption>
+</figure>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+Click <b>🔍 Review</b> in the toolbar after running the pipeline. The AI Pipeline Review examines your work against best practices and suggests improvements (like pinning the reference date to make the pipeline deterministic, or adding assertions to catch empty-bucket regressions). Accept any findings you agree with — DIG opens the diff drawer showing the proposed change side-by-side, and you can merge it into the pipeline with one click.
+</div>
+<hr class="glow">
+<h3>Example 2: Geospatial customer mapping</h3>
+<p><b>Goal:</b> Join customers to cities, build a geographic column from latitude/longitude, compute distances from each customer to San Francisco, and bucket customers by distance.</p>
+<div class="chips">
+<span class="chip">Dataset <b>customers-demo.csv + cities-demo.csv</b></span>
+<span class="chip">Key steps <b>join · pack_struct · cast_type · geo_distance · bin_numeric · group_aggregate · export_to_image</b></span>
+<span class="chip">Output <b>Revenue by distance from SF bar chart</b></span>
+<span class="chip">Best feature <b>geographic meta-type + smart-pick hints</b></span>
+</div>
+<ol class="steps">
+<li><b>New pipeline:</b><p>Create a pipeline named <code>Customer distance from SF</code>.</p></li>
+<li><b>Join customers ← cities.</b><p>Add the customers dataset, then add a <code>join</code> step. Set Left to <code>customers-demo</code>, Right to <code>cities-demo</code>, Type to <code>left</code>, and On to <code>country = country</code>. (Note: customers uses UK; cities uses GB — the join will miss those rows. This is a real-data lesson.)</p></li>
+<li><b>Inspect the joined preview.</b><p>Right-click the new <code>latitude</code> column header → <b>🔗 Trace lineage</b> to confirm it came from cities-demo.</p></li>
+<li><b>Smart-pick: pack & cast to geographic.</b><p>In the hints panel, click the composite card that suggests <code>pack_struct</code> + <code>cast_type</code>. DIG inserts both steps at once, creating a new <code>customer_location</code> column with the 🌍 geographic icon.</p></li>
+<li><b>Add <code>geo_distance</code> step.</b><p>Set From column to <code>customer_location</code>, To column to literal <code>POINT(-122.4194 37.7749)</code> (San Francisco), Output column to <code>distance_km_from_sf</code>, and Unit to <code>kilometers</code>.</p></li>
+<li><b>Add <code>bin_numeric</code> step.</b><p>Set Column to <code>distance_km_from_sf</code>, Bins to <code>0,500,2000,8000,Infinity</code>, Labels to <code>same-city, regional, continental, intercontinental</code>, and Output column to <code>distance_bucket</code>.</p></li>
+<li><b>Add <code>group_aggregate</code> step.</b><p>Set By to <code>distance_bucket</code>. Add two aggregations: <code>customer_id</code> · <code>count</code> · alias <code>n_customers</code>, and <code>monthly_revenue</code> · <code>sum</code> · alias <code>total_revenue</code>.</p></li>
+<li><b>Add <code>export_to_image</code> step.</b><p>Choose Bar chart, set x-axis to <code>distance_bucket</code>, y-axis to <code>total_revenue</code>, and title to <code>Revenue by distance from SF</code>.</p></li>
+<li><b>▶️ Run on backend.</b><p>The chart appears in artifacts as a PNG.</p></li>
+</ol>
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/tutorials/tutorial-bar-by-region.png" alt="Revenue by distance from SF bar chart showing four distance buckets with stacked revenue bars">
+</div>
+<figcaption>The final chart shows <b>revenue by distance bucket</b>, revealing that continental customers generate more total revenue than those in the same city.</figcaption>
+</figure>
+<div class="note tip"><span class="lbl">Tip</span>The <b>smart-pick hints panel</b> surfaces composite operations automatically — when DIG detects a (LAT, LON) pair in your step output, it offers one-click <code>pack_struct</code> + <code>cast_type</code> to build a geographic column instantly. Once cast, every spatial operation (distance, buffer, contains) becomes a single-step add.</div>
+<hr class="glow">
+<h3>Example 3: ML feature engineering & k-means clustering</h3>
+
+<p><b>Goal:</b> Normalize the four numeric features, reduce to 2D with PCA, cluster with k-means, and visualize in a labeled scatter plot.</p>
+
+<div class="chips">
+<span class="chip">Dataset <b>flowers-demo.csv</b></span>
+<span class="chip">Key steps <b>cast_type · derive_column · pca · kmeans · export_to_image</b></span>
+<span class="chip">Output <b>PCA scatter plot + contingency table</b></span>
+<span class="chip">Best feature <b>Column lineage</b></span>
+</div>
+
+<ol class="steps">
+<li><b>Import</b> <code>samples/flowers-demo.csv</code> (150 rows, 4 numeric features: petal_length, petal_width, sepal_length, sepal_width; 1 categorical: species).</li>
+
+<li><b>New pipeline:</b> <code>Iris clustering</code>.</li>
+
+<li><b>Add four <code>cast_type</code> steps</b> (or one composite) to ensure all four numeric columns read as <code>double</code>. Open the dataset profile to confirm; if any read as string, cast each using the smart-picks dropdown.</li>
+
+<li><b>Normalize each numeric column to z-scores</b> with four <code>derive_column</code> steps. For each, use:
+<div class="codewrap"><pre>(column - AVG(column) OVER ()) / NULLIF(STDDEV(column) OVER (), 0)</pre></div>
+Output names: <code>petal_length_z</code>, <code>petal_width_z</code>, <code>sepal_length_z</code>, <code>sepal_width_z</code>.</li>
+
+<li><b>Add <code>pca</code> step</b> for dimensionality reduction:
+<ul>
+<li><b>Columns:</b> <code>petal_length_z, petal_width_z, sepal_length_z, sepal_width_z</code></li>
+<li><b>Components:</b> <code>2</code></li>
+<li><b>Output prefix:</b> <code>pc</code></li>
+</ul>
+The output adds <code>pc_1</code> and <code>pc_2</code>. Click each header—the inline sparkline shows the bimodal/trimodal structure that makes iris a textbook clustering case.</li>
+
+<li><b>Add <code>kmeans</code> step:</b>
+<ul>
+<li><b>Columns:</b> <code>pc_1, pc_2</code></li>
+<li><b>K:</b> <code>3</code> (iris has 3 species)</li>
+<li><b>Output column:</b> <code>cluster</code></li>
+</ul>
+</li>
+
+<li><b>Trace lineage on the <code>cluster</code> column.</b> Right-click the <code>cluster</code> header → <b>Trace lineage</b>. The drawer shows a deep dependency stack: <code>flowers-demo.csv</code> → numeric columns → <code>cast_type</code> → <code>derive_column</code> (z-scores) → <code>pca</code> (pc_1, pc_2) → <code>kmeans</code> (cluster). This is auditable end-to-end lineage on an ML pipeline.</li>
+
+<li><b>Add <code>export_to_image</code>:</b>
+<ul>
+<li><b>Chart kind:</b> <code>scatter</code></li>
+<li><b>X column:</b> <code>pc_1</code></li>
+<li><b>Y column:</b> <code>pc_2</code></li>
+<li><b>Color by:</b> <code>cluster</code></li>
+<li><b>Title:</b> <code>Iris clusters in PCA space</code></li>
+</ul>
+</li>
+
+<li><b>Run on backend.</b> The scatter plot appears in artifacts. Compare to ground-truth species—k-means typically nails the clean cluster (versicolor) and partially confuses the two overlapping ones (setosa / virginica).</li>
+
+<li><b>Add a second <code>group_aggregate</code></b> (parallel branch from kmeans output):
+<ul>
+<li><b>By:</b> <code>species, cluster</code></li>
+<li><b>Aggregations:</b> <code>*</code> · <code>count</code> · alias <code>n</code></li>
+</ul>
+The output is a 3×3 contingency table. Pure clusters have one nonzero per row; iris in 2D PCA achieves ~94% accuracy.</li>
+
+<li><b>Add a second <code>Output</code></b> node pointing at the contingency table, then <b>run on backend.</b> Both artifacts appear: scatter plot and comparison table.</li>
+</ol>
+
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/tutorials/tutorial-pca-flowers.png" alt="Scatter plot showing iris clusters in PCA space, colored by k-means cluster assignment (k=3)">
+</div>
+<figcaption>Output: PCA scatter plot with <b>three k-means clusters</b> overlaid on the reduced feature space. Versicolor (clean separation) clusters tightly; setosa and virginica partially overlap.</figcaption>
+</figure>
+
+<div class="note tip">
+<span class="lbl">Tip</span>
+Use <b>column lineage</b> to audit every derived feature: right-click any output column and trace back through each transform. For ML pipelines, this makes the full feature-engineering chain auditable—from raw CSV through normalization, dimensionality reduction, and clustering. The lineage drawer is the single feature that turns a pipeline from a black box into a reviewable artifact.
+</div>
+<hr class="glow">
+<h3>Example 4: Stock forecast &amp; drift monitoring</h3>
+<p><b>Goal:</b> Forecast 30 days of stock prices, schedule the pipeline daily, and use the distribution-diff overlay + AI review to monitor for prediction drift between consecutive runs.</p>
+<div class="chips">
+  <span class="chip">Dataset <b>stock-demo.csv</b></span>
+  <span class="chip">Key steps <b>forecast · schedule</b> · drift monitoring (UI)</span>
+  <span class="chip">Output <b>line chart with CI bands</b></span>
+  <span class="chip">Best feature <b>Engineer mode + AI review</b></span>
+</div>
+<ol class="steps">
+  <li><b>Import stock-demo.csv and create "Stock 30-day forecast" pipeline.</b><p>Use the Ingest action from the Home screen; give the pipeline the exact title.</p></li>
+  <li><b>Add cast_type step.</b><p>Convert <code>date</code> to date type. (Open the Live SQL view to see the <code>CAST("date" AS DATE)</code> CTE — this maps visual operations to raw SQL.)</p></li>
+  <li><b>Add filter_rows step.</b><p>Predicate: <code>ticker = 'DIGX'</code>. This isolates the synthetic ticker in the demo file; adapt for your own multi-ticker data.</p></li>
+  <li><b>Add sort_rows step.</b><p>Sort by <code>date</code> ascending — required for the time-series forecast to read contiguous data.</p></li>
+  <li><b>Add forecast step.</b><p>Set <b>Time column</b> to <code>date</code>, <b>Value column</b> to <code>close</code>, <b>Horizon</b> to <code>30</code>, and toggle <b>Confidence intervals</b> on. The output adds <code>forecast</code>, <code>lower_bound</code>, and <code>upper_bound</code> columns; click each header to see the sparkline distribution grow wider as the horizon extends.</p></li>
+  <li><b>Add derive_column step to flag wide-uncertainty days.</b><p><b>Name:</b> <code>is_uncertain</code>. <b>Expression:</b> <code>(upper_bound - lower_bound) &gt; (forecast * 0.4)</code>. This tags days where the confidence interval exceeds 40% of the predicted value.</p></li>
+  <li><b>Add expectations step.</b><p>Insert two checks: <code>forecast IS NOT NULL OR date &lt;= (SELECT MAX(date) FROM input)</code> (forecasts only for future dates) and <code>lower_bound &lt;= forecast AND forecast &lt;= upper_bound</code> (interval sanity).</p></li>
+  <li><b>Add export_to_image step.</b><p><b>Chart kind:</b> <code>line</code>. <b>X column:</b> <code>date</code>. <b>Y columns:</b> <code>close, forecast, lower_bound, upper_bound</code>. <b>Title:</b> <code>30-day forecast with 95% CI</code>. This creates a multi-line plot with your historical and projected values.</p></li>
+  <li><b>Add an output pointing at the image step.</b><p>Name it <code>forecast_chart</code> or use the default output name.</p></li>
+  <li><b>Run on backend.</b><p>Click <strong>▶ Run</strong>. The chart renders with historical close prices and the forecast band.</p></li>
+  <li><b>Open Schedules and create a new schedule.</b><p>Cron expression: <code>0 18 * * 1-5</code> (6pm weekdays). Wire the pipeline and save.</p></li>
+  <li><b>Wait for at least 2 scheduled runs.</b><p>Manually trigger back-to-back runs if you want to see drift monitoring immediately. Each run writes a profile snapshot.</p></li>
+  <li><b>Re-open the editor and look at the forecast column header.</b><p>Once a prior run's profile exists, the sparkline now shows a <b>muted overlay</b> — the previous run's distribution. If the model drifted significantly, a 🔴 drift badge appears.</p></li>
+  <li><b>Hover the sparkline to inspect the drift.</b><p>The popover shows current vs previous distribution + a KL divergence number. Switch to Engineer mode (<span class="kbd">⌘⇧E</span>) to see the raw KL value and unlock the per-column "compare to" picker for comparing against any historical run.</p></li>
+  <li><b>Click Review (🔍) to run AI review in Engineer mode.</b><p>Engineer mode shows confidence percentages and SQL-level diffs. Typical findings surface forecast variance growth, SQL optimization hints, and anomaly checks on adjacent columns. Apply suggestions to see the diff drawer; accept to update the pipeline.</p></li>
+</ol>
+<figure>
+  <div class="frame"><div class="chrome"><i></i><i></i><i></i></div>
+    <img src="images/tutorials/tutorial-forecast-stock.png" alt="Forecast result chart — multi-line plot showing 365 days of historical close price (solid line) and 30-day forecast band (shaded region with upper/lower bounds)."></div>
+  <figcaption>The forecast output — historical <b>close</b> price (solid line) and the 30-day <b>forecast</b> band (shaded with <b>lower_bound</b> and <b>upper_bound</b> confidence interval lines).</figcaption>
+</figure>
+<div class="note tip"><span class="lbl">Drift monitoring at a glance</span>Engineer mode + the <b>distribution-diff overlay</b> on column headers is DIG's signature for production time-series work. Once scheduled runs land, the muted background sparkline + KL divergence number let you spot model drift in seconds — no manual comparison needed. The "compare to" picker lets you answer "is today's forecast normal vs last Wednesday?" instantly.</div>
+<hr class="glow">
+<h3>Example 5: E-commerce channel revenue &amp; AI-driven cleanup</h3>
+
+<p><b>Goal:</b> Clean a 5,000+ order dataset with quality issues, compute revenue by channel × category × week, surface data quality problems with the AI Reviewer, and export a clean CSV.</p>
+
+<div class="chips">
+  <span class="chip">Dataset <b>orders-demo.csv (5,023 rows)</b></span>
+  <span class="chip">Key steps <b>cast_type · filter_rows · expectations · group_aggregate · sort_rows</b></span>
+  <span class="chip">Output <b>CSV export</b></span>
+  <span class="chip">Best feature <b>AI Pipeline Review</b></span>
+</div>
+
+<ol class="steps">
+  <li><b>Import the orders dataset.</b><p><i>Datasets → Import</i> and drop <code>orders-demo.csv</code>. The live profile shows the header histograms: <code>channel</code> has 5 categorical bars (organic dominant), <code>revenue</code> and <code>fulfillment_hrs</code> have long tails, <code>qty</code> is skewed toward 1.</p></li>
+  
+  <li><b>Create a new pipeline.</b><p>Name it <code>Channel revenue weekly</code>.</p></li>
+  
+  <li><b>Add <code>cast_type</code> to convert <code>order_ts</code> to datetime.</b><p>CSV ingest reads timestamps as strings; cast is required for the date truncation in the next step.</p></li>
+  
+  <li><b>Add <code>derive_column</code> to extract the ISO week.</b><p>Set <b>Name:</b> <code>week_start</code> and <b>Expression:</b> <code>DATE_TRUNC('week', order_ts)::DATE</code></p></li>
+  
+  <li><b>Add <code>filter_rows</code> to keep only completed orders.</b><p>Set the predicate to <code>status = 'completed'</code>. The live grid shows the dataset drops to ~85% of original rows as refunded and cancelled orders are excluded.</p></li>
+  
+  <li><b>Add <code>expectations</code> for data-quality assertions.</b><p>Set four assertions: <code>revenue &gt; 0</code>, <code>qty &gt;= 1</code>, <code>country IS NOT NULL</code>, and <code>customer_email IS NOT NULL OR status = 'cancelled'</code> (explicitly allowing refunded orders without email). Each assertion contributes a run artifact; any failure stops the pipeline loudly.</p></li>
+  
+  <li><b>Add <code>group_aggregate</code> to roll up by week, channel, and category.</b><p>Set <b>By:</b> <code>week_start, channel, category</code>. Add five aggregations: <code>order_id</code> as <code>count</code> → <code>n_orders</code>, <code>revenue</code> as <code>sum</code> → <code>total_revenue</code>, <code>revenue</code> as <code>mean</code> → <code>avg_order_value</code>, <code>qty</code> as <code>sum</code> → <code>total_qty</code>, and <code>fulfillment_hrs</code> as <code>median</code> → <code>median_fulfillment_hrs</code> (median avoids distortion from the long tail).</p></li>
+  
+  <li><b>Add <code>sort_rows</code> to order the output.</b><p>Sort by <code>week_start</code> ascending, then <code>total_revenue</code> descending, so each week's rows list highest revenue first.</p></li>
+  
+  <li><b>Add <code>export_to_file</code> to write CSV.</b><p>Set <b>Format:</b> <code>csv</code> and <b>Path:</b> <code>weekly-channel-revenue.csv</code></p></li>
+  
+  <li><b>Create an output</b><p>Point it at the CSV export step.</p></li>
+  
+  <li><b>Run on backend.</b><p>The pipeline completes in 2–3 seconds. The artifacts panel shows the CSV card with 933 rolled-up rows and 8 columns.</p></li>
+</ol>
+
+<figure>
+  <div class="frame">
+    <div class="chrome"><i></i><i></i><i></i></div>
+    <img src="images/tutorials/advanced/06-orders-editor-overview.png" alt="Tutorial 6 finished pipeline — 933 rolled-up rows, 8 cols, sparklines for each metric">
+  </div>
+  <figcaption>Finished pipeline showing <b>933 aggregated rows</b>, one row per (week, channel, category) combination. Column headers display sparklines for distribution at a glance.</figcaption>
+</figure>
+
+<h4>Review the results with AI</h4>
+
+<p>Click <b>🔍 Review</b> in the toolbar. The AI Pipeline Reviewer surfaces findings like:</p>
+
+<ul>
+  <li><i>"`group_aggregate` uses `mean` on `revenue` which is sensitive to outliers — consider also computing P95 or median."</i></li>
+  <li><i>"No `expectations` assertion on `total_revenue >= 0` post-aggregation. A negative total would indicate corruption worth catching loudly."</i></li>
+  <li><i>"3% of rows had NULL `customer_email` — if downstream users need email, add a column annotation."</i></li>
+</ul>
+
+<figure>
+  <div class="frame">
+    <div class="chrome"><i></i><i></i><i></i></div>
+    <img src="images/tutorials/advanced/06-orders-ai-review.png" alt="AI Pipeline Review panel — drawer slides in from the right with findings and Apply buttons">
+  </div>
+  <figcaption>AI Pipeline Review panel showing real data-quality findings. Click <b>Apply</b> on any finding to see the proposed pipeline change in a diff drawer.</figcaption>
+</figure>
+
+<div class="note tip">
+  <span class="lbl">Tip</span>
+  <p>This example showcases DIG's <b>AI Pipeline Reviewer</b> — it only surfaces meaningful findings on datasets with real problems. The 5,000+ order sample is large enough to detect long-tail skew, missing values, and aggregation risks that smaller datasets miss. Use the reviewer during development to catch data-quality assumptions before they become production incidents.</p>
+</div>
+<hr class="glow">
+<h3>Example 6: Factory sensor analysis &amp; defect prediction</h3>
+<p><b>Goal:</b> Derive leading-indicator vibration &amp; temperature features from 43K rows of factory telemetry, detect defect-prone shifts, and ship a multi-panel chart for reliability engineering triage.</p>
+<div class="chips">
+<span class="chip">Dataset <b>manufacturing-demo.csv (43K rows)</b></span>
+<span class="chip">Key steps <b>cast_type, filter_rows, rolling, window_aggregate, group_aggregate</b></span>
+<span class="chip">Output <b>PNG chart + CSV export</b></span>
+<span class="chip">Best feature <b>Vibration std 15m rolling with per-machine p95 flag</b></span>
+</div>
+<ol class="steps">
+<li><b>Import manufacturing-demo.csv.</b> <p>Datasets → Import. Profiles show 6 lines, 15 machines, ~0.5% defect events, sporadic sensor blackouts (NULLs), and ~20 unphysical temperature spikes &gt;200°C.</p></li>
+<li><b>Create "Factory defect signals" pipeline.</b> <p>New pipeline to isolate one production line for clarity.</p></li>
+<li><b>Add cast_type step.</b> <p>Map column ts → datetime. Strict off so malformed timestamps become NULL rather than failing the run.</p></li>
+<li><b>Add filter_rows step.</b> <p>Predicate: <code>line_id = 'LINE-D'</code>. Scopes to 7K rows (LINE-D has the degrading machine M-D1). Filters before rolling computation avoid wasting ~85% of windowing work.</p></li>
+<li><b>Add expectations quality gate.</b> <p>Three rules: <code>temperature_c BETWEEN 0 AND 200</code> (warning), <code>vibration_mm_s >= 0</code> (error), <code>machine_id IS NOT NULL</code> (error). Warning severity surfaces faulty-sensor rows without failing the run.</p></li>
+<li><b>Add window_aggregate for defect lookback.</b> <p>Function max, source column is_defect_event, partition by machine_id, order by ts ascending, alias defect_5min_lookback. Creates a leading-window feature showing defect 1 tick ahead (5 minutes at your granularity).</p></li>
+<li><b>Add rolling step for vibration &amp; temperature.</b> <p>Time column ts. Two windows: vibration_mm_s std 15m (alias vibration_std_15m), temperature_c mean 15m (alias temperature_mean_15m). Min periods 2. Sparklines on vibration_std_15m show clear spikes where defect pre-signals appear.</p></li>
+<li><b>Add derive_column for per-machine vibration p95 flag.</b> <p>Name vibration_above_p95. Expression: <code>vibration_mm_s &gt; QUANTILE_CONT(vibration_mm_s, 0.95) OVER (PARTITION BY machine_id)</code>. Per-machine normalization beats global thresholds — different machines have different baselines.</p></li>
+<li><b>Add group_aggregate for fleet roll-up.</b> <p>By machine_id, shift. Aggregations: ts count (n_ticks), temperature_c mean (temperature_mean), temperature_c max (temperature_max), vibration_mm_s mean (vibration_mean), vibration_mm_s std (vibration_std), is_defect_event sum (defects).</p></li>
+<li><b>Add sort_rows step.</b> <p>Sort by defects descending. Worst-shift-first is the correct triage order for the reliability engineer.</p></li>
+<li><b>Add export_to_image step.</b> <p>Chart kind line, X column ts, Y columns temperature_c, vibration_mm_s, defect_count_running, title "LINE-D telemetry — temperature + vibration with defect overlay".</p></li>
+<li><b>Add export_to_file step.</b> <p>Format csv, path factory-defect-signals.csv. Add an output pointing at the CSV step.</p></li>
+<li><b>Run on backend.</b> <p>Completes in 3-4 seconds on backend DuckDB/Polars. Artifacts panel shows PNG card + CSV card. Click vibration_std_15m column header to open the rich profile drawer — histogram shows bimodal distribution with baseline vibration cluster and long thin tail of defect pre-spikes.</p></li>
+</ol>
+<figure>
+<div class="frame">
+<div class="chrome"><i></i><i></i><i></i></div>
+<img src="images/tutorials/advanced/10-factory-editor-overview.png" alt="Factory defect signals pipeline with rolling-window columns visible; LINE-D telemetry with temperature, vibration, and defect event rows highlighted">
+</div>
+<figcaption>Finished pipeline showing <b>rolling window columns</b> (vibration_std_15m, temperature_mean_15m) and defect-5min-lookback feature; click any column header to inspect the rich profile including sparklines and distribution overlays.</figcaption>
+</figure>
+<div class="note tip">
+<span class="lbl">Tip</span>
+The <b>AI Pipeline Reviewer</b> earns its keep on telemetry: it flags leading-window information leakage (your defect_5min_lookback column), rolling computations placed after filters (wasting work), and per-machine normalization gaps. Click 🔍 Review in the toolbar to see severity-ranked findings — these are the kinds of nitpicks a senior reliability engineer would surface in PR review.
+</div>
+</section>
+
+<!-- SECTION:packs -->
+<section id="packs"><h2 class="sec"><span class="num">10</span>Addendum — Packs & their features</h2><p class="sec-sub">What a pack is, the 6 bundled packs, and how to author your own.</p><h3>What is a Pack?</h3><p>A <b>Pack</b> is a distribution unit that bundles one or more <span class="gterm" data-term="Step">steps</span> (and optionally connectors). Instead of adding individual steps scattered across your filesystem, you install or remove packs as whole archives (`.dpack` files) via <b>Settings → Step Packs</b>. Steps that come from a pack get a faint violet row tint and a 📦 source tag in the step picker, so you always know which extension a step came from.</p><h3>How Packs are Structured</h3><p>Every pack follows the same folder layout:</p><div class="codewrap"><pre>my_pack/
+├── pack.json          <span class="c">← manifest: id, version, steps, dependencies, resources</span>
+├── README.md          <span class="c">← narrative description</span>
+├── LICENSES.md        <span class="c">← license + attribution roll-up</span>
+├── data.zip           <span class="c">← bundled reference data (optional)</span>
+├── steps/
+│   └── my_step/
+│       ├── manifest.json
+│       └── step.py
+└── connectors/        <span class="c">← optional</span></pre></div><p>The pack's <code>pack.json</code> declares which steps it contains, any Python dependencies it needs, and (if present) reference data files for lookup operations. The framework discovers and registers your pack on startup — no boilerplate registration needed.</p><figure><div class="frame"><div class="chrome"><i></i><i></i><i></i></div><img src="images/authoring/manifest-fields.svg" alt="Pack manifest structure annotated"></div><figcaption>How a pack manifest's key fields map to the runtime. The <code>steps</code> list names the step IDs that this pack contributes to the catalog.</figcaption></figure><h3>The 6 Bundled Packs</h3><div class="ref"><div class="ref-head"><h3>📈 Business charts</h3><span class="era">v0.2.0</span></div><p><b>Purpose:</b> BI dashboard staples rendered as PNG artifacts using matplotlib.</p><p><b>Steps:</b></p><ul><li><code>waterfall_chart</code> — cumulative contribution breakdown</li><li><code>pareto_chart</code> — 80/20 rule visualization</li><li><code>funnel_chart</code> — sequential conversion flow</li><li><code>pie_donut</code> — composition by category</li><li><code>mosaic_marimekko</code> — 2-D part-to-whole matrix</li><li><code>bullet_chart</code> — target vs. actual comparison</li><li><code>gauge_chart</code> — single-metric speedometer</li></ul></div><div class="ref"><div class="ref-head"><h3>📅 Dates Pack</h3><span class="era">v0.1.0</span></div><p><b>Purpose:</b> Calendar arithmetic beyond the built-in <code>extract_date_parts</code> step.</p><p><b>Steps:</b></p><ul><li><code>fiscal_year_parts</code> — extract fiscal year, quarter, month with custom calendar</li><li><code>business_days_between</code> — count working days excluding country holidays</li><li><code>date_snap</code> — snap dates to start/end of period (week, month, quarter, year)</li></ul></div><div class="ref"><div class="ref-head"><h3>🌍 Geospatial Pack</h3><span class="era">v1.0.0</span></div><p><b>Purpose:</b> Spatial operations, boundary lookups, and geocoding. Bundles 7 reference datasets (US states, countries, ZIP codes, cities, and supra-national groups).</p><p><b>Steps:</b></p><ul><li><code>parse_geometry</code> — parse WKT/WKB geometry strings to binary form</li><li><code>spatial_join</code> — point-in-polygon or polygon-overlap join</li><li><code>geohash_cell</code> — encode lat/lon as geohash or H3 grid cell ID</li><li><code>vincenty_distance</code> — great-circle distance in miles or kilometers</li><li><code>crs_transform</code> — reproject geometries to a new coordinate system (EPSG)</li><li><code>reverse_geocode</code> — lat/lon → nearest city name</li><li><code>map_match</code> — snap noisy GPS traces to a road network</li><li><code>wkb_by_country</code> — lookup country boundary by name, ISO code, or lat/lon point</li><li><code>wkb_by_us_state</code> — lookup US state boundary by abbreviation, name, or point</li><li><code>wkb_by_us_zip</code> — lookup US ZIP code boundary by code or point</li><li><code>wkb_by_us_city</code> — lookup US city boundary by name or point</li></ul></div><div class="ref"><div class="ref-head"><h3>📐 Statistics Pack</h3><span class="era">v0.1.0</span></div><p><b>Purpose:</b> Hypothesis testing primitives for group comparison.</p><p><b>Steps:</b></p><ul><li><code>t_test</code> — two-sample t-test for mean differences</li><li><code>ks_test</code> — two-sample Kolmogorov-Smirnov test for distribution similarity</li></ul></div><div class="ref"><div class="ref-head"><h3>📐 Statistics Pro</h3><span class="era">v0.2.0</span></div><p><b>Purpose:</b> Full inferential-statistics toolkit extending the Statistics Pack. Includes advanced hypothesis tests, effect sizes, confidence intervals, and predictive modeling.</p><p><b>Steps:</b></p><ul><li><code>chi_square</code> — chi-square test for independence in contingency tables</li><li><code>anova</code> — one-way ANOVA for comparing 3+ group means</li><li><code>mann_whitney</code> — Mann-Whitney U test (non-parametric alternative to t-test)</li><li><code>effect_size</code> — compute Cohen's d, Cramér's V, and other effect-size metrics</li><li><code>multiple_comparison_correction</code> — Bonferroni, Holm, FDR, and other p-value adjustments</li><li><code>bootstrap_ci</code> — bootstrap resampling for confidence intervals without distributional assumptions</li><li><code>logistic_regression</code> — binary classification with coefficient reporting and ROC curves</li></ul></div><div class="ref"><div class="ref-head"><h3>⏳ Time-series Pro</h3><span class="era">v0.3.0</span></div><p><b>Purpose:</b> Stationarity tests, lag analysis, anomaly detection, and specialized time-series visualizations. Pairs with the built-in <code>forecast</code>, <code>rolling</code>, <code>resample</code>, and <code>seasonal_decompose</code> steps.</p><p><b>Steps:</b></p><ul><li><code>adf_test</code> — Augmented Dickey-Fuller test for stationarity</li><li><code>kpss_test</code> — KPSS test for stationarity (null: stationary)</li><li><code>acf_pacf</code> — autocorrelation and partial autocorrelation function plots</li><li><code>changepoint_detection</code> — detect structural breaks in a time series</li><li><code>anomaly_zscore</code> — flag observations exceeding ±N standard deviations</li><li><code>replace_outliers</code> — median-based winsorization or removal of outliers</li><li><code>candlestick_chart</code> — OHLC (open/high/low/close) candlestick render</li><li><code>stream_graph</code> — center-baselined stacked area chart for composition over time</li><li><code>horizon_chart</code> — compact small-multiples visualization for many time series</li></ul></div><h3>Build Your Own Pack</h3><p>The framework is fully local — authoring happens on your machine, and packs are installed via `.dpack` archives with no cloud registry or GitHub Actions required. The complete guide to authoring packs, including how to bundle reference data, handle sources, and publish versioned releases, lives in <code>docs/BUILDING_PACKS.md</code>. For a worked example, study the <code>geospatial_pack</code> folder, which demonstrates reference-data bundling (7 parquet files in a zip), build-time data transforms (TopoJSON decoding), and multi-modal lookup steps.</p></section>
+
+<!-- SECTION:glossary -->
+<section id="glossary">
+  <h2 class="sec"><span class="num">11</span>Addendum — Glossary</h2>
+  <p class="sec-sub">The words DIG uses for its building blocks. If you've used a spreadsheet, a SQL editor, or any visual data tool, most of this lands quickly — the names are deliberately plain.</p>
+
+  <h3>Quick reference</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Term</th><th>One-liner</th></tr></thead>
+    <tbody>
+      <tr><td><b>Dataset</b></td><td>An imported file or external source — the rows-and-columns input to your work.</td></tr>
+      <tr><td><b>Connector</b></td><td>The plugin that knows how to read or write a particular format or system.</td></tr>
+      <tr><td><b>Pipeline</b></td><td>A graph of steps that takes one or more datasets and produces an output.</td></tr>
+      <tr><td><b>Step</b></td><td>One transformation inside a pipeline — filter, cast, group, join, derive, etc.</td></tr>
+      <tr><td><b>Profile</b></td><td>The per-column statistics DIG computes on ingest (types, nulls, distincts…).</td></tr>
+      <tr><td><b>Sample</b></td><td>The subset of rows used for the in-browser live preview while you edit.</td></tr>
+      <tr><td><b>Hint</b></td><td>A rule-based suggestion shown in the editor's side panel.</td></tr>
+      <tr><td><b>Run</b></td><td>One backend execution of a pipeline. Runs write results to disk.</td></tr>
+      <tr><td><b>Output</b></td><td>What a pipeline writes when run — Parquet by default, plus any sinks you add.</td></tr>
+      <tr><td><b>Schedule</b></td><td>A cron expression that runs a pipeline automatically on a cadence.</td></tr>
+      <tr><td><b>Lineage</b></td><td>Optional per-row source tracing — click 🔍 to see which input row(s) made it.</td></tr>
+      <tr><td><b>Module</b></td><td>A reusable, packaged sub-pipeline you can drop into a larger pipeline.</td></tr>
+      <tr><td><b>Sub-pipeline</b></td><td>A pipeline published as a reusable step (<code>metadata.publishedAsStep</code>). Appears in every other pipeline's picker as <code>pipeline:&lt;id&gt;</code>.</td></tr>
+      <tr><td><b>Checkpoint</b></td><td>A labelled save (💾 Save) that survives autosave history pruning — the version you intend to return to.</td></tr>
+      <tr><td><b>Sampling</b></td><td>Per-pipeline setting (head / tail / random / systematic) controlling how the editor preview draws rows.</td></tr>
+      <tr><td><b>Pinned etag</b></td><td>The specific source-pipeline version a sub-pipeline consumer is locked to; bumped via the ⬆ Upgrade button.</td></tr>
+      <tr><td><b>Exposed param</b></td><td>A node parameter declared (via the 🪆 expose pill) as customisable when the pipeline is published as a step.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>In a bit more detail</h3>
+  <div class="grid cols-2">
+    <div class="card"><span class="ico">📄</span><h4>Dataset</h4><p>Your imported data — CSV, TSV, Excel, JSON, Parquet, Feather, generic delimited text, and scientific binary formats (NumPy, HDF5, MATLAB, NetCDF, FITS). DIG profiles every column on import so you know what you're working with. Datasets live in your local data directory — DIG never uploads them.</p></div>
+    <div class="card"><span class="ico">🔌</span><h4>Connector</h4><p>Each file format and external system (REST, JDBC, Postgres, MySQL, SQLite…) is a small connector plugin: one Python file + one JSON manifest under <code>backend/connectors/</code>. Drop in your own and DIG picks it up on next start.</p></div>
+    <div class="card"><span class="ico">🪢</span><h4>Pipeline</h4><p>A directed graph of steps that consumes datasets and produces output. Pipelines are <em>portable</em> — stored as a small <code>.dig.json</code> document you can commit to git, share, or replay against a different dataset of the same shape. A pipeline says <em>what</em> to do, never <em>where</em> to run it.</p></div>
+    <div class="card"><span class="ico">🧩</span><h4>Step</h4><p>A single transformation: keep some rows, change a column's type, group and aggregate, join two inputs, derive a column from an expression, write a file, train a model, render a chart. DIG ships 62 built-in steps plus packs — and you can drop in your own.</p></div>
+    <div class="card"><span class="ico">📊</span><h4>Profile</h4><p>On ingest, DIG runs every column through a stats pass: physical type, null fraction, distinct count, min/max, top values, distribution. The profile feeds the header tooltip, smart cast picks, and the Hints panel — and auto-detects <em>meta-types</em> (emails, currencies, coordinates, vectors…).</p></div>
+    <div class="card"><span class="ico">🔬</span><h4>Sample</h4><p>The editor recomputes a live preview on every change. To stay snappy, that preview runs on a sample (default 100,000 rows) in DuckDB-WASM in your browser. The full dataset is only touched when you Run on the backend. The status strip always shows the sample size in use.</p></div>
+    <div class="card"><span class="ico">🧠</span><h4>Hint</h4><p>The Hints panel shows deterministic, rule-based observations from the column profile — <em>"this column is 30% null — drop nulls?"</em>, <em>"these two columns look like (lat, lon) — pack and cast to geographic"</em>. Not predictions, not ranked AI cards — a calm "by the way…" you can apply with one click.</p></div>
+    <div class="card"><span class="ico">▶️</span><h4>Run</h4><p>One execution of the whole pipeline on the backend over the full dataset. Runs happen as background jobs (navigate away and come back), produce Parquet by default, and surface progress + logs. Past runs are listed under Run history.</p></div>
+    <div class="card"><span class="ico">📤</span><h4>Output</h4><p>What a pipeline writes when run. By default Parquet to your local data directory; you can also configure other sinks (another file format, a database, a webhook, a rendered chart). Outputs are first-class, versioned with the rest of the steps.</p></div>
+    <div class="card"><span class="ico">⏰</span><h4>Schedule</h4><p>A pipeline can run automatically on a standard cron expression (<code>0 6 * * *</code>). The Schedules page lets you add, list, pause, or trigger a scheduled pipeline; history shows every triggered run and its outcome.</p></div>
+    <div class="card"><span class="ico">🔍</span><h4>Lineage</h4><p>Optional per-row source tracing. Turn on 🔍 lineage in the editor and the run records which input row(s) each output row came from — then click 🔍 on any output row to jump back to the source. Adds ~10–30% run time; off by default.</p></div>
+    <div class="card"><span class="ico">🪆</span><h4>Module</h4><p>A pipeline you've packaged for reuse. Drop a module into another pipeline as a single node and DIG runs it inline like any other step — a small library of reusable patterns without copy-pasting steps between pipelines.</p></div>
+  </div>
+
+  <div class="note tip"><span class="lbl">See also</span>The deeper file-format and architecture vocabulary (parquet caches, the <code>.dig.json</code> schema, the WASM/backend split) lives in <code>docs/ARCHITECTURE.md</code>; the full step catalogue in <code>docs/STEPS.md</code>.</div>
+</section>
+
+</div>
+</main>
+
+<footer><div class="wrap">
+  <span>🌳 <strong>DataInsightGrove™</strong> · DIG™ — self-hosted data preparation. AGPL-3.0-or-later.</span>
+  <span class="muted">The 🌳 emoji is generic Unicode (U+1F333), not a trademark. · v1.0.0-rc3</span>
+</div></footer>
+
+<!-- ═══ OVERLAYS ═══ -->
+<div id="lightbox" aria-hidden="true"><img src="" alt=""></div>
+<div id="cheats" aria-hidden="true"><div class="panel">
+  <h3>⌨ Keyboard shortcuts</h3>
+  <p class="muted" style="margin-top:-6px">These are DIG's in-app shortcuts. Press <span class="kbd">Esc</span> to close this panel.</p>
+  <div class="kgrid">
+    <div class="krow"><span>Command palette</span><span class="kbd">⌘K</span></div>
+    <div class="krow"><span>This cheatsheet</span><span class="kbd">?</span></div>
+    <div class="krow"><span>Close any overlay</span><span class="kbd">Esc</span></div>
+    <div class="krow"><span>Save / Save As</span><span class="kbd">⌘S</span> / <span class="kbd">⌘⇧S</span></div>
+    <div class="krow"><span>Undo / Redo</span><span class="kbd">⌘Z</span> / <span class="kbd">⌘⇧Z</span></div>
+    <div class="krow"><span>Focus search</span><span class="kbd">/</span></div>
+    <div class="krow"><span>Go → Home</span><span class="kbd">g h</span></div>
+    <div class="krow"><span>Go → Pipelines</span><span class="kbd">g p</span></div>
+    <div class="krow"><span>Go → Datasets</span><span class="kbd">g d</span></div>
+    <div class="krow"><span>Go → Runs</span><span class="kbd">g r</span></div>
+    <div class="krow"><span>Go → Catalog</span><span class="kbd">g c</span></div>
+    <div class="krow"><span>Go → Settings</span><span class="kbd">g s</span></div>
+  </div>
+  <p class="muted" style="margin-top:16px">Full reference: <code>docs/KEYBOARD_SHORTCUTS.md</code>.</p>
+</div></div>
+
+<!-- ═══ GLOSSARY TOOLTIP DATA + BEHAVIOUR ═══ -->
+<div class="gtip" id="gtip" role="tooltip"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════
+   INTERACTIVITY — all vanilla, no dependencies. Reduced-motion aware.
+   ════════════════════════════════════════════════════════════════════════ */
+(function(){
+  "use strict";
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── Theme toggle (persisted + system default) ── */
+  var root = document.documentElement, tbtn = document.getElementById("theme-btn");
+  function applyTheme(t){ root.setAttribute("data-theme", t); tbtn.textContent = t === "dark" ? "🌙" : "☀️"; }
+  var saved = null; try { saved = localStorage.getItem("dig-manual-theme"); } catch(e){}
+  if (!saved) saved = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  applyTheme(saved);
+  tbtn.addEventListener("click", function(){
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next); try { localStorage.setItem("dig-manual-theme", next); } catch(e){}
+  });
+
+  /* ── Reading progress bar ── */
+  var bar = document.getElementById("progress");
+  function onScroll(){
+    var h = document.documentElement, max = h.scrollHeight - h.clientHeight;
+    bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + "%";
+  }
+  addEventListener("scroll", onScroll, {passive:true}); onScroll();
+
+  /* ── Copy-to-clipboard buttons on every <pre> ── */
+  document.querySelectorAll(".codewrap").forEach(function(w){
+    var pre = w.querySelector("pre"); if(!pre) return;
+    var b = document.createElement("button"); b.className="copy-btn"; b.type="button"; b.textContent="Copy";
+    b.addEventListener("click", function(){
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        b.textContent="Copied ✓"; b.classList.add("ok");
+        setTimeout(function(){ b.textContent="Copy"; b.classList.remove("ok"); }, 1400);
+      });
+    });
+    w.appendChild(b);
+  });
+
+  /* ── Lightbox for screenshots ── */
+  var lb = document.getElementById("lightbox"), lbimg = lb.querySelector("img");
+  document.querySelectorAll("figure .frame").forEach(function(f){
+    f.addEventListener("click", function(){
+      var img = f.querySelector("img"); if(!img) return;
+      lbimg.src = img.src; lbimg.alt = img.alt; lb.classList.add("open");
+    });
+  });
+  lb.addEventListener("click", function(){ lb.classList.remove("open"); lbimg.src=""; });
+
+  /* ── Tabs ── */
+  document.querySelectorAll("[data-tabs]").forEach(function(t){
+    var btns = [].slice.call(t.querySelectorAll(".tab-btn")),
+        panels = [].slice.call(t.querySelectorAll(".tab-panel"));
+    btns.forEach(function(b,i){
+      b.addEventListener("click", function(){
+        btns.forEach(function(x){ x.setAttribute("aria-selected","false"); });
+        panels.forEach(function(p){ p.classList.remove("active"); });
+        b.setAttribute("aria-selected","true"); if(panels[i]) panels[i].classList.add("active");
+      });
+    });
+  });
+
+  /* ── Cheatsheet overlay (?) ── */
+  var cheats = document.getElementById("cheats"), cbtn = document.getElementById("cheats-btn");
+  function openCheats(){ cheats.classList.add("open"); }
+  function closeOverlays(){ cheats.classList.remove("open"); lb.classList.remove("open"); }
+  cbtn.addEventListener("click", openCheats);
+  cheats.addEventListener("click", function(e){ if(e.target===cheats) closeOverlays(); });
+  addEventListener("keydown", function(e){
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if(e.key==="?" && !typing){ e.preventDefault(); openCheats(); }
+    if(e.key==="Escape"){ closeOverlays(); }
+    if(e.key==="/" && !typing){ e.preventDefault(); document.getElementById("search-input").focus(); }
+  });
+
+  /* ── Scrollspy: highlight the active section in the rail ── */
+  var links = [].slice.call(document.querySelectorAll(".page-toc a"));
+  var map = {}; links.forEach(function(a){ map[a.getAttribute("href").slice(1)] = a; });
+  var spy = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        links.forEach(function(a){ a.classList.remove("active"); });
+        var a = map[en.target.id]; if(a) a.classList.add("active");
+      }
+    });
+  }, { rootMargin:"-40% 0px -55% 0px" });
+  document.querySelectorAll("main section[id]").forEach(function(s){ spy.observe(s); });
+
+  /* ── Glossary hover tooltips ── */
+  var DEFS = {
+    "Dataset":"An imported file or external source — the rows-and-columns input to your work.",
+    "Pipeline":"A directed graph of steps that turns one or more datasets into an output. Portable as a small .dig.json file.",
+    "Step":"One transformation inside a pipeline — filter, cast, group, join, derive, chart, export.",
+    "Profile":"Per-column statistics DIG computes on ingest: types, nulls, distincts, min/max, top values.",
+    "Sample":"The subset of rows (default 100,000) used for the in-browser live preview while you edit.",
+    "Hint":"A deterministic, rule-based suggestion shown in the editor side panel — not an AI prediction.",
+    "Run":"One backend execution of a pipeline over the full dataset; writes results to disk.",
+    "Output":"What a run writes — Parquet by default, plus any sinks you add.",
+    "Live Grid":"The data grid at the top of the editor that recomputes a preview on every edit.",
+    "Lineage":"Optional per-row source tracing — click 🔍 to see which input row(s) produced an output row."
+  };
+  var gtip = document.getElementById("gtip");
+  document.querySelectorAll(".gterm").forEach(function(el){
+    var term = el.getAttribute("data-term");
+    el.addEventListener("mouseenter", function(){
+      var d = DEFS[term]; if(!d) return;
+      gtip.innerHTML = "<b>"+term+"</b> — "+d;
+      var r = el.getBoundingClientRect();
+      gtip.style.left = Math.min(r.left, innerWidth-320) + "px";
+      gtip.style.top = (r.bottom + 8) + "px";
+      gtip.classList.add("show");
+    });
+    el.addEventListener("mouseleave", function(){ gtip.classList.remove("show"); });
+  });
+
+  /* ── In-page search / filter (dims non-matching sections, highlights hits) ── */
+  var input = document.getElementById("search-input");
+  var sections = [].slice.call(document.querySelectorAll("main section[id]"));
+  var orig = sections.map(function(s){ return s.innerHTML; });
+  function clearSearch(){
+    document.body.classList.remove("searching");
+    sections.forEach(function(s,i){ s.innerHTML = orig[i]; s.classList.remove("search-hit"); });
+  }
+  var deb;
+  input.addEventListener("input", function(){
+    clearTimeout(deb);
+    deb = setTimeout(function(){
+      var q = input.value.trim();
+      if(q.length < 2){ clearSearch(); return; }
+      document.body.classList.add("searching");
+      var re = new RegExp("("+q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","gi");
+      sections.forEach(function(s,i){
+        s.innerHTML = orig[i];
+        var hit = s.textContent.toLowerCase().indexOf(q.toLowerCase()) !== -1;
+        s.classList.toggle("search-hit", hit);
+      });
+    }, 160);
+  });
+
+  /* ── Animated "data-flow" background: nodes wired by edges with emerald
+        electrons flowing source→target — echoes DIG's pipeline-edge motif.
+        Skipped entirely under prefers-reduced-motion. ── */
+  if(!reduce){
+    var cv = document.getElementById("dataflow"), ctx = cv.getContext("2d");
+    var W,H,DPR=Math.min(devicePixelRatio||1,2), nodes=[], edges=[], parts=[];
+    function rnd(a,b){ return a+Math.random()*(b-a); }
+    function build(){
+      W=cv.clientWidth; H=cv.clientHeight; cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+      var n = Math.max(10, Math.min(26, Math.round(W*H/90000)));
+      nodes=[]; for(var i=0;i<n;i++) nodes.push({x:rnd(40,W-40), y:rnd(40,H-40)});
+      edges=[]; nodes.forEach(function(a,i){
+        var best=-1, bd=1e9;
+        nodes.forEach(function(b,j){ if(j<=i)return; var d=Math.hypot(a.x-b.x,a.y-b.y); if(d<bd){bd=d;best=j;} });
+        if(best>=0 && bd<W*0.4) edges.push([i,best]);
+      });
+      parts=[]; edges.forEach(function(e,k){ for(var p=0;p<2;p++) parts.push({e:k, t:Math.random()}); });
+    }
+    function frame(){
+      ctx.clearRect(0,0,W,H);
+      var em = getComputedStyle(root).getPropertyValue("--emerald-400").trim() || "#34d399";
+      ctx.strokeStyle = "rgba(52,211,153,0.10)"; ctx.lineWidth=1;
+      edges.forEach(function(e){ var a=nodes[e[0]],b=nodes[e[1]]; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); });
+      ctx.fillStyle="rgba(52,211,153,0.22)";
+      nodes.forEach(function(nd){ ctx.beginPath(); ctx.arc(nd.x,nd.y,2.2,0,6.283); ctx.fill(); });
+      parts.forEach(function(p){
+        var e=edges[p.e]; if(!e) return; var a=nodes[e[0]], b=nodes[e[1]];
+        p.t += 0.0035; if(p.t>1) p.t-=1;
+        var x=a.x+(b.x-a.x)*p.t, y=a.y+(b.y-a.y)*p.t;
+        ctx.shadowBlur=8; ctx.shadowColor=em; ctx.fillStyle=em;
+        ctx.beginPath(); ctx.arc(x,y,1.8,0,6.283); ctx.fill(); ctx.shadowBlur=0;
+      });
+      raf=requestAnimationFrame(frame);
+    }
+    var raf=0; build(); frame();
+    var rt; addEventListener("resize", function(){ clearTimeout(rt); rt=setTimeout(build,200); });
+    document.addEventListener("visibilitychange", function(){
+      if(document.hidden){ cancelAnimationFrame(raf); raf=0; } else if(!raf){ raf=requestAnimationFrame(frame); }
+    });
+  }
+})();
+</script>
+</body>
+</html>
