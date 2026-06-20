@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {
-  Background, BackgroundVariant, Controls, MiniMap, ReactFlow,
+  Background, BackgroundVariant, Controls, MarkerType, MiniMap, ReactFlow,
   type Edge, type EdgeChange, type Node as RFNode, type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import type { PipelineDocument, StepManifest } from "@/lib/api/client";
 import { nodeTypes, type Freshness, type RunState } from "./nodes";
+import { ElectronEdge } from "./electron-edge";
 
 // Stable references — passing inline literals (or new arrays) for these
 // props makes xyflow's StoreUpdater fire its layout effect every render,
@@ -18,9 +19,17 @@ import { nodeTypes, type Freshness, type RunState } from "./nodes";
 const PAN_ON_DRAG: number[] = [1, 2];   // middle/right mouse pan; left = select
 const FIT_VIEW_OPTIONS = { padding: 0.2 };
 const PRO_OPTIONS = { hideAttribution: true };
+// Stable edgeTypes ref (same hoist rule as PAN_ON_DRAG above — a new object
+// per render makes xyflow re-sync and can loop).
+const EDGE_TYPES = { electron: ElectronEdge };
 const DEFAULT_EDGE_OPTIONS = {
+  // Electrons stream source→target to show data-flow direction (see
+  // electron-edge.tsx). The arrowhead is the static direction cue for
+  // prefers-reduced-motion users, who don't get the electrons.
+  type: "electron",
   animated: false,
   style: { strokeWidth: 1.6, stroke: "var(--color-emerald-500)" },
+  markerEnd: { type: MarkerType.ArrowClosed, color: "var(--color-emerald-500)", width: 16, height: 16 },
 } as const;
 
 // Per-node metrics from the latest run — drives Layer 1 strip + chip.
@@ -407,6 +416,7 @@ export function GraphCanvas({
         nodes={nodesWithSelection}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
