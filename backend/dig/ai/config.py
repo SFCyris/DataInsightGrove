@@ -28,6 +28,10 @@ _DEFAULTS: dict[str, object] = {
     "ai_api_key": "",
     "ai_max_tokens": 4096,
     "ai_temperature": 0.0,
+    # Off by default: only a loopback endpoint is reachable, so data never
+    # leaves the machine. Flip via the Settings → AI toggle to allow
+    # cloud / LAN providers. See dig/ai/url_safety.py.
+    "ai_allow_nonlocal": False,
 }
 
 
@@ -52,4 +56,5 @@ async def load_config(db: AsyncSession) -> AiConfig:
         api_key=str(values["ai_api_key"]) or None,
         max_tokens=int(values["ai_max_tokens"]),  # type: ignore[arg-type]
         temperature=float(values["ai_temperature"]),  # type: ignore[arg-type]
+        allow_nonlocal=bool(values["ai_allow_nonlocal"]),
     )

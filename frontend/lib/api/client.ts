@@ -997,6 +997,30 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  /** Upload a driver JAR into DIG's managed library + register it. The JAR
+   *  is copied into data/jdbc-drivers/ so it travels with DIG's state (the
+   *  recommended flow; the path-based create above is the advanced
+   *  reference-an-existing-path escape hatch). */
+  uploadJdbcDriver: async (
+    file: File,
+    meta: { name: string; driverClass: string; urlTemplate?: string; notes?: string },
+  ): Promise<JdbcDriverRecord> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("name", meta.name);
+    fd.append("driverClass", meta.driverClass);
+    if (meta.urlTemplate) fd.append("urlTemplate", meta.urlTemplate);
+    if (meta.notes) fd.append("notes", meta.notes);
+    const headers: Record<string, string> = {};
+    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const res = await fetch(`${API_BASE}/jdbc-drivers/upload`, { method: "POST", body: fd, headers });
+    if (!res.ok) {
+      let detail: unknown;
+      try { detail = await res.json(); } catch { detail = await res.text(); }
+      throw new ApiError(res.status, `${res.status} ${res.statusText}`, detail);
+    }
+    return (await res.json()) as JdbcDriverRecord;
+  },
   updateJdbcDriver: (id: string, body: JdbcDriverInput) =>
     request<JdbcDriverRecord>(`/jdbc-drivers/${id}`, {
       method: "PUT",
@@ -1015,9 +1039,19 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  // ---- Filesystem browser (settings directory picker) ----
-  browseDir: (path?: string) =>
-    request<FsBrowseResult>(`/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  // ---- Filesystem browser (settings directory / file picker) ----
+  // `files: true` includes regular files in the listing (directories are
+  // always shown so you can navigate). `exts` filters those files by
+  // extension, e.g. [".jar"]. Default (no opts) = directories only,
+  // preserving the directory-picker behaviour.
+  browseDir: (path?: string, opts?: { files?: boolean; exts?: string[] }) => {
+    const qs = new URLSearchParams();
+    if (path) qs.set("path", path);
+    if (opts?.files) qs.set("files", "1");
+    if (opts?.exts && opts.exts.length) qs.set("exts", opts.exts.join(","));
+    const q = qs.toString();
+    return request<FsBrowseResult>(`/fs/browse${q ? `?${q}` : ""}`);
+  },
 
   // ---- Global webhooks ----
   listGlobalWebhooks: () => request<GlobalWebhookRecord[]>("/global-webhooks"),
@@ -1076,6 +1110,9 @@ export interface JdbcDriverInput {
 }
 export interface JdbcDriverRecord extends JdbcDriverInput {
   id: string;
+  /** True when the JAR lives in DIG's managed library (uploaded), false
+   *  when it's a referenced external filesystem path. */
+  managed?: boolean;
 }
 
 /** Ad-hoc connection test parameters. URL + creds are not persisted —

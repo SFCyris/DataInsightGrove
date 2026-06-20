@@ -52,6 +52,10 @@ class AiConfig:
     api_key: str | None  # masked on read in the settings API
     max_tokens: int = 4096
     temperature: float = 0.0
+    # When True (the ai_allow_nonlocal UI toggle), the endpoint may point
+    # off-machine (LAN host or cloud provider). When False (default), only
+    # a loopback endpoint is reachable — data never leaves this machine.
+    allow_nonlocal: bool = False
 
     def __repr__(self) -> str:
         # Redact api_key in any logging / repr output. Without this an
@@ -156,15 +160,16 @@ async def chat(
     url = _normalize_endpoint(cfg.endpoint) + "/chat/completions"
     log.debug("AI POST %s model=%s", url, cfg.model)
 
-    # Pen-tester round-2: same SSRF defence-in-depth as generate_connector
-    # (which got it right): pre-call URL validation. Without this, an
-    # operator (or anyone with settings-write) who sets
-    # ai_endpoint=http://169.254.169.254/v1 can harvest cloud instance
-    # metadata via /ai/test-connection.
+    # SSRF defence-in-depth, AI-endpoint policy: loopback is allowed (the
+    # local-Ollama default), other private/link-local targets need
+    # DIG_AI_ALLOW_PRIVATE=1. This is the SAME policy the setting validator
+    # (_validate_ai_endpoint) applies, so a URL that saves also runs —
+    # previously this borrowed the REST connector's loopback-strict guard,
+    # which rejected the shipped default (127.0.0.1:11434) at call time.
     try:
-        from connectors.rest_api.connector import _assert_url_safe
-        _assert_url_safe(url)
-    except (ValueError, ImportError) as e:
+        from dig.ai.url_safety import assert_ai_url_safe
+        assert_ai_url_safe(url, allow_nonlocal=cfg.allow_nonlocal)
+    except ValueError as e:
         raise AiError(f"AI endpoint URL rejected: {e}") from e
 
     try:
@@ -174,12 +179,13 @@ async def chat(
         # reopen the SSRF gate.
         async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
             r = await client.post(url, json=payload, headers=headers)
-            # Defence-in-depth against DNS rebinding TOCTOU — see the REST
-            # connector.
+            # Defence-in-depth against DNS rebinding TOCTOU, AI-endpoint
+            # policy (loopback peer allowed; other-private gated on
+            # DIG_AI_ALLOW_PRIVATE).
             try:
-                from connectors.rest_api.connector import _assert_response_peer_safe
-                _assert_response_peer_safe(r)
-            except (RuntimeError, ImportError) as e:
+                from dig.ai.url_safety import assert_ai_response_peer_safe
+                assert_ai_response_peer_safe(r, allow_nonlocal=cfg.allow_nonlocal)
+            except RuntimeError as e:
                 raise AiError(f"AI endpoint rejected post-connect: {e}") from e
     except httpx.TimeoutException as e:
         raise AiError(f"AI request timed out after {timeout_s}s — model may be cold-loading") from e
@@ -242,12 +248,14 @@ async def list_models(cfg: AiConfig, *, timeout_s: float = 10.0) -> list[str]:
         headers["Authorization"] = f"Bearer {cfg.api_key}"
 
     url = _normalize_endpoint(cfg.endpoint) + "/models"
-    # Same SSRF gate as `chat()` — pre-call URL safety check. list_models
-    # is "never raises", so on rejection just return empty + debug-log.
+    # Same AI-endpoint policy as `chat()` (loopback OK; non-local needs the
+    # ai_allow_nonlocal toggle or DIG_AI_ALLOW_PRIVATE). list_models is
+    # "never raises", so on rejection just return empty + debug-log — the
+    # model dropdown then falls back to free-text.
     try:
-        from connectors.rest_api.connector import _assert_url_safe
-        _assert_url_safe(url)
-    except (ValueError, ImportError) as e:
+        from dig.ai.url_safety import assert_ai_url_safe
+        assert_ai_url_safe(url, allow_nonlocal=cfg.allow_nonlocal)
+    except ValueError as e:
         log.debug("AI list_models: URL rejected (%s)", e)
         return []
     try:

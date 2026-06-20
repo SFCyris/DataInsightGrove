@@ -22,6 +22,7 @@ import type { SettingDescriptor, JdbcDriverRecord, GlobalWebhookRecord, AiProbeO
 import { useApiBase } from "@/lib/use-api-base";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { DirectoryPickerModal } from "@/components/directory-picker-modal";
+import { PathPickerField } from "@/components/path-picker-field";
 import { PacksSection } from "@/components/settings/packs-section";
 import { NotificationsSection } from "@/components/settings/notifications-section";
 import { NotificationRulesSection } from "@/components/settings/notification-rules-section";
@@ -369,10 +370,12 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
       </Field>
     );
   }
+  const fieldId = `setting-${setting.key}`;
   if (setting.type === "enum" && setting.options) {
     return (
-      <Field label={setting.label} hint={setting.help}>
+      <Field label={setting.label} hint={setting.help} htmlFor={fieldId}>
         <select
+          id={fieldId}
           value={String(setting.value ?? "")}
           onChange={(e) => onSave(setting.key, e.target.value)}
           className="rounded-md border border-input bg-background px-2 py-1 text-sm"
@@ -397,9 +400,10 @@ function SettingRow({ setting, onSave }: { setting: SettingDescriptor; onSave: (
     ? (setting.value ? `Set: ${String(setting.value)} — type to replace` : "Not set")
     : (setting.default ? String(setting.default) : "Default");
   return (
-    <Field label={setting.label} hint={setting.help}>
+    <Field label={setting.label} hint={setting.help} htmlFor={fieldId}>
       <div className="flex gap-2">
         <input
+          id={fieldId}
           type={inputType}
           step={setting.type === "float" ? "any" : undefined}
           // Secret fields start blank — the backend's masked value is shown
@@ -494,7 +498,7 @@ function AiSection() {
   // order (endpoint → model → api_key) made first-run confusing
   // because the user had to leave the key blank and come back.
   const aiKeys = [
-    "ai_enabled", "ai_provider", "ai_api_key", "ai_endpoint", "ai_model",
+    "ai_enabled", "ai_provider", "ai_allow_nonlocal", "ai_api_key", "ai_endpoint", "ai_model",
     "ai_max_tokens", "ai_temperature", "ai_ping_interval_s",
   ];
   const aiSettings = (settingsQ.data ?? []).filter((s) => aiKeys.includes(s.key));
@@ -505,14 +509,18 @@ function AiSection() {
   // endpoint set, do nothing").
   const endpointSetting = aiSettings.find((s) => s.key === "ai_endpoint");
   const endpointValue = endpointSetting?.value ? String(endpointSetting.value) : "";
+  // The non-local toggle gates whether a cloud / LAN endpoint can be
+  // reached at all. Include it in the model-fetch key so flipping it ON
+  // immediately re-attempts the /models call against a cloud provider
+  // (which the backend would otherwise reject while the toggle was off).
+  const allowNonlocal = Boolean(aiSettings.find((s) => s.key === "ai_allow_nonlocal")?.value);
 
   // Fetch the available models when an endpoint is configured. Re-fetches
-  // when the endpoint changes (settings query is invalidated on every
-  // save → the queryKey below picks up the new endpointValue). Silent on
-  // failure: the backend returns an empty list rather than raising, so
-  // the UI just falls back to the free-text input with no error.
+  // when the endpoint OR the non-local toggle changes. Silent on failure:
+  // the backend returns an empty list rather than raising, so the UI just
+  // falls back to the free-text input with no error.
   const modelsQ = useQuery({
-    queryKey: ["ai-models", endpointValue],
+    queryKey: ["ai-models", endpointValue, allowNonlocal],
     queryFn: aiApi.listModels,
     enabled: Boolean(endpointValue),
     staleTime: 60_000,  // models don't change minute-to-minute
@@ -745,7 +753,13 @@ function ModelPickerRow({
 function JdbcSection() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["jdbc-drivers"], queryFn: api.listJdbcDrivers });
-  const [draft, setDraft] = useState<{ id?: string; name: string; driverClass: string; jarPath: string; urlTemplate: string; notes: string } | null>(null);
+  const [draft, setDraft] = useState<{
+    id?: string; name: string; driverClass: string; jarPath: string;
+    urlTemplate: string; notes: string;
+    // "upload" = copy a JAR into DIG's managed library (recommended);
+    // "reference" = point at an existing path on the server (advanced).
+    jarMode: "upload" | "reference"; jarFile: File | null; managed: boolean;
+  } | null>(null);
   // Inline connection-test state — kept on the same component as the draft
   // form so the test result lives next to the inputs that drove it. URL/
   // creds are intentionally NOT part of `draft` because they're ad-hoc
@@ -766,7 +780,10 @@ function JdbcSection() {
 
   const empty = () => {
     resetTest();
-    setDraft({ name: "", driverClass: "", jarPath: "", urlTemplate: "", notes: "" });
+    setDraft({
+      name: "", driverClass: "", jarPath: "", urlTemplate: "", notes: "",
+      jarMode: "upload", jarFile: null, managed: false,
+    });
   };
 
   const runTest = async () => {
@@ -793,16 +810,37 @@ function JdbcSection() {
 
   const save = async () => {
     if (!draft) return;
+    const name = draft.name.trim();
+    const driverClass = draft.driverClass.trim();
+    const urlTemplate = draft.urlTemplate.trim() || null;
+    const notes = draft.notes.trim() || null;
+    if (!name || !driverClass) {
+      toast.error("Display name and driver class are required");
+      return;
+    }
     try {
-      const body = {
-        name: draft.name.trim(),
-        driverClass: draft.driverClass.trim(),
-        jarPath: draft.jarPath.trim(),
-        urlTemplate: draft.urlTemplate.trim() || null,
-        notes: draft.notes.trim() || null,
-      };
-      if (draft.id) await api.updateJdbcDriver(draft.id, body);
-      else await api.createJdbcDriver(body);
+      if (!draft.id) {
+        // ── Create ──
+        if (draft.jarMode === "upload") {
+          if (!draft.jarFile) {
+            toast.error("Choose a .jar file to upload (or switch to “Reference a path”)");
+            return;
+          }
+          await api.uploadJdbcDriver(draft.jarFile, {
+            name, driverClass,
+            urlTemplate: urlTemplate ?? undefined, notes: notes ?? undefined,
+          });
+        } else {
+          if (!draft.jarPath.trim()) { toast.error("Enter the JAR path to reference"); return; }
+          await api.createJdbcDriver({ name, driverClass, jarPath: draft.jarPath.trim(), urlTemplate, notes });
+        }
+      } else {
+        // ── Edit ── (metadata; managed keeps its library JAR, referenced
+        // keeps/edits its path. Swapping a managed JAR = delete + re-upload.)
+        await api.updateJdbcDriver(draft.id, {
+          name, driverClass, jarPath: draft.jarPath.trim(), urlTemplate, notes,
+        });
+      }
       qc.invalidateQueries({ queryKey: ["jdbc-drivers"] });
       setDraft(null);
       toast.success("✅ Saved");
@@ -848,9 +886,19 @@ function JdbcSection() {
           {q.data?.map((d) => (
             <li key={d.id} className="py-3 flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{d.name}</p>
+                <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                  {d.name}
+                  <span
+                    className="text-[9px] uppercase tracking-wide px-1 py-px rounded border border-border text-muted-foreground"
+                    title={d.managed ? "Uploaded into DIG's managed library" : "References a file path on the server"}
+                  >
+                    {d.managed ? "📦 library" : "🔗 path"}
+                  </span>
+                </p>
                 <p className="text-[11px] font-mono text-muted-foreground truncate" title={d.driverClass}>{d.driverClass}</p>
-                <p className="text-[10px] text-muted-foreground/80 truncate" title={d.jarPath}>📦 {d.jarPath}</p>
+                <p className="text-[10px] text-muted-foreground/80 truncate" title={d.jarPath}>
+                  {d.managed ? "📦" : "🔗"} {d.jarPath}
+                </p>
                 {d.urlTemplate && (
                   <p className="text-[10px] font-mono text-muted-foreground/80 truncate" title={d.urlTemplate}>🔗 {d.urlTemplate}</p>
                 )}
@@ -861,6 +909,7 @@ function JdbcSection() {
                   setDraft({
                     id: d.id, name: d.name, driverClass: d.driverClass,
                     jarPath: d.jarPath, urlTemplate: d.urlTemplate ?? "", notes: d.notes ?? "",
+                    jarMode: d.managed ? "upload" : "reference", jarFile: null, managed: !!d.managed,
                   });
                 }}>Edit</Button>
                 <Button size="sm" variant="ghost" onClick={() => remove(d.id)}>🗑️</Button>
@@ -876,8 +925,89 @@ function JdbcSection() {
                    value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
             <Input label="Driver class" placeholder="oracle.jdbc.OracleDriver" mono
                    value={draft.driverClass} onChange={(v) => setDraft({ ...draft, driverClass: v })} />
-            <Input label="JAR path" placeholder="/Users/me/dig-drivers/ojdbc11.jar" mono
-                   value={draft.jarPath} onChange={(v) => setDraft({ ...draft, jarPath: v })} />
+            {/* ── Driver JAR ──────────────────────────────────────────
+                Primary (recommended): upload the JAR into DIG's managed
+                library so it travels with DIG's state. Advanced: reference
+                an existing path on the server (no copy). Editing a managed
+                driver shows the library file read-only (swap = delete +
+                re-upload). */}
+            {draft.id && draft.managed ? (
+              <Field label="Driver JAR" hint="Stored in DIG's managed library. To replace it, delete this driver and upload a new JAR.">
+                <div className="flex items-center gap-2 text-sm rounded-md border border-input bg-muted/40 px-3 py-2">
+                  <span aria-hidden>📦</span>
+                  <span className="font-mono truncate" title={draft.jarPath}>
+                    {draft.jarPath.split("/").pop()}
+                  </span>
+                  <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">in library</span>
+                </div>
+              </Field>
+            ) : !draft.id ? (
+              <Field label="Driver JAR" hint="Upload copies the JAR into DIG's managed library (recommended — it travels with backups + moves). Reference points at a path already on the server.">
+                <div className="space-y-2">
+                  {/* mode toggle */}
+                  <div className="inline-flex rounded-md border border-input overflow-hidden text-xs">
+                    {(["upload", "reference"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setDraft({ ...draft, jarMode: m })}
+                        className={[
+                          "px-3 py-1.5 transition-colors",
+                          draft.jarMode === m
+                            ? "bg-emerald-500/15 text-foreground font-medium"
+                            : "text-muted-foreground hover:bg-muted/50",
+                        ].join(" ")}
+                      >
+                        {m === "upload" ? "📦 Upload a JAR" : "🔗 Reference a path"}
+                      </button>
+                    ))}
+                  </div>
+                  {draft.jarMode === "upload" ? (
+                    <div className="flex items-center gap-3">
+                      <label className={buttonVariants({ variant: "outline", size: "sm" }) + " cursor-pointer"}>
+                        📁 Choose .jar…
+                        <input
+                          type="file"
+                          accept=".jar,application/java-archive"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0] ?? null;
+                            // Auto-fill the display name from the filename if blank.
+                            setDraft({
+                              ...draft, jarFile: f,
+                              name: draft.name || (f ? f.name.replace(/\.jar$/i, "") : ""),
+                            });
+                          }}
+                        />
+                      </label>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {draft.jarFile ? `📦 ${draft.jarFile.name} (${(draft.jarFile.size / 1024 / 1024).toFixed(1)} MB)` : "No file chosen"}
+                      </span>
+                    </div>
+                  ) : (
+                    <PathPickerField
+                      value={draft.jarPath}
+                      onChange={(v) => setDraft({ ...draft, jarPath: v })}
+                      mode="file"
+                      extensions={[".jar"]}
+                      forLabel="JDBC driver JAR"
+                      placeholder="/Users/me/dig-drivers/ojdbc11.jar"
+                    />
+                  )}
+                </div>
+              </Field>
+            ) : (
+              <Field label="JAR path" hint="The referenced .jar on the DIG server. Browse opens at the folder of the current path, or your home directory if blank.">
+                <PathPickerField
+                  value={draft.jarPath}
+                  onChange={(v) => setDraft({ ...draft, jarPath: v })}
+                  mode="file"
+                  extensions={[".jar"]}
+                  forLabel="JDBC driver JAR"
+                  placeholder="/Users/me/dig-drivers/ojdbc11.jar"
+                />
+              </Field>
+            )}
             <Input label="URL template (optional)" placeholder="jdbc:oracle:thin:@//<host>:1521/<service>" mono
                    value={draft.urlTemplate} onChange={(v) => setDraft({ ...draft, urlTemplate: v })} />
             <Input label="Notes (optional)" placeholder="Compatible with our 12c + 19c instances"
@@ -889,7 +1019,19 @@ function JdbcSection() {
                 with a much noisier error). The URL + credentials live on
                 this collapsible panel only — they're not part of the
                 saved driver record because they tend to vary per
-                environment / per dataset. */}
+                environment / per dataset.
+
+                A brand-new *uploaded* driver has no on-disk path until it's
+                saved, so Test connection waits until then (save → Edit →
+                Test). Referenced drivers + saved drivers can test
+                immediately. */}
+            {!draft.jarPath.trim() ? (
+              <div className="border-t border-emerald-300/30 pt-3">
+                <p className="text-[11px] text-muted-foreground">
+                  🔌 Save the driver first, then re-open it to <strong>Test connection</strong> — the uploaded JAR needs to land in the library before it can be loaded.
+                </p>
+              </div>
+            ) : (
             <div className="border-t border-emerald-300/30 pt-3">
               <button
                 type="button"
@@ -972,9 +1114,14 @@ function JdbcSection() {
                 </div>
               )}
             </div>
+            )}
             <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={save}
-                disabled={!draft.name.trim() || !draft.driverClass.trim() || !draft.jarPath.trim()}>
+                disabled={
+                  !draft.name.trim() || !draft.driverClass.trim() ||
+                  // Upload mode needs a chosen file; every other mode needs a path.
+                  (draft.jarMode === "upload" && !draft.id ? !draft.jarFile : !draft.jarPath.trim())
+                }>
                 💾 Save
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setDraft(null); resetTest(); }}>Cancel</Button>
@@ -995,10 +1142,12 @@ function PasswordInput({ label, value, onChange }: {
   onChange: (v: string) => void;
 }) {
   const [show, setShow] = useState(false);
+  const inputId = `pwd-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <Field label={label}>
+    <Field label={label} htmlFor={inputId}>
       <div className="flex items-stretch rounded-md border border-input focus-within:ring-2 focus-within:ring-ring/40 overflow-hidden">
         <input
+          id={inputId}
           type={show ? "text" : "password"}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -1308,11 +1457,20 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
+  // When `htmlFor` is supplied, render the label as a real <label> bound to
+  // the single control it wraps — clicking the label focuses the control and
+  // screen readers announce the pairing. Fields that wrap a toggle / button /
+  // multi-control block omit `htmlFor` and keep the plain <p> (there's no one
+  // control to associate, and <label> around several would be ambiguous).
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3 items-start">
       <div>
-        <p className="text-sm font-medium">{label}</p>
+        {htmlFor ? (
+          <label htmlFor={htmlFor} className="text-sm font-medium cursor-pointer">{label}</label>
+        ) : (
+          <p className="text-sm font-medium">{label}</p>
+        )}
         {hint && <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{hint}</p>}
       </div>
       <div>{children}</div>

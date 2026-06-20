@@ -20,12 +20,28 @@ def data_dir() -> Path:
     (p / "uploads").mkdir(exist_ok=True)
     (p / "datasets").mkdir(exist_ok=True)
     (p / "outputs").mkdir(exist_ok=True)
+    (p / "jdbc-drivers").mkdir(exist_ok=True)
     return p
 
 
 def upload_path(dataset_id: str, original_name: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in original_name)
     return data_dir() / "uploads" / f"{dataset_id}-{safe}"
+
+
+def jdbc_drivers_dir() -> Path:
+    """Managed JDBC driver library. Uploaded driver JARs live here so they
+    travel with DIG's state (backup / move / share) and the operator never
+    has to expose or remember a filesystem path. Referenced (path-based)
+    drivers point elsewhere and are NOT stored here."""
+    return data_dir() / "jdbc-drivers"
+
+
+def jdbc_driver_path(driver_id: str, original_name: str) -> Path:
+    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in original_name)
+    if not safe.lower().endswith(".jar"):
+        safe = f"{safe}.jar"
+    return jdbc_drivers_dir() / f"{driver_id}-{safe}"
 
 
 def cached_parquet_path(dataset_id: str) -> Path:

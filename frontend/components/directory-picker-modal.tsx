@@ -7,17 +7,24 @@ import { api, type FsBrowseResult } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 
 /**
- * Server-side directory picker.
+ * Server-side path picker — directories OR files.
  *
- * Browsers can't expose the OS file picker for security reasons (the picker
- * would either return paths the backend can't use or refuse to show real
- * filesystem paths at all). So we ship our own: the modal calls
- * /fs/browse?path=... and lets the user navigate one level at a time.
+ * Browsers can't expose the OS file picker for security reasons (it would
+ * either return paths the backend can't use or refuse to show real
+ * filesystem paths). So we ship our own: the modal calls /fs/browse and
+ * lets the user navigate one level at a time.
  *
- * Opens at `initialPath` — typically the current value of the field. If the
- * field is empty we fall back to the user's home directory (the backend
- * handles the empty-path → $HOME default). Breadcrumbs across the top let
- * the user jump up multiple levels in one click.
+ * `mode`:
+ *   - "directory" (default): lists directories; confirm returns the
+ *     currently-shown directory ("Use this folder"). Back-compat for the
+ *     input/output/log-dir pickers.
+ *   - "file": also lists files (optionally filtered by `extensions`);
+ *     the user clicks a file to select it; confirm returns that file
+ *     ("Use this file").
+ *
+ * Opens at `initialPath`. If that's a file path (file mode), the backend
+ * lists its parent directory and we pre-highlight the file. Empty →
+ * the backend falls back to $HOME.
  */
 
 interface Props {
@@ -25,29 +32,49 @@ interface Props {
   initialPath: string;
   onClose: () => void;
   onSelect: (path: string) => void;
-  /** What the user is picking — used in headings and the confirm button.
-   *  e.g. "input directory", "output directory". */
+  /** What the user is picking — used in headings + the confirm button.
+   *  e.g. "input directory", "JDBC driver JAR". */
   forLabel?: string;
+  mode?: "directory" | "file";
+  /** File-mode extension allow-list, e.g. [".jar"]. Leading dot optional. */
+  extensions?: string[];
 }
 
-export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, forLabel }: Props) {
+function _basename(p: string): string {
+  const t = p.replace(/[/\\]+$/, "");
+  return t.split(/[/\\]/).pop() ?? "";
+}
+function _hasFileShape(p: string): boolean {
+  // Heuristic: a trailing path segment with a dot-extension looks like a file.
+  const base = _basename(p);
+  return base.includes(".") && !p.endsWith("/");
+}
+
+export function DirectoryPickerModal({
+  open, initialPath, onClose, onSelect, forLabel, mode = "directory", extensions,
+}: Props) {
   const reduce = useReducedMotion();
-  // The path currently displayed by the picker. Starts at `initialPath` each
-  // time the modal opens so the user lands on the value they're editing.
+  const isFileMode = mode === "file";
+
+  // The directory currently displayed by the picker.
   const [path, setPath] = useState<string>(initialPath);
-  // Free-text path input — separate from `path` so typing doesn't trigger a
-  // request per keystroke. The user commits with Enter or by clicking "Go".
+  // Free-text path input — separate from `path` so typing doesn't fire a
+  // request per keystroke. Committed with Enter / "Go".
   const [draftPath, setDraftPath] = useState<string>(initialPath);
+  // File mode: the file the user has clicked (full path), or "" if none.
+  const [selectedFile, setSelectedFile] = useState<string>(
+    isFileMode && _hasFileShape(initialPath) ? initialPath : "",
+  );
 
   // Re-anchor when the modal opens / the initial path changes.
   useEffect(() => {
     if (open) {
       setPath(initialPath);
       setDraftPath(initialPath);
+      setSelectedFile(isFileMode && _hasFileShape(initialPath) ? initialPath : "");
     }
-  }, [open, initialPath]);
+  }, [open, initialPath, isFileMode]);
 
-  // Escape closes; outside-click closes (handled by the backdrop).
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -58,28 +85,20 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
   }, [open, onClose]);
 
   const q = useQuery({
-    queryKey: ["fs-browse", path],
-    queryFn: () => api.browseDir(path || undefined),
+    queryKey: ["fs-browse", path, isFileMode, (extensions ?? []).join(",")],
+    queryFn: () => api.browseDir(path || undefined, isFileMode ? { files: true, exts: extensions } : undefined),
     enabled: open,
-    // The same path doesn't change frequently — short stale window keeps
-    // navigation snappy without flooding the server.
     staleTime: 5_000,
   });
 
-  // Focus the path input on first open so users can paste without an extra
-  // click. ref is stable; effect only fires on `open` transitions.
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (open) {
-      // Defer focus so the modal's mount animation doesn't fight us.
       const t = setTimeout(() => inputRef.current?.select(), 60);
       return () => clearTimeout(t);
     }
   }, [open]);
 
-  // Resolved (post-server) path is what actually gets returned on confirm —
-  // the server normalizes ~/ etc. and resolves symlinks. Falls back to the
-  // requested path while the request is in flight.
   const displayedPath = q.data?.path ?? path;
   const exists = q.data?.exists ?? true;
   const entries = q.data?.entries ?? [];
@@ -93,7 +112,12 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
     setDraftPath(next);
   };
   const commitDraft = () => {
-    if (draftPath.trim() && draftPath !== path) goTo(draftPath.trim());
+    const v = draftPath.trim();
+    if (!v || v === path) return;
+    // In file mode, if the user typed a full file path, select it + browse
+    // its parent. Otherwise treat it as a directory to navigate into.
+    if (isFileMode && _hasFileShape(v)) setSelectedFile(v);
+    goTo(v);
   };
 
   if (!open) return null;
@@ -105,10 +129,11 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 320, damping: 28 };
 
+  const confirmDisabled = isFileMode ? !selectedFile : !exists;
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-        {/* Backdrop */}
         <motion.div
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -116,7 +141,6 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
           className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
           onClick={onClose}
         />
-        {/* Card */}
         <motion.div
           initial={initial}
           animate={animate}
@@ -124,20 +148,19 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
           transition={transition}
           className="relative w-full max-w-xl bg-card text-card-foreground rounded-xl shadow-2xl border border-border flex flex-col max-h-[80vh]"
         >
-          {/* Header */}
           <header className="px-5 py-4 border-b border-border flex items-center gap-3">
-            <span aria-hidden className="text-2xl">📁</span>
+            <span aria-hidden className="text-2xl">{isFileMode ? "📄" : "📁"}</span>
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-semibold tracking-tight">
-                Pick {forLabel ? `the ${forLabel}` : "a directory"}
+                Pick {forLabel ? `the ${forLabel}` : isFileMode ? "a file" : "a directory"}
               </h2>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Navigate the server's filesystem — paths are resolved on the backend, not the browser.
+                {isFileMode && extensions?.length ? ` Showing ${extensions.join(" / ")} files.` : ""}
               </p>
             </div>
           </header>
 
-          {/* Path input + Go */}
           <div className="px-5 pt-3 flex items-center gap-2">
             <input
               ref={inputRef}
@@ -149,7 +172,7 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
                   commitDraft();
                 }
               }}
-              placeholder="/Users/me/data"
+              placeholder={isFileMode ? "/Users/me/drivers/driver.jar" : "/Users/me/data"}
               className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm font-mono"
               spellCheck={false}
               autoCorrect="off"
@@ -158,7 +181,6 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
             <Button size="sm" variant="outline" onClick={commitDraft}>Go</Button>
           </div>
 
-          {/* Breadcrumbs */}
           <div className="px-5 pt-2 flex flex-wrap items-center gap-1 text-xs">
             {breadcrumbs.map((c, i) => (
               <span key={c.path} className="flex items-center gap-1">
@@ -174,7 +196,6 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
             ))}
           </div>
 
-          {/* Quick shortcuts */}
           <div className="px-5 pt-2 flex flex-wrap gap-1.5 text-xs">
             {home && (
               <button type="button" onClick={() => goTo(home)}
@@ -194,7 +215,6 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
             )}
           </div>
 
-          {/* Listing */}
           <div className="flex-1 min-h-[160px] mt-3 mx-5 mb-3 rounded-lg border border-border overflow-y-auto">
             {q.isLoading && (
               <p className="px-3 py-3 text-xs text-muted-foreground italic">Loading…</p>
@@ -211,23 +231,36 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
             )}
             {q.data && exists && entries.length === 0 && (
               <p className="px-3 py-3 text-xs text-muted-foreground italic">
-                (no subdirectories)
+                {isFileMode
+                  ? (extensions?.length ? `(no ${extensions.join(" / ")} files or subfolders here)` : "(empty folder)")
+                  : "(no subdirectories)"}
               </p>
             )}
             <ul className="divide-y divide-border/40">
               {entries.map((entry) => {
                 const childPath = joinPath(displayedPath, entry.name);
+                const isSelected = isFileMode && !entry.is_dir && childPath === selectedFile;
                 return (
                   <li key={entry.name}>
                     <button
                       type="button"
-                      onDoubleClick={() => goTo(childPath)}
-                      onClick={() => goTo(childPath)}
-                      className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 hover:bg-muted/50 transition-colors"
-                      title={`Open ${childPath}`}
+                      onDoubleClick={() => {
+                        if (entry.is_dir) goTo(childPath);
+                        else { setSelectedFile(childPath); onSelect(childPath); onClose(); }
+                      }}
+                      onClick={() => {
+                        if (entry.is_dir) goTo(childPath);
+                        else setSelectedFile(childPath); // file mode only — dirs nav, files select
+                      }}
+                      className={[
+                        "w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 transition-colors",
+                        isSelected ? "bg-emerald-500/10 ring-1 ring-inset ring-emerald-500/40" : "hover:bg-muted/50",
+                      ].join(" ")}
+                      title={entry.is_dir ? `Open ${childPath}` : `Select ${childPath}`}
                     >
-                      <span aria-hidden>📁</span>
+                      <span aria-hidden>{entry.is_dir ? "📁" : "📄"}</span>
                       <span className="truncate">{entry.name}</span>
+                      {isSelected && <span className="ml-auto text-emerald-600 dark:text-emerald-400">✓</span>}
                     </button>
                   </li>
                 );
@@ -235,22 +268,21 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
             </ul>
           </div>
 
-          {/* Footer */}
           <footer className="px-5 py-3 border-t border-border flex items-center justify-between gap-3">
-            <p className="text-[11px] text-muted-foreground truncate flex-1" title={displayedPath}>
-              📌 <span className="font-mono">{displayedPath}</span>
+            <p className="text-[11px] text-muted-foreground truncate flex-1" title={isFileMode ? (selectedFile || displayedPath) : displayedPath}>
+              📌 <span className="font-mono">{isFileMode ? (selectedFile || "(no file selected)") : displayedPath}</span>
             </p>
             <div className="flex gap-2 shrink-0">
               <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
               <Button
                 size="sm"
-                disabled={!exists}
+                disabled={confirmDisabled}
                 onClick={() => {
-                  onSelect(displayedPath);
+                  onSelect(isFileMode ? selectedFile : displayedPath);
                   onClose();
                 }}
               >
-                ✅ Use this folder
+                {isFileMode ? "✅ Use this file" : "✅ Use this folder"}
               </Button>
             </div>
           </footer>
@@ -260,15 +292,17 @@ export function DirectoryPickerModal({ open, initialPath, onClose, onSelect, for
   );
 }
 
+/** Convenience wrapper: a file picker (DirectoryPickerModal in file mode). */
+export function FilePickerModal(props: Omit<Props, "mode">) {
+  return <DirectoryPickerModal {...props} mode="file" />;
+}
+
 function joinPath(base: string, name: string): string {
   if (base.endsWith("/")) return base + name;
   return base + "/" + name;
 }
 
 function buildBreadcrumbs(absPath: string): { label: string; path: string }[] {
-  // Split a posix path into clickable segments. macOS / Linux paths only —
-  // DIG is a self-hosted tool and the backend already returns posix-style
-  // resolved paths (Path.resolve on Windows would be different; out of scope).
   const parts = absPath.split("/").filter(Boolean);
   const out: { label: string; path: string }[] = [{ label: "/", path: "/" }];
   let acc = "";

@@ -106,12 +106,12 @@ export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" 
     }
   }, [path, autoConnectorForPath]);
 
-  // Server-side directory listing — renders the browse pane. Re-runs on
-  // every navigation. Cached short-term so click-clicking back-and-forth
-  // doesn't refetch unnecessarily.
+  // Server-side listing — renders the browse pane. `files: true` so actual
+  // files (not just folders) appear and can be clicked to select. Re-runs
+  // on every navigation; cached short-term so back-and-forth is snappy.
   const browseQ = useQuery<FsBrowseResult>({
-    queryKey: ["fs-browse", browseAt],
-    queryFn: () => api.browseDir(browseAt),
+    queryKey: ["fs-browse-files", browseAt],
+    queryFn: () => api.browseDir(browseAt, { files: true }),
     enabled: open,
     staleTime: 5_000,
   });
@@ -203,7 +203,8 @@ export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" 
                 value={path}
                 onChange={(e) => setPath(e.target.value)}
                 placeholder="/absolute/path/to/data.parquet"
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                disabled={submit.isPending}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-mono disabled:opacity-60"
                 autoFocus
               />
               <span className="text-[11px] text-muted-foreground">
@@ -270,8 +271,10 @@ export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" 
               </div>
             </div>
 
-            {/* Name + connector — auto-filled from path, overridable */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Name + connector — auto-filled from path, overridable.
+                Stacks on mobile (grid-cols-1) so the two fields don't
+                cram into a sub-300px modal; side-by-side from `sm` up. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Display name
@@ -281,7 +284,8 @@ export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="my-dataset"
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  disabled={submit.isPending}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
@@ -291,7 +295,8 @@ export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" 
                 <select
                   value={connector}
                   onChange={(e) => setConnector(e.target.value)}
-                  className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+                  disabled={submit.isPending}
+                  className="rounded-md border border-input bg-background px-2 py-2 text-sm disabled:opacity-60"
                 >
                   {_CONNECTORS.map((c) => (
                     <option key={c.id} value={c.id}>{c.label}</option>

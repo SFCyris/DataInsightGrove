@@ -17,13 +17,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
 from dig.storage.db import get_session
+from dig.storage.files import jdbc_driver_path, jdbc_drivers_dir
 from dig.storage.models import GlobalWebhook, JdbcDriver, Setting
 
 log = logging.getLogger(__name__)
@@ -74,40 +75,25 @@ def _validate_string(v: Any, *, max_len: int = 1024, allow_empty: bool = True) -
 
 
 def _validate_ai_endpoint(v: Any) -> str:
-    """``ai_endpoint`` accepts http:// and https:// URLs. Loopback is
-    permitted (legitimate for local Ollama / LM Studio installs). Other
-    private addresses are rejected unless ``DIG_AI_ALLOW_PRIVATE=1`` —
-    same shape as ``DIG_REST_ALLOW_PRIVATE``. Round-3 pen-tester finding
-    PEN #8: without this an authenticated user could repoint the AI
-    endpoint to an internal HTTP service and have its response (plus
-    the AI bearer token) flow back through the AI client.
+    """``ai_endpoint`` accepts well-formed http:// and https:// URLs.
+
+    Note: this is a SHAPE check only. The non-local data-egress policy
+    (loopback always OK; cloud/LAN gated by the ``ai_allow_nonlocal``
+    toggle or ``DIG_AI_ALLOW_PRIVATE``) is enforced at call time by the
+    runtime guard in ``dig/ai/url_safety.py``, because whether a non-local
+    endpoint is *permitted* depends on a separate setting the user can
+    flip. So you can SAVE a cloud endpoint with the toggle off, then turn
+    the toggle on to use it — Test Connection surfaces the policy result.
+    The link-local / metadata SSRF protection still applies at call time
+    regardless of the toggle.
     """
     s = _validate_string(v, max_len=512, allow_empty=False).strip()
     from urllib.parse import urlsplit
     parts = urlsplit(s)
     if parts.scheme.lower() not in ("http", "https"):
-        raise ValueError(
-            f"endpoint must be http:// or https:// — got {parts.scheme!r}"
-        )
+        raise ValueError(f"endpoint must be http:// or https:// — got {parts.scheme!r}")
     if not parts.hostname:
         raise ValueError("endpoint must include a hostname")
-    if os.environ.get("DIG_AI_ALLOW_PRIVATE") == "1":
-        return s
-    # Loopback explicitly OK (Ollama default).
-    host = parts.hostname.lower()
-    if host in ("localhost", "127.0.0.1", "::1") or host.endswith(".localhost"):
-        return s
-    # Otherwise apply the same private-IP guard the REST connector uses.
-    try:
-        from connectors.rest_api.connector import _is_private_address
-        if _is_private_address(parts.hostname):
-            raise ValueError(
-                f"endpoint host {parts.hostname!r} resolves to a private / "
-                "link-local address (other than loopback). Set "
-                "DIG_AI_ALLOW_PRIVATE=1 to permit on a trusted host."
-            )
-    except ImportError:
-        pass
     return s
 
 
@@ -213,6 +199,13 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
         "type": "enum",
         "options": ["local", "openai_compat", "disabled"],
         "validate": lambda v: _validate_enum(v, ("local", "openai_compat", "disabled")),
+    },
+    "ai_allow_nonlocal": {
+        "default": False,
+        "label": "Allow non-local AI providers",
+        "help": "Off (default) = only a model on this machine (localhost) is reachable, so your data never leaves the box. On = permit cloud APIs (OpenAI / Anthropic / …) and AI hosts on your LAN. Turning this on means pipeline data may be sent to that provider. (Link-local / cloud-metadata addresses stay blocked regardless; set DIG_AI_ALLOW_PRIVATE=1 only if you truly need those on a trusted host.)",
+        "type": "boolean",
+        "validate": lambda v: bool(v),
     },
     "ai_endpoint": {
         "default": "http://localhost:11434/v1",
@@ -483,22 +476,35 @@ def _resolve_browse_path(raw: str | None) -> Path:
 
 
 @fs_router.get("/browse", response_model=FsBrowseOut)
-async def fs_browse(path: str | None = None) -> FsBrowseOut:
-    """List the subdirectories of `path` (defaults to the user's home).
+async def fs_browse(
+    path: str | None = None,
+    files: bool = False,
+    exts: str | None = None,
+) -> FsBrowseOut:
+    """List the contents of `path` (defaults to the user's home).
+
+    Query params:
+      - path: directory to list. If it points at a *file*, its parent is
+        listed (the resolved file path is still echoed back so the picker
+        can pre-highlight it).
+      - files: when true, include regular files in `entries` (each with
+        ``is_dir=False``). Default false → directories only, which keeps
+        the directory picker (input/output dir, log dir) unchanged.
+      - exts: comma-separated extension allow-list applied ONLY to files
+        (e.g. ``.jar`` or ``.jar,.zip``). Case-insensitive, leading dot
+        optional. Directories are always shown so the user can navigate.
 
     Returns:
       - path: the resolved absolute path being shown
       - parent: the parent directory's absolute path, or None at the root
       - home: $HOME — the picker uses this for a "🏠 Home" shortcut
-      - entries: subdirectories, alphabetical, hidden ones (starting with ".")
-                 dropped because they bloat the list and are rarely intended
-                 destinations for input/output data
+      - entries: directories (+ files when ``files=true``), alphabetical;
+                 hidden entries (starting with ".") dropped
       - exists: whether `path` actually exists on disk
 
     No path is rejected outright — the picker shows "(doesn't exist)" if
     the user types or arrives at a missing directory. This keeps the UX
-    forgiving (you can paste a half-typed path and fix it visually) without
-    leaking arbitrary filesystem error messages.
+    forgiving without leaking arbitrary filesystem error messages.
     """
     p = _resolve_browse_path(path)
     home = str(Path.home())
@@ -521,6 +527,18 @@ async def fs_browse(path: str | None = None) -> FsBrowseOut:
             home=home, entries=[], exists=True,
         )
 
+    # Normalise the extension allow-list once: lowercased, dot-prefixed.
+    ext_filter: set[str] | None = None
+    if files and exts:
+        ext_filter = set()
+        for raw in exts.split(","):
+            e = raw.strip().lower()
+            if not e:
+                continue
+            ext_filter.add(e if e.startswith(".") else f".{e}")
+        if not ext_filter:
+            ext_filter = None
+
     entries: list[FsEntry] = []
     for child in children:
         # Skip hidden + permission-denied entries silently.
@@ -532,6 +550,14 @@ async def fs_browse(path: str | None = None) -> FsBrowseOut:
             continue
         if is_dir:
             entries.append(FsEntry(name=child.name, is_dir=True))
+        elif files:
+            if ext_filter is not None and child.suffix.lower() not in ext_filter:
+                continue
+            entries.append(FsEntry(name=child.name, is_dir=False))
+
+    # Directories first, then files, alphabetical within each group — the
+    # conventional file-picker ordering.
+    entries.sort(key=lambda e: (not e.is_dir, e.name.lower()))
 
     return FsBrowseOut(
         path=str(p),
@@ -691,12 +717,25 @@ class JdbcDriverIn(BaseModel):
 
 class JdbcDriverOut(JdbcDriverIn):
     id: str
+    # True when the JAR lives in DIG's managed library (data/jdbc-drivers/) —
+    # i.e. it was uploaded, not referenced by an external filesystem path.
+    # The UI badges these differently and never lets the path be edited.
+    managed: bool = False
+
+
+def _is_managed_jar(jar_path: str) -> bool:
+    """A JAR is 'managed' when it lives inside data/jdbc-drivers/."""
+    try:
+        Path(jar_path).resolve().relative_to(jdbc_drivers_dir().resolve())
+        return True
+    except (ValueError, OSError):
+        return False
 
 
 def _driver_to_out(d: JdbcDriver) -> JdbcDriverOut:
     return JdbcDriverOut(
         id=d.id, name=d.name, driverClass=d.driver_class, jarPath=d.jar_path,
-        urlTemplate=d.url_template, notes=d.notes,
+        urlTemplate=d.url_template, notes=d.notes, managed=_is_managed_jar(d.jar_path),
     )
 
 
@@ -728,6 +767,87 @@ async def create_driver(
     return _driver_to_out(d)
 
 
+@drivers_router.post("/upload", response_model=JdbcDriverOut, status_code=201)
+async def upload_driver(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    driverClass: str = Form(...),
+    urlTemplate: str | None = Form(None),
+    notes: str | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+) -> JdbcDriverOut:
+    """Upload a driver JAR into DIG's managed library and register it.
+
+    This is the recommended way to add a JDBC driver: the JAR is copied
+    into ``data/jdbc-drivers/`` so it travels with DIG's state (backup /
+    move / share) and the operator never exposes or has to remember a
+    filesystem path. (The path-based ``POST /jdbc-drivers`` route remains
+    for the advanced case of referencing a JAR an operator has already
+    provisioned at a fixed location.)
+
+    The upload is validated as a real JAR (a readable ZIP archive) before
+    it's registered — a non-JAR file is rejected here rather than failing
+    later inside an opaque jaydebeapi error. Whether the *driver class*
+    actually loads is verified separately by Test Connection (which is the
+    authoritative check, since JDBC 4 drivers self-register via the JAR's
+    ServiceLoader manifest, not necessarily a class matching the name).
+    """
+    import zipfile
+
+    name = name.strip()
+    driver_class = driverClass.strip()
+    if not name or not driver_class:
+        raise HTTPException(400, "name and driverClass are required")
+
+    # Name-collision guard before writing bytes.
+    existing = (await session.execute(
+        select(JdbcDriver).where(JdbcDriver.name == name),
+    )).scalars().first()
+    if existing is not None:
+        raise HTTPException(409, f"a driver named '{name}' already exists")
+
+    driver_id = str(ULID())
+    dest = jdbc_driver_path(driver_id, file.filename or f"{driver_id}.jar")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    # Stream to disk with a size cap (shared with the dataset uploader).
+    max_mb = int(os.environ.get("DIG_MAX_UPLOAD_MB", "500"))
+    max_bytes = max_mb * 1024 * 1024
+    written = 0
+    try:
+        with dest.open("wb") as fp:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    fp.close()
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(413, f"JAR exceeds {max_mb} MB cap (raise DIG_MAX_UPLOAD_MB)")
+                fp.write(chunk)
+    except HTTPException:
+        raise
+    except OSError as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(500, f"could not store JAR: {e}") from e
+
+    # Validate it's a real JAR (readable ZIP). Reject + clean up otherwise.
+    if not zipfile.is_zipfile(dest):
+        dest.unlink(missing_ok=True)
+        raise HTTPException(400, "uploaded file is not a valid .jar (not a readable ZIP archive)")
+
+    d = JdbcDriver(
+        id=driver_id, name=name, driver_class=driver_class,
+        jar_path=str(dest), url_template=(urlTemplate or None), notes=(notes or None),
+    )
+    session.add(d)
+    try:
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        dest.unlink(missing_ok=True)
+        raise HTTPException(409, f"a driver named '{name}' already exists") from e
+    return _driver_to_out(d)
+
+
 @drivers_router.put("/{driver_id}", response_model=JdbcDriverOut)
 async def update_driver(
     driver_id: str,
@@ -756,8 +876,18 @@ async def delete_driver(
     d = await session.get(JdbcDriver, driver_id)
     if d is None:
         raise HTTPException(404, "driver not found")
+    # Capture the managed-JAR path before deleting the row. Only delete the
+    # file when it's in our managed library — a referenced (external) path
+    # is the operator's own file and is left untouched (same input-data-
+    # sacred rule the dataset delete follows).
+    managed_jar = d.jar_path if _is_managed_jar(d.jar_path) else None
     await session.delete(d)
     await session.commit()
+    if managed_jar and os.path.exists(managed_jar):
+        try:
+            os.remove(managed_jar)
+        except OSError:
+            log.warning("could not remove managed JAR %s after driver delete", managed_jar)
 
 
 # ── JDBC test connection ─────────────────────────────────────────────────
