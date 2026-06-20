@@ -36,11 +36,27 @@ Everything else is power-user / operations territory.
 | Variable | Default | Notes |
 |---|---|---|
 | `DIG_API_HOST` (alias: `DIG_HOST`) | `127.0.0.1` | Backend bind address. `0.0.0.0` for LAN exposure (combine with `DIG_AUTH_TOKEN`). |
-| `DIG_API_PORT` (alias: `DIG_PORT`) | `8090` | Backend port. |
+| `DIG_API_PORT` (alias: `DIG_PORT`) | `8090` | Backend HTTP port. |
+| `DIG_API_HTTPS_PORT` | `8443` | Backend HTTPS port — served by the TLS proxy (`scripts/dig_tls_proxy.py`), which forwards decrypted traffic to `DIG_API_PORT`. See the TLS section below. |
 | `DIG_WEB_HOST` | `127.0.0.1` | Frontend dev-server bind address. |
-| `DIG_WEB_PORT` | `3000` | Frontend port. |
+| `DIG_WEB_PORT` | `3000` | Frontend HTTP port. |
+| `DIG_WEB_HTTPS_PORT` | `3443` | Frontend HTTPS port — same TLS proxy → forwards to `DIG_WEB_PORT`. |
 | `NEXT_PUBLIC_DIG_API` | _(derived)_ | **Frontend-only build-time override** for the API base URL (e.g. `http://localhost:8090`). The backend itself never reads this; the frontend bundle bakes it in via Next.js's `NEXT_PUBLIC_` convention. Set when the frontend is served behind a reverse proxy and the API lives at a non-default host. |
 | `DIG_CORS_ORIGINS` | _(loopback only)_ | Comma-separated list of additional origins allowed by CORS. Prefer leaving unset; if you need cross-origin access, gate it via `DIG_AUTH_TOKEN`. |
+
+## TLS / HTTPS
+
+DIG serves HTTP **and** HTTPS for the same UI + API; HTTPS is terminated by a
+small proxy that forwards to the HTTP ports. Full operator guide:
+[`ADMINISTRATION.md` §5](ADMINISTRATION.md#5-tls--https). These env vars
+mirror the `tls.*` block in `~/.config/dig/config.json`.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `DIG_TLS_ENABLED` | `1` | `1`/`true` starts the TLS proxy so `https://` URLs answer alongside `http://`. `0` = HTTP-only (put your own reverse proxy in front for TLS). |
+| `DIG_TLS_CERT` | `~/.config/dig/tls/dig.crt` | Path to the certificate (PEM). Defaults to the auto-generated self-signed cert; point at your own (e.g. internal-CA-issued) to skip the trust step. |
+| `DIG_TLS_KEY` | `~/.config/dig/tls/dig.key` | Path to the private key (PEM). |
+| `DIG_TLS_AUTO_TRUST` | `1` | `1` attempts a one-time `sudo` install of the cert into the system trust store on first start. Attempted once (success or declined), then never re-prompts; re-run `./scripts/dig_tls.py trust` manually. |
 
 ## Authentication
 
@@ -55,7 +71,9 @@ Everything else is power-user / operations territory.
 | `DIG_DATA_DIR` | `<repo>/data/` | Root of all user data: `dig.sqlite`, `outputs/`, `extensions/`, `.installed_version`. Move this to a faster disk for big workloads, or to a shared dir if you operate multiple checkouts. |
 | `DIG_DB_PATH` | `<DIG_DATA_DIR>/dig.sqlite` | Override for the SQLite file location specifically. |
 | `DIG_DB_ECHO` | `0` | Set to `1` to log every SQL statement SQLAlchemy executes. Noisy; debug only. |
-| `DIG_LOG_DIR` | `$TMPDIR` (or `/tmp` if unset) | Where the lifecycle wrapper writes `dig-api.log` / `dig-web.log`. The default is the OS temp dir; set this to a persistent location (e.g. `<DIG_DATA_DIR>/logs`) if you want logs to survive reboots. |
+| `DIG_LOG_DIR` | `/var/log/DIG` | Where the rotating-log wrapper writes `dig-api.log` / `dig-web.log` / `dig-tls-proxy.log`. The start script bootstraps `/var/log/DIG` with `sudo` on first run; if that's declined it falls back to `~/Library/Logs/DIG/` (macOS) or `~/.local/state/DIG/logs/` (Linux). |
+| `DIG_LOG_MAX_BYTES` | `10485760` (10 MB) | Per-file rotation threshold for each log stream. The rotator rolls `dig-api.log` → `dig-api.log.1` when the active file crosses this size. |
+| `DIG_LOG_BACKUP_COUNT` | `5` | How many rotated files to keep per stream (`.1` … `.5`). Older ones are pruned. |
 | `DIG_LOCAL_FILE_ALLOW_ABSOLUTE` | `0` | Opt-in escape from the local-file path confinement. Set to `1` to let DIG ingest any file the process can read. **Risky** — only enable if you understand the implication. See [`SECURITY.md`](../SECURITY.md). |
 | `DIG_EXPORT_ALLOW_ABSOLUTE` | `0` | Same shape, for output sinks that write to absolute paths. |
 
@@ -83,7 +101,7 @@ Everything else is power-user / operations territory.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DIG_AI_ALLOW_PRIVATE` | `0` | By default the AI plugin blocks calls to RFC1918 private addresses. Set `1` to allow (e.g. for a local Ollama on `192.168.1.x`). |
+| `DIG_AI_ALLOW_PRIVATE` | `0` | **Loopback (`127.0.0.1` / `localhost` / `::1`) is always allowed** — that's the shipped default for local Ollama. This flag additionally permits *non-loopback* private / link-local targets (e.g. Ollama on another LAN box `192.168.1.x`, or `169.254.169.254`). Leave off unless you run the model on a separate trusted host. |
 | `DIG_REST_ALLOW_PRIVATE` | `0` | Same gate, for the REST/HTTPS connector. SSRF protection — leave off unless you have an internal API to talk to. |
 
 ## Pack installation

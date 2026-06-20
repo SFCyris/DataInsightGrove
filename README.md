@@ -6,6 +6,9 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 [![Version: 1.0.0-rc2](https://img.shields.io/badge/version-1.0.0--rc2-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
+[![Download](https://img.shields.io/github/v/release/SFCyris/DataInsightGrove?include_prereleases&sort=semver&label=download&color=2ea44f)](https://github.com/SFCyris/DataInsightGrove/releases/latest)
+
+> **⬇ [Download the latest release](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip)** — unzip, then run `./install.sh`. No git clone required. &nbsp;·&nbsp; [Release notes](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
 > 🧪 **Release candidate (v1.0.0-rc2).** The architecture, schemas, protocols, and IP posture are locked. This release-candidate cycle is for final polish, soak-testing, and community feedback before the 1.0.0 tag — the API contract that goes live then is described in [`docs/API_STABILITY.md`](docs/API_STABILITY.md). **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
@@ -53,11 +56,12 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## What's in DIG
 
-- **65 built-in steps** + **28 pack steps** across 11 categories (5 bundled packs: business_charts · dates_pack · stats_pro · statspack · time_series_pro) — the built-ins live under `backend/steps/` (always available); pack steps land under `plugins/packs/<pack>/steps/` and are installable via `.dpack` archives. The full auto-generated catalog (see [`docs/STEPS.md`](docs/STEPS.md)) covers shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
+- **62 built-in steps** + **39 pack steps** across 11 categories (6 bundled packs: business_charts · dates_pack · geospatial_pack · stats_pro · statspack · time_series_pro) — the built-ins live under `backend/steps/` (always available); pack steps land under `plugins/packs/<pack>/steps/` and are installable via `.dpack` archives. The full auto-generated catalog (see [`docs/STEPS.md`](docs/STEPS.md)) covers shape (incl. **pack_struct · unpack_struct · unnest_array · array_length** for nested types), clean, derive (incl. **PCA · k-means · DBSCAN · t-SNE · UMAP · linear regression · forecast · seasonal decompose · rolling**, **convert_coordinates** for polar↔Cartesian↔geographic, **vector_similarity · embed_text · geo_distance · json_extract**), combine (incl. **sub-pipelines**), aggregate (incl. **resample · correlation matrix**), **output** (file / database / image render via matplotlib + seaborn). Plus an `expectations` step for inline data-quality assertions.
 - **20 connectors**:
   - *Text*: csv (with delimiter sniffing for `.dat` / `.data` / `.tab` / `.psv`) · excel (multi-sheet + multi-data-island detection) · json · parquet · feather.
   - *Scientific binary* (under the optional `[science]` extra): NumPy (`.npy` / `.npz`) · HDF5 · MATLAB · NetCDF · FITS.
   - *Network + database*: https · rest_api (auth + JSONPath + pagination) · sqlite · postgres · mysql · jdbc.
+  - *Warehouse + reverse-ETL* (export targets — write-only sinks for `export_to_db`): snowflake · bigquery · sheets (Google Sheets). Plus **dbt** for running models and reading their materialised output. To *read* from Snowflake / BigQuery use the JDBC connector or a warehouse query.
 - **AI assistant** (optional, bring-your-own provider — local Ollama, OpenAI-compatible, or Anthropic): **Explain** the pipeline · **Suggest the next step** from a plain-English goal · **Suggest multi-step transform routes** for a focused dataset · **Suggest visualizations** with pre-populated params · **Explain a dataset** (domain inference + per-column meanings) · **Fix** SQL expressions in filter / derive · **Generate** a connector or step from a description (with static-lint safety check before install). **Optional keep-alive ping** keeps local Ollama from unloading idle models. See [`docs/AI_FEATURES.md`](docs/AI_FEATURES.md).
 - **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. Per-pipeline **🧪 sampling** (head / tail / random / systematic) controls how the live preview draws rows — see [`docs/SAMPLING.md`](docs/SAMPLING.md). **Transparent backend fallback** when DuckDB-WASM can't run the SQL (e.g. spatial GEOMETRY) — preview routes to backend, status badge marks it.
 - **💾 Save / 📋 Save As** — explicit labelled checkpoints (kept up to 50) on top of silent autosaves (last 5 only). The history view shows the saves you intended, not every keystroke. ⌘S / ⌘⇧S keyboard shortcuts. See [`docs/SAVE_AND_VERSIONS.md`](docs/SAVE_AND_VERSIONS.md).
@@ -75,6 +79,8 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 - **Backend parity tests** verify byte-identical output between backend DuckDB and DuckDB-WASM target for every transform step.
 
 ## Quickstart
+
+Get DIG either way — [**download the latest release**](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip) and unzip it, or `git clone` the repo. Then from the project root:
 
 ```bash
 ./install.sh

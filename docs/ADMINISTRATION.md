@@ -66,13 +66,20 @@ A complete config with every supported key:
 ```json
 {
   "version": 1,
-  "api":  { "host": "127.0.0.1", "port": 8090 },
-  "web":  { "host": "127.0.0.1", "port": 3000 },
+  "api":  { "host": "127.0.0.1", "port": 8090, "httpsPort": 8443 },
+  "web":  { "host": "127.0.0.1", "port": 3000, "httpsPort": 3443 },
   "dataDir": null,
   "logDir":  "/var/log/DIG",
   "log": {
     "maxBytes":     10485760,
     "backupCount":  5
+  },
+  "tls": {
+    "enabled":        true,
+    "certFile":       null,
+    "keyFile":        null,
+    "autoTrust":      true,
+    "additionalSans": []
   },
   "browserPreviewSampleRows": 100000
 }
@@ -82,18 +89,31 @@ A complete config with every supported key:
 |---|---|---|---|
 | `version` | integer | `1` | Schema version. Bumped on breaking changes (none yet). |
 | `api.host` | string | `"127.0.0.1"` | Bind address for the FastAPI process. `0.0.0.0` exposes to LAN; pair with `DIG_AUTH_TOKEN`. |
-| `api.port` | integer | `8090` | API port. |
+| `api.port` | integer | `8090` | API **HTTP** port (always served). |
+| `api.httpsPort` | integer | `8443` | API **HTTPS** port. Served by the TLS-terminating proxy ([§5](#5-tls--https)), which forwards decrypted traffic to `api.port`. Same uvicorn process answers both. |
 | `web.host` | string | `"127.0.0.1"` | Bind address for the Next.js dev server. |
-| `web.port` | integer | `3000` | Web UI port. |
+| `web.port` | integer | `3000` | Web UI **HTTP** port (always served). |
+| `web.httpsPort` | integer | `3443` | Web UI **HTTPS** port, via the same TLS proxy → forwards to `web.port`. |
 | `dataDir` | string \| null | _(repo)_/`data` | Root of all user data — see [§3.4](#34-runtime-data-dir). `null` means "use the default location." |
 | `logDir`  | string \| null | `/var/log/DIG` | Where rotated logs go. See [§4](#4-logs). `null` means "use the default" (the start script falls back to `~/Library/Logs/DIG/` on macOS or `~/.local/state/DIG/logs/` on Linux if it can't write to the default). |
 | `log.maxBytes` | integer | `10485760` (10 MB) | Per-file rotation threshold. The rotator opens a new file (`dig-api.log` → `dig-api.log.1`) each time the active file crosses this size. |
 | `log.backupCount` | integer | `5` | How many rotated files to keep. Older ones are pruned. |
+| `tls.enabled` | boolean | `true` | Start the TLS proxy so `https://` URLs are served alongside `http://`. When `false`, only the HTTP ports answer. See [§5](#5-tls--https). |
+| `tls.certFile` | string \| null | `~/.config/dig/tls/dig.crt` | Path to the cert (PEM). `null` = use the auto-generated self-signed cert. |
+| `tls.keyFile` | string \| null | `~/.config/dig/tls/dig.key` | Path to the private key (PEM). `null` = auto-generated. |
+| `tls.autoTrust` | boolean | `true` | On first start, attempt a one-time `sudo` install of the self-signed cert into the system trust store so browsers stop warning. Attempted exactly once (whether it succeeds or is declined); re-trigger with `./scripts/dig_tls.py trust`. |
+| `tls.additionalSans` | string[] | `[]` | Extra Subject Alternative Names (hostnames / IPs) to bake into the auto-generated cert, beyond the auto-detected `localhost` + machine hostname + LAN IPv4s. |
 | `browserPreviewSampleRows` | integer | `100000` | Cap on rows the in-browser DuckDB-WASM engine will load for live preview. Higher = slower preview, more accurate; lower = snappier. |
 
 A `null` value in the file is treated as "no override" — the default wins.
 That way old config files written before a key existed don't accidentally
 zap the new default.
+
+> **Editing these in the UI.** Every key in this table is also exposed under
+> **Settings → 🔧 Server & TLS**. Saving there round-trips to this same
+> `config.json` and shows a "takes effect on next restart" hint — boot-time
+> settings can't hot-reload because `dig-start.sh` reads them before the
+> server comes up.
 
 ### 1.4 Environment-variable bridge
 
@@ -105,8 +125,10 @@ override anything still ambiguous:
 |---|---|
 | `DIG_API_HOST` | `api.host` |
 | `DIG_API_PORT` | `api.port` |
+| `DIG_API_HTTPS_PORT` | `api.httpsPort` |
 | `DIG_WEB_HOST` | `web.host` |
 | `DIG_WEB_PORT` | `web.port` |
+| `DIG_WEB_HTTPS_PORT` | `web.httpsPort` |
 | `DIG_DATA_DIR` | `dataDir` |
 | `DIG_LOG_DIR` | `logDir` |
 | `DIG_LOG_MAX_BYTES` | `log.maxBytes` |
@@ -144,13 +166,22 @@ DIG runs as **two long-lived processes**, each launched through a
     ├── python3 dig_log_rotate.py --file …/dig-api.log -- dig-api  ← API wrapper (recorded in pid.json)
     │     └── dig-api  (uvicorn + FastAPI + DuckDB + SQLite + asyncio job manager)
     │           ├── runs Polars / DuckDB SQL for pipeline executions
-    │           ├── serves REST + WebSocket on api.port
+    │           ├── serves REST + WebSocket on api.port (HTTP)
     │           └── spawns plugin / pack worker subprocesses on demand
     │
-    └── python3 dig_log_rotate.py --file …/dig-web.log -- pnpm dev  ← Web wrapper (recorded in pid.json)
-          └── pnpm dev → next dev  (Next.js 16 dev server, React 19, AG Grid, React Flow, DuckDB-WASM)
-                └── on the client side: a browser tab loading DuckDB-WASM for in-tab preview
+    ├── python3 dig_log_rotate.py --file …/dig-web.log -- pnpm dev  ← Web wrapper (recorded in pid.json)
+    │     └── pnpm dev → next dev  (Next.js 16 dev server, React 19, AG Grid, React Flow, DuckDB-WASM)
+    │           └── on the client side: a browser tab loading DuckDB-WASM for in-tab preview
+    │
+    └── python3 dig_tls_proxy.py  ← TLS terminator (only when tls.enabled; recorded in pid.json)
+          ├── listens on api.httpsPort → forwards decrypted HTTP to api.port
+          └── listens on web.httpsPort → forwards decrypted HTTP to web.port
 ```
+
+So with TLS enabled there are **three** wrapped processes (api, web, tls-proxy).
+The proxy holds no application state — it's a byte-forwarder, so the same
+uvicorn + next-dev answer both the HTTP and HTTPS ports. When `tls.enabled`
+is `false` the proxy isn't started and only the HTTP ports are reachable.
 
 There is **no separate worker process**, no message broker, no separate
 database server. Everything except the browser runs in one Python process
@@ -486,7 +517,72 @@ tickets.
 
 ---
 
-## 5. Common operator tasks
+## 5. TLS / HTTPS
+
+DIG serves **both** `http://` and `https://` for the same UI + API. HTTP is
+always available on `api.port` / `web.port`; HTTPS is added on
+`api.httpsPort` / `web.httpsPort` by a small TLS-terminating proxy
+(`scripts/dig_tls_proxy.py`) that decrypts and forwards to the HTTP ports.
+There is no second server — the same uvicorn + next-dev answer both schemes.
+
+### 5.1 Why HTTP stays primary
+
+A self-signed cert isn't trusted by browsers until you install it, and an
+untrusted cert makes the browser **silently drop** cross-origin `fetch()` /
+WebSocket calls — the page loads but the data never arrives. To avoid that
+trap the HTTP path is always live and is what the dev banner points you to
+first. HTTPS is there when you want transport encryption (LAN exposure,
+a reverse proxy in front, compliance), and once the cert is trusted it
+behaves identically.
+
+### 5.2 The self-signed cert
+
+On first start, `scripts/dig_tls.py` generates a self-signed cert covering
+`localhost`, the machine hostname (+ `.local`), `127.0.0.1`, `::1`, and
+every non-loopback IPv4 the box has. It lands at:
+
+```
+~/.config/dig/tls/
+├── dig.crt              # certificate (PEM)
+├── dig.key              # private key (PEM, chmod 600)
+├── .trusted_sha256      # marker: cert is installed in the system trust store
+└── .auto_trust_attempted # marker: auto-trust ran once (success OR declined)
+```
+
+Override the paths with `tls.certFile` / `tls.keyFile` to supply your own
+cert (e.g. one issued by your internal CA — then no trust install is
+needed). Add extra hostnames the cert should cover with `tls.additionalSans`.
+
+### 5.3 Trusting the cert
+
+Auto-trust is attempted **exactly once** on first start (a `sudo` prompt to
+add the cert to the system keychain / trust store). Whether it succeeds or
+you decline, the `.auto_trust_attempted` marker is written so later restarts
+never re-prompt. Trigger it manually any time:
+
+```bash
+./scripts/dig_tls.py trust       # install into the system trust store (sudo)
+./scripts/dig_tls.py untrust     # remove it
+./scripts/dig_tls.py info        # fingerprint + trust state (JSON)
+```
+
+If you never trust the cert, the `http://` URLs keep working with zero
+warnings — only the `https://` URLs show the browser's "Not Secure" page.
+
+### 5.4 Turning HTTPS off
+
+```bash
+./scripts/dig_config.py set tls.enabled false
+./scripts/dig-restart.sh
+```
+
+The TLS proxy won't start; only the HTTP ports answer. Useful when DIG sits
+behind a reverse proxy (nginx / Caddy / a cloud LB) that terminates TLS
+itself — point that proxy at `api.port` / `web.port`.
+
+---
+
+## 6. Common operator tasks
 
 ### Change the API or web port
 
@@ -560,7 +656,7 @@ backup and run an older binary.
 
 ---
 
-## 6. Cross-references
+## 7. Cross-references
 
 - [`CONFIG.md`](CONFIG.md) — every `DIG_*` environment variable in detail
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the components fit together internally
