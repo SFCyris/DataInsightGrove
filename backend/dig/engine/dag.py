@@ -114,7 +114,7 @@ def infer_schemas(p: Pipeline) -> dict[str, dict[str, str]]:
     """Compute output schema (column name -> logical type) for every node and dataset.
 
     Returns: { ref_id : { col : type } } with one entry per dataset and per node.
-    Multi-port nodes are not yet supported in Phase 2 (single 'out' port).
+    Multi-port nodes are not supported (single 'out' port).
     """
     out: dict[str, dict[str, str]] = {}
     for d in p.datasets:

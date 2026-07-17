@@ -1,0 +1,13 @@
+{
+  "id": "diagnostic_charts",
+  "version": "0.2.0",
+  "label": "📊 Diagnostic charts",
+  "description": "The chart kinds PhD-grade analytics tools include: box / violin (distribution comparison), Q-Q plot (normality check), ECDF plot (empirical cumulative distribution), density (smooth KDE), and ridge plot (stacked density per group). Each renders a PNG artifact and passes the data through unchanged.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["box_plot", "violin_plot", "qq_plot", "ecdf_plot", "density_plot", "ridge_plot"],
+  "connectors": [],
+  "pythonRequirements": ["scipy>=1.11", "seaborn>=0.13"]
+}

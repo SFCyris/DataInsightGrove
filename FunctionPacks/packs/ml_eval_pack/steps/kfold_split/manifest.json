@@ -1,0 +1,31 @@
+{
+  "id": "kfold_split",
+  "version": "1.0.0",
+  "label": "🧪 K-fold split",
+  "description": "Tag each row with a fold index (0 .. k-1) for k-fold cross-validation. Use stratified k-fold when you have a target column with class imbalance.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "n_splits": {
+      "type": "integer", "label": "Number of folds",
+      "default": 5, "min": 2, "max": 50
+    },
+    "stratify_by": {
+      "type": "column_ref", "label": "Stratify by (optional)", "columnFrom": "in"
+    },
+    "seed": {
+      "type": "integer", "label": "Random seed", "default": 42
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "default": "fold"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["ml", "evaluation", "cross-validation"],
+  "aliases": ["k-fold", "kfold", "cross validation", "cv"],
+  "requires": []
+}

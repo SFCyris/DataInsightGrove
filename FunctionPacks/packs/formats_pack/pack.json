@@ -1,0 +1,13 @@
+{
+  "id": "formats_pack",
+  "version": "0.1.0",
+  "label": "📞 Formats Pack",
+  "description": "Validate and normalise common identifier formats — phone numbers (E.164), email addresses, IBAN bank account numbers. Lifts data-hygiene work that's typically done in spreadsheet macros into a real pipeline step.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["normalize_phone", "validate_email", "validate_iban"],
+  "connectors": [],
+  "pythonRequirements": ["phonenumbers>=8.13", "email-validator>=2.1", "schwifty>=2024.4"]
+}

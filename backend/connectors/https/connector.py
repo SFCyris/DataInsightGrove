@@ -50,7 +50,7 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
 
     Without this guard the initial URL is checked but a malicious server
     can return ``Location: http://169.254.169.254/...`` (cloud metadata)
-    or ``http://localhost:8090/...`` (sibling service) and the default
+    or ``http://localhost:8190/...`` (sibling service) and the default
     ``HTTPRedirectHandler`` will silently follow it. Pen-test finding
     round 8.
     """
@@ -71,7 +71,7 @@ def _assert_https_uri_safe(uri: str) -> None:
 
     Prior to this guard the connector accepted ``file://`` URIs (read
     arbitrary files via ``urllib.request.urlopen``) AND any HTTP target
-    including ``http://localhost:8090/health`` and ``http://169.254.169.254/...``
+    including ``http://localhost:8190/health`` and ``http://169.254.169.254/...``
     (cloud-metadata exfil). Pen-tester finding round 2.
 
     Bypass: ``DIG_REST_ALLOW_PRIVATE=1`` (same gate as the REST connector

@@ -1,0 +1,26 @@
+{
+  "id": "treemap",
+  "version": "1.0.0",
+  "label": "🟫 Treemap",
+  "description": "Each row becomes a rectangle whose area is proportional to the value column. Use for portfolio composition, market-cap, file-system browsers — anywhere part-to-whole over many categories matters.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "labelColumn": { "type": "column_ref", "label": "Label column", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value (size) column", "columnFrom": "in", "required": true },
+    "colorColumn": { "type": "column_ref", "label": "Color-by column (optional)", "columnFrom": "in",
+      "help": "Optional categorical column to color rectangles by group." },
+    "title": { "type": "string", "label": "Title", "default": "Treemap" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1400, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 900,  "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "treemap", "composition", "part-to-whole"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}],
+  "aliases": ["mosaic", "rectangular composition"]
+}

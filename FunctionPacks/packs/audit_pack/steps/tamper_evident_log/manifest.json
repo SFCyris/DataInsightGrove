@@ -1,0 +1,25 @@
+{
+  "id": "tamper_evident_log",
+  "version": "1.0.0",
+  "label": "🔗 Tamper-evident log entry",
+  "description": "Append a signed-chain log entry capturing this run's hash + the previous entry's hash (Merkle-style chaining). The log file lives at the configured path; tampering with any past entry invalidates every subsequent hash. Use to build an auditable history of pipeline runs.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "logPath": {
+      "type": "string", "label": "Log file path", "required": true, "default": "audit_log.jsonl",
+      "help": "Relative paths resolve under data/outputs/<run>/. Each line is one chained entry."
+    },
+    "annotation": {
+      "type": "string", "label": "Annotation",
+      "help": "Free-form note appended to this entry (e.g. 'monthly close'). Goes into the chain." }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["audit", "tamper-evident", "chain", "log"],
+  "aliases": ["audit log", "merkle log", "chained log", "blockchain log"],
+  "requires": []
+}

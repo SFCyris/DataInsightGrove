@@ -6,7 +6,7 @@ Implements `write()` only — Snowflake reads belong on the warehouse side
 INTO, which handles 10M+ row writes efficiently.
 
 Auth: parsed from the snowflake:// URI's userinfo + query string. For
-production deployments use the saved-connection layer (Phase 2) so secrets
+production deployments use the saved-connection layer so secrets
 are at rest in the OS keychain rather than inline in the URI.
 """
 

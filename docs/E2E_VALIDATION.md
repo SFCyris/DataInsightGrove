@@ -208,7 +208,7 @@ If you want to reproduce the *experience* of the harness in the UI rather than v
 
 ### 🧱 Setup (one-time, ~30 seconds)
 
-1. Start DIG: `make start`. Open <http://localhost:3000>.
+1. Start DIG: `make start`. Open <http://localhost:3100>.
 2. Go to **Datasets**. Drop in all three sample CSVs:
    - [`samples/customers-demo.csv`](../samples/customers-demo.csv)
    - [`samples/flowers-demo.csv`](../samples/flowers-demo.csv)

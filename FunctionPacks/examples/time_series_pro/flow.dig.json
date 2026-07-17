@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "id": "time_series_pro_demo",
+  "name": "\u23f3 time_series_pro \u00b7 stationarity + changepoint",
+  "description": "Daily traffic with a deliberate level shift on 2026-01-31 (~100 \u2192 ~150). ADF + KPSS should both flag non-stationarity; ACF/PACF will show high autocorrelation; changepoint_detection should fire around the shift date.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "daily traffic with regime shift"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_adf",
+      "step": "adf_test",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "traffic",
+        "regression": "c"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "ADF \u00b7 null = unit root"
+      }
+    },
+    {
+      "id": "n_kpss",
+      "step": "kpss_test",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "traffic",
+        "regression": "c"
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "KPSS \u00b7 null = stationary"
+      }
+    },
+    {
+      "id": "n_acf",
+      "step": "acf_pacf",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "traffic",
+        "max_lag": 15
+      },
+      "ui": {
+        "x": 280,
+        "y": 400,
+        "label": "ACF + PACF (lags 0..15)"
+      }
+    },
+    {
+      "id": "n_cp",
+      "step": "changepoint_detection",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "traffic",
+        "threshold": 4.0
+      },
+      "ui": {
+        "x": 280,
+        "y": 560,
+        "label": "CUSUM changepoints"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_adf",
+      "name": "adf",
+      "from": {
+        "ref": "n_adf"
+      }
+    },
+    {
+      "id": "o_kpss",
+      "name": "kpss",
+      "from": {
+        "ref": "n_kpss"
+      }
+    },
+    {
+      "id": "o_acf",
+      "name": "acf",
+      "from": {
+        "ref": "n_acf"
+      }
+    },
+    {
+      "id": "o_cp",
+      "name": "cp",
+      "from": {
+        "ref": "n_cp"
+      }
+    }
+  ]
+}

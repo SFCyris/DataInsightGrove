@@ -1,0 +1,35 @@
+{
+  "id": "schema_gate",
+  "version": "1.0.0",
+  "label": "🚪 Schema gate",
+  "description": "Assert that specific columns exist with expected dtypes. Fails the pipeline run if a required column is missing or has the wrong type. Use immediately after an ingest step to catch upstream schema changes early.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "requiredColumns": {
+      "type": "string",
+      "label": "Required columns (comma-separated)",
+      "required": true,
+      "help": "e.g. customer_id,order_date,revenue"
+    },
+    "expectedTypes": {
+      "type": "string",
+      "label": "Expected dtypes (column:type, comma-separated)",
+      "help": "Optional. e.g. customer_id:Int64,order_date:Date,revenue:Float64. Leave blank to skip dtype check."
+    },
+    "allowExtraColumns": {
+      "type": "boolean",
+      "label": "Allow extra columns",
+      "default": true,
+      "help": "When false, the gate also fails if the input has columns NOT in requiredColumns."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["test", "schema", "validate", "gate", "contract"],
+  "aliases": ["schema check", "column gate", "dtype assertion"],
+  "requires": []
+}

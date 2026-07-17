@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase A Layer 4 — UI for creating, editing, and deleting node groups.
+ * UI for creating, editing, and deleting node groups.
  *
  * Three pieces in one file because they're tightly coupled:
  *
@@ -581,7 +581,7 @@ export function makeGroupFromSelection(
 }
 
 /** Apply group changes to the pipeline document. Tolerates docs with no
- *  groups field (older pipelines pre-Layer 4). */
+ *  groups field (older pipelines that predate group support). */
 export function patchGroups(
   doc: PipelineDocument,
   groups: PipelineGroup[],

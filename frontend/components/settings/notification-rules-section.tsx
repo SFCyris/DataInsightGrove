@@ -4,9 +4,7 @@
  * Settings → Notification rules.
  *
  * The user-configurable layer between events (always emitted) and
- * notifications (emitted only when a rule matches). Mirrors the way
- * Redis Enterprise alerts / Alteryx Cloud notifications / PagerDuty
- * services configure trigger conditions.
+ * notifications (emitted only when a rule matches).
  */
 
 import React, { useEffect, useMemo, useState } from "react";

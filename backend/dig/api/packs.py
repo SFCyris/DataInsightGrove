@@ -15,9 +15,10 @@ state without a backend restart.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select as sa_select
@@ -96,9 +97,29 @@ async def upload_pack(file: UploadFile = File(...)) -> StagedPackOut:
         # We accept .zip too because some users will not realise the
         # extension matters. The contents are what's enforced.
         pass
-    content = await file.read()
+    # By the time this handler runs, Starlette has already received the
+    # full multipart body into its memory/disk spool — the wire-level
+    # limit lives in BodySizeLimitMiddleware (which grants this route a
+    # 64 MiB cap; see _ROUTE_MAX_BODY_BYTES in main.py). This loop reads
+    # the spool back and enforces the pack-specific 50 MB cap so an
+    # archive in the 50 MB–64 MiB gap gets a clear 400 instead of the
+    # middleware's generic 413.
+    max_bytes = pack_mod._MAX_ARCHIVE_BYTES
+    buf = bytearray()
+    while chunk := await file.read(1024 * 1024):
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise HTTPException(
+                400,
+                f"archive too large: {len(buf):,} bytes (max {max_bytes:,})",
+            )
+    content = bytes(buf)
     try:
-        staged = pack_mod.stage_pack(content, source_url=file.filename)
+        # unzip + checksum + validate is CPU/disk-bound — keep it off
+        # the event loop.
+        staged = await asyncio.to_thread(
+            pack_mod.stage_pack, content, source_url=file.filename,
+        )
     except pack_mod.PackError as e:
         raise HTTPException(400, str(e)) from e
 
@@ -145,7 +166,11 @@ async def install_pack(
         raise HTTPException(400, str(e)) from e
 
     try:
-        result = pack_mod.install_staged(body.pack_id, body.version)
+        # install_staged shells out to pip (up to 300 s) — run it in a
+        # worker thread so the event loop stays responsive.
+        result = await asyncio.to_thread(
+            pack_mod.install_staged, body.pack_id, body.version,
+        )
     except pack_mod.PackError as e:
         raise HTTPException(400, str(e)) from e
 

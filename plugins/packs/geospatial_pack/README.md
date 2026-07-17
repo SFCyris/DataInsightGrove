@@ -198,8 +198,7 @@ alpha-2 / alpha-3 / numeric / name, or lat/lon.
   table (no external network call).
 - Add `map_match` — snap input points to the nearest point in a
   reference table (named known locations).
-- Pack renamed from `geo_pro` → `geospatial_pack` to match the
-  ROADMAP slot.
+- Pack renamed from `geo_pro` → `geospatial_pack`.
 
 ### 0.1.0 — 2026-05-09
 

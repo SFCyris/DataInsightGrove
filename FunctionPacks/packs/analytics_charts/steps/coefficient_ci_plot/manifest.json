@@ -1,0 +1,26 @@
+{
+  "id": "coefficient_ci_plot",
+  "version": "1.0.0",
+  "label": "📊 Coefficient + CI plot",
+  "description": "Forest-style plot of regression / model coefficients with their confidence intervals. Each row in the input is one feature; columns carry the point estimate and the lower / upper CI bounds. Coefficients are sorted by magnitude.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "featureColumn": { "type": "column_ref", "label": "Feature name column", "columnFrom": "in", "required": true },
+    "estimateColumn": { "type": "column_ref", "label": "Coefficient (point estimate) column", "columnFrom": "in", "required": true },
+    "lowerColumn": { "type": "column_ref", "label": "CI lower bound column", "columnFrom": "in", "required": true },
+    "upperColumn": { "type": "column_ref", "label": "CI upper bound column", "columnFrom": "in", "required": true },
+    "title": { "type": "string", "label": "Title", "default": "Coefficients with 95% CI" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1000, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 800,  "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "regression", "coefficients", "confidence interval", "forest plot"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}, {"kind": "numeric"}, {"kind": "numeric"}],
+  "aliases": ["forest plot", "estimate plot", "coef plot"]
+}

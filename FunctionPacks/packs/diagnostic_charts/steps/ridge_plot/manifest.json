@@ -1,0 +1,33 @@
+{
+  "id": "ridge_plot",
+  "version": "1.0.0",
+  "label": "🌄 Ridge plot",
+  "description": "Stacked density plots — one row per category, KDE curve per row, all sharing the same x axis. Best for comparing 5-30 distributions side by side. Iconic for 'temperature by month', 'page-load time by browser', any 'shape comparison across many groups'.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value":  { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true, "columnTypes": ["integer", "double"] },
+    "group":  { "type": "column_ref", "label": "Group column",  "columnFrom": "in", "required": true,
+                "help": "One density curve drawn per distinct value in this column." },
+    "color_scale": {
+      "type": "enum", "label": "Color scale",
+      "enumValues": ["viridis", "plasma", "magma", "cividis", "Greens", "Blues"],
+      "default": "viridis"
+    },
+    "overlap": {
+      "type": "number", "label": "Vertical overlap", "default": 0.5,
+      "min": 0.0, "max": 1.0,
+      "help": "0 = curves don't overlap; 1 = full overlap. The classic 'Joy Division cover' look is around 0.7."
+    },
+    "title": { "type": "string", "label": "Title", "default": "Ridge plot" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "diagnostic", "kde", "density", "comparison"],
+  "aliases": ["joyplot", "ridgeline", "stacked density"],
+  "requires": [{"kind": "numeric"}, {"kind": "any"}]
+}

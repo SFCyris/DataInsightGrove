@@ -1,31 +1,39 @@
 """AI assistant API.
 
-Three endpoints today:
+The HTTP surface for every AI feature: provider config, model listing,
+and connection probing; a generic OpenAI-compat chat proxy (the frontend
+never holds the API key); and the feature endpoints — pipeline
+explain (one-shot + SSE streaming) and review, expression fixing,
+step / connector generation with a staged-install flow, dataset
+explanation, and next-step / pipeline-step / visualization suggestions.
 
-  GET  /ai/config     read the current resolved AI config (api_key masked)
-  POST /ai/probe      send a tiny "ping" to verify the configured provider
-                      is reachable + the model exists. Powers the
-                      "Test connection" button in Settings → AI.
-  POST /ai/chat       generic OpenAI-compat chat-completion proxy. Used
-                      by the explain / fix / generate features so the
-                      frontend never holds the API key.
-
-Future endpoints layered on top of /ai/chat live in the feature files
-(dig/ai/features/*.py) and are wired into pipelines + the column menu.
+Prompt-building and provider logic live in dig/ai/features/*.py and
+dig/ai/client.py; this module owns request/response shapes, validation,
+and streaming.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dig.ai.client import AiError, chat as client_chat, list_models as client_list_models, probe as client_probe
+from dig.ai.client import AiError, chat as client_chat, chat_stream as client_chat_stream, list_models as client_list_models, probe as client_probe
 from dig.ai.config import load_config
-from dig.ai.features.explain import explain_pipeline
+from dig.ai.features.explain import (
+    # The message builder + temperature are imported so the streaming
+    # endpoint sends the EXACT prompt/params the non-streaming path sends —
+    # one source of truth, the two can't drift.
+    EXPLAIN_TEMPERATURE,
+    build_explain_messages,
+    explain_pipeline,
+)
+from dig.ai.prompts import TOKEN_BUDGETS
 from dig.ai.features.review import review_pipeline
 from dig.ai.features.fix_expression import fix_expression
 from dig.ai.features.generate_connector import (
@@ -393,6 +401,62 @@ async def explain(
     except AiError as e:
         raise HTTPException(502, str(e)) from e
     return ExplainOut(markdown=markdown, model=cfg.model)
+
+
+@router.post("/explain-pipeline/{pipeline_id}/stream")
+async def explain_stream(
+    pipeline_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> StreamingResponse:
+    """Streaming variant of /explain-pipeline — Server-Sent Events.
+
+    Emits `data: {"model": "..."}` first, then one `data: {"delta": "..."}`
+    per generated chunk, then a final `data: [DONE]`. Provider errors
+    after the stream has opened arrive as `data: {"error": "..."}` (the
+    HTTP status is committed by then). Config / not-found errors raise
+    BEFORE streaming starts so they keep their proper HTTP statuses —
+    the frontend falls back to the non-streaming endpoint on any failure
+    that precedes the first delta.
+    """
+    cfg = await load_config(session)
+    if not cfg.enabled:
+        raise HTTPException(400, "AI is disabled — enable it in Settings → AI")
+
+    row = (await session.execute(
+        sa_select(PipelineRow).where(PipelineRow.id == pipeline_id),
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(404, f"pipeline {pipeline_id!r} not found")
+
+    doc = row.document or {}
+    catalog = [s.manifest for s in steps_registry().all()]
+
+    # Identical prompt to features/explain.py:explain_pipeline — built
+    # from the same shared builder so the two paths can't drift.
+    messages = build_explain_messages(doc, catalog)
+
+    async def event_stream():
+        yield f"data: {json.dumps({'model': cfg.model})}\n\n"
+        try:
+            async for delta in client_chat_stream(
+                cfg,
+                messages,
+                temperature=EXPLAIN_TEMPERATURE,
+                max_tokens=TOKEN_BUDGETS["explain_pipeline"],
+            ):
+                yield f"data: {json.dumps({'delta': delta})}\n\n"
+        except AiError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        # no-cache + no-transform + X-Accel-Buffering keep intermediary
+        # proxies (and `next start` gzip) from buffering / compressing
+        # the event stream into one big flush.
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/review-pipeline/{pipeline_id}", response_model=ReviewOut)

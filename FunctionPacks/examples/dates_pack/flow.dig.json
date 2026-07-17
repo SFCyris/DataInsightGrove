@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "id": "dates_pack_demo",
+  "name": "\ud83d\udcc5 dates_pack \u00b7 order-processing dates",
+  "description": "Orders with both order_date and ship_date. We add US-federal-fiscal-year tagging on the order_date (FY starts October), compute business-day shipping latency honouring US holidays, and snap order_date to start-of-week for cohort-style aggregation.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "orders + ship dates"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_cast_order",
+      "step": "cast_type",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "column": "order_date",
+        "targetType": "date",
+        "strict": false
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Cast order_date \u2192 date"
+      }
+    },
+    {
+      "id": "n_cast_ship",
+      "step": "cast_type",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_cast_order"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "column": "ship_date",
+        "targetType": "date",
+        "strict": false
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Cast ship_date \u2192 date"
+      }
+    },
+    {
+      "id": "n_fy",
+      "step": "fiscal_year_parts",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_cast_ship"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "date_column": "order_date",
+        "fy_start_month": 10,
+        "prefix": "fy_"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "US-federal FY parts (Oct start)"
+      }
+    },
+    {
+      "id": "n_bdays",
+      "step": "business_days_between",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_fy"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "start_column": "order_date",
+        "end_column": "ship_date",
+        "country": "US",
+        "output_column": "ship_bdays"
+      },
+      "ui": {
+        "x": 1060,
+        "y": 80,
+        "label": "Business days \u00b7 order \u2192 ship (US)"
+      }
+    },
+    {
+      "id": "n_snap",
+      "step": "date_snap",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_bdays"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "date_column": "order_date",
+        "period": "week",
+        "boundary": "start",
+        "output_column": "order_week"
+      },
+      "ui": {
+        "x": 1320,
+        "y": 80,
+        "label": "Snap order_date \u2192 start of week"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o",
+      "name": "orders_enriched",
+      "from": {
+        "ref": "n_snap"
+      }
+    }
+  ]
+}

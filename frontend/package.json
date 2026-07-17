@@ -18,7 +18,7 @@
     "start": "next start",
     "postinstall": "node scripts/copy-duckdb-wasm.mjs || true",
     "typecheck": "tsc --noEmit",
-    "gen:api": "openapi-typescript http://127.0.0.1:8090/openapi.json -o lib/api/types.ts",
+    "gen:api": "openapi-typescript http://127.0.0.1:8190/openapi.json -o lib/api/types.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

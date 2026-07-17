@@ -1,6 +1,6 @@
 """Two end-to-end demos using the new sampling methods + Join step.
 
-Run with the backend up on http://127.0.0.1:8090:
+Run with the backend up on http://127.0.0.1:8190:
 
     .venv/bin/python scripts/demos/sampling_join_demos.py
 
@@ -50,7 +50,7 @@ from urllib import request as urlreq
 from urllib.error import HTTPError
 
 
-_API = "http://127.0.0.1:8090"
+_API = "http://127.0.0.1:8190"
 _DATA_DIR = Path("data/datasets")  # backend's cache dir, relative to repo
 
 
@@ -299,7 +299,7 @@ def demo1_churn_stratified() -> None:
         doc,
     )
     print(f"  Pipeline: {pid}")
-    print(f"  URL:      http://localhost:3000/pipelines/{pid}")
+    print(f"  URL:      http://localhost:3100/pipelines/{pid}")
     print("  What to try:")
     print("   1. Focus the join. The cardinality strip shows ~5K customers ×")
     print("      ~30K orders → ~30K result (1.0× max input — no fan-out, ✓).")
@@ -430,7 +430,7 @@ def demo2_requests_alerts_timebucket() -> None:
         doc,
     )
     print(f"  Pipeline: {pid}")
-    print(f"  URL:      http://localhost:3000/pipelines/{pid}")
+    print(f"  URL:      http://localhost:3100/pipelines/{pid}")
     print("  What to try:")
     print("   1. Focus the join — auto-detected `ts_hour ↔ ts_hour` suggestion")
     print("      should appear (same name, both timestamp). Click ➕ to accept.")

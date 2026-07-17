@@ -38,11 +38,11 @@ export type ColumnAction =
   // Trace this column's lineage back to its dataset roots. The editor
   // opens the <LineagePanel /> drawer scoped to the focused node + column.
   | { kind: "trace_lineage"; column: string }
-  // Phase-A-pro #4 — range filter from a histogram bar in the profile
+  // Range filter from a histogram bar in the profile
   // drawer. The editor inserts a `filter_rows` step with the SQL
   // predicate `column BETWEEN low AND high`.
   | { kind: "range_filter"; column: string; low: number; high: number }
-  // Phase A Layer 7 — Column DNA. Full-screen bipartite computation
+  // Column DNA. Full-screen bipartite computation
   // graph (data nodes + op nodes) for deep lineage exploration.
   | { kind: "column_dna"; column: string }
   // Drop an export_to_image step immediately after the focused step,

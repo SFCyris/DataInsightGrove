@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, type PipelineSummary } from "@/lib/api/client";
@@ -35,14 +35,53 @@ export function PipelineCard({
   running?: boolean;
 }) {
   const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
   const del = useMutation({
     mutationFn: () => api.deletePipeline(p.id),
+    // Optimistic removal: drop the card from the list cache right away so
+    // the grid responds instantly, roll back if the server says no, then
+    // reconcile with a refetch either way.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["pipelines"] });
+      const previous = queryClient.getQueryData<PipelineSummary[]>(["pipelines"]);
+      const removedAt = previous?.findIndex((item) => item.id === p.id) ?? -1;
+      queryClient.setQueryData<PipelineSummary[]>(["pipelines"], (old) =>
+        old?.filter((item) => item.id !== p.id),
+      );
+      return { removedAt };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
       toast.success(`🗑 Removed "${p.name}"`);
     },
-    onError: (e: Error) => toastError("Delete failed", e),
+    onError: (e: Error, _vars, ctx) => {
+      // Roll back by re-inserting only this card at its old position —
+      // restoring the whole pre-mutation snapshot could resurrect a
+      // sibling another session deleted in the meantime. onSettled's
+      // invalidate reconciles any remaining drift with the server.
+      queryClient.setQueryData<PipelineSummary[]>(["pipelines"], (old) => {
+        if (!old || old.some((item) => item.id === p.id)) return old;
+        const at =
+          ctx && ctx.removedAt >= 0 ? Math.min(ctx.removedAt, old.length) : old.length;
+        return [...old.slice(0, at), p, ...old.slice(at)];
+      });
+      toastError("Delete failed", e);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+    },
   });
+
+  // Warm the editor's document query on hover/focus so clicking through
+  // paints instantly. Key + fn mirror the editor's useQuery exactly; the
+  // staleTime keeps the prefetched doc fresh across the navigation, and
+  // repeat hovers on warm data are a no-op.
+  const prefetchDoc = () => {
+    queryClient.prefetchQuery({
+      queryKey: ["pipeline", p.id],
+      queryFn: () => api.getPipeline(p.id),
+      staleTime: 10_000,
+    });
+  };
 
   // Round-5 W5: favorite/star toggle. Pinned pipelines sort to the top
   // of the list page and surface with a ⭐ prefix in cmdk.
@@ -93,18 +132,22 @@ export function PipelineCard({
 
   return (
     <motion.li
-      initial={{ opacity: 0, y: 8 }}
+      initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
         type: "spring",
         stiffness: 320,
         damping: 30,
-        delay: 0.04 * index,
+        // Cap the stagger so large libraries settle fast instead of
+        // trickling in row by row.
+        delay: Math.min(index, 8) * 0.03,
       }}
       className="group rounded-xl border border-border bg-card hover:border-foreground/30 transition-colors"
     >
       <Link
         href={`/pipelines/${p.id}`}
+        onMouseEnter={prefetchDoc}
+        onFocus={prefetchDoc}
         className="flex flex-col gap-2 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
       >
         <div className="flex items-start justify-between gap-2">
@@ -147,7 +190,11 @@ export function PipelineCard({
               )}
             >
               <span className="relative inline-flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75 animate-ping" />
+                {/* The pulsing halo is decorative; the solid dot below still
+                    marks the running state when motion is reduced. */}
+                {!reduce && (
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75 animate-ping motion-reduce:hidden" />
+                )}
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500" />
               </span>
               🔄 running

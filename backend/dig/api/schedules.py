@@ -13,6 +13,7 @@ host's cron daemon to be running.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import subprocess
@@ -32,6 +33,13 @@ _PIPELINE_ID_RE = re.compile(r"^[A-Z0-9]{26}$")  # ULID shape
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPT = _REPO_ROOT / "scripts" / "dig-schedule.sh"
+
+# Serialises crontab mutations. The script's add/remove paths are a
+# read-modify-write of the whole crontab (`crontab -l | … | crontab -`),
+# so two concurrent mutating requests could each read the same starting
+# crontab and the second write would silently drop the first one's
+# change. Reads (list) don't need the lock.
+_crontab_lock = asyncio.Lock()
 
 
 def _validate_cron(expr: str) -> str:
@@ -197,12 +205,17 @@ class ScheduleEntry(BaseModel):
     raw: str  # the literal crontab line for display
 
 
-def _run_script(args: list[str]) -> tuple[int, str, str]:
-    """Run dig-schedule.sh with the given args; return (rc, stdout, stderr)."""
+async def _run_script(args: list[str]) -> tuple[int, str, str]:
+    """Run dig-schedule.sh with the given args; return (rc, stdout, stderr).
+
+    The blocking subprocess call runs in a worker thread so the crontab
+    round-trip (up to the 10s timeout) never stalls the event loop.
+    """
     if not _SCRIPT.exists():
         raise HTTPException(500, f"scheduler script not found at {_SCRIPT}")
     try:
-        proc = subprocess.run(
+        proc = await asyncio.to_thread(
+            subprocess.run,
             [str(_SCRIPT), *args],
             capture_output=True, text=True, timeout=10,
             check=False,
@@ -225,7 +238,8 @@ async def add_schedule(body: ScheduleAddRequest) -> ScheduleEntry:
     if body.sample_rows is not None:
         args.extend(["--sample", str(body.sample_rows)])
 
-    rc, out, err = _run_script(args)
+    async with _crontab_lock:
+        rc, out, err = await _run_script(args)
     if rc != 0:
         raise HTTPException(500, f"scheduler add failed: {err.strip() or out.strip()}")
 
@@ -240,7 +254,7 @@ async def add_schedule(body: ScheduleAddRequest) -> ScheduleEntry:
 @router.get("", response_model=list[ScheduleEntry])
 async def list_schedules() -> list[ScheduleEntry]:
     """List all DIG-managed crontab entries."""
-    rc, out, err = _run_script(["list"])
+    rc, out, err = await _run_script(["list"])
     if rc != 0:
         raise HTTPException(500, f"scheduler list failed: {err.strip() or out.strip()}")
 
@@ -276,6 +290,10 @@ async def list_schedules() -> list[ScheduleEntry]:
         # If the parsed pid doesn't match the validator's shape, surface
         # the row but mark it unknown so the UI doesn't claim to be able
         # to manage it.
+        # ULID Crockford base32 is uppercase-canonical and case-insensitive;
+        # the crontab marker is stored lowercased, so normalize before the
+        # uppercase-only validator (this round-trips with the DELETE path).
+        pid_raw = pid_raw.upper()
         try:
             pid = _validate_pipeline_id(pid_raw)
         except ValueError:
@@ -300,7 +318,8 @@ async def remove_schedule(pipeline_id: str) -> dict[str, bool]:
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    rc, out, err = _run_script(["remove", pid])
+    async with _crontab_lock:
+        rc, out, err = await _run_script(["remove", pid])
     if rc != 0:
         raise HTTPException(500, f"scheduler remove failed: {err.strip() or out.strip()}")
     return {"ok": True}

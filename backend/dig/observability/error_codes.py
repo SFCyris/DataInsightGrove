@@ -12,7 +12,7 @@ Vocabulary discipline:
       2xxx — storage / persistence
       3xxx — connectors / IO
       4xxx — packs / plugin loader
-      5xxx — auth / multi-user (Enterprise tier mostly)
+      5xxx — auth / multi-user
       6xxx — runtime / lifecycle
       9xxx — internal / unexpected
   - Codes 1000 → 1999 are reserved for the engine. Steps emit them
@@ -58,7 +58,7 @@ class ErrorCode(str, Enum):
     E_4003_PACK_DEPENDENCY_REJECTED   = "DIG_E_4003"
     E_4004_STEP_REGISTRATION_FAILED   = "DIG_E_4004"
 
-    # --- 5xxx — auth / multi-user (mostly Enterprise) -------------------
+    # --- 5xxx — auth / multi-user -------------------
     E_5001_AUTH_REQUIRED              = "DIG_E_5001"
     E_5002_AUTH_INVALID               = "DIG_E_5002"
     E_5003_AUTHZ_DENIED               = "DIG_E_5003"

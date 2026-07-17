@@ -28,8 +28,8 @@ cleanup() {
     kill "$pid" 2>/dev/null || true
   done
   # Belt-and-braces: free the dev ports if anything lingered.
-  lsof -ti tcp:8090 2>/dev/null | xargs -r kill 2>/dev/null || true
-  lsof -ti tcp:3000 2>/dev/null | xargs -r kill 2>/dev/null || true
+  lsof -ti tcp:8190 2>/dev/null | xargs -r kill 2>/dev/null || true
+  lsof -ti tcp:3100 2>/dev/null | xargs -r kill 2>/dev/null || true
   wait 2>/dev/null
   echo "[dig dev] done."
 }
@@ -56,8 +56,8 @@ PIDS+=($!)
 ) &
 PIDS+=($!)
 
-echo "[dig dev] api  → http://127.0.0.1:8090  (docs: /docs)"
-echo "[dig dev] web  → http://127.0.0.1:3000"
+echo "[dig dev] api  → http://127.0.0.1:8190  (docs: /docs)"
+echo "[dig dev] web  → http://127.0.0.1:3100"
 echo "[dig dev] ctrl-c to stop both."
 
 wait

@@ -4,13 +4,13 @@
  * The codebase carries the version in three places, in three formats
  * dictated by the file's ecosystem:
  *
- *   - `backend/pyproject.toml` → PEP 440 (`1.0.0rc2`, no separator)
- *   - `frontend/package.json`  → npm semver (`1.0.0-rc.2`, hyphen + dot)
- *   - `README.md` badge        → `1.0.0-rc2` (hyphen, no dot)
+ *   - `backend/pyproject.toml` → PEP 440 (`1.0.0rc3`, no separator)
+ *   - `frontend/package.json`  → npm semver (`1.0.0-rc.3`, hyphen + dot)
+ *   - `README.md` badge        → `1.0.0-rc3` (hyphen, no dot)
  *
  * The frontend reads `/health.version` which is whatever pyproject.toml
  * shipped (PEP 440). This formatter normalises it to the canonical
- * user-visible form (`1.0.0-rc2`) so the home-page chip, settings
+ * user-visible form (`1.0.0-rc3`) so the home-page chip, settings
  * "Backend" stat, and footer all match the README badge.
  *
  * Round-2 UX-tester finding: previously three contradictory spellings

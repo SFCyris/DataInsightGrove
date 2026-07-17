@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase-A-pro #2 — URL-encoded interactive state.
+ * URL-encoded interactive state.
  *
  * Hook to sync a JSON-serialisable state object to a single URL search
  * parameter. Lets users:
@@ -23,9 +23,6 @@
  *  - URL-safe base64 of JSON. JSON keeps the doors open for nested
  *    structures; base64-url gives us a copy-pasteable token without
  *    URL-encoding noise.
- *
- * Patent posture: URL-as-state is foundational to the web (HTTP RFC
- * 3986). No risk.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 

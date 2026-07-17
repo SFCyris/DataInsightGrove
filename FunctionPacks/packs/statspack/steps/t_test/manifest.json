@@ -1,0 +1,48 @@
+{
+  "id": "t_test",
+  "version": "1.0.0",
+  "label": "📐 Two-sample t-test",
+  "description": "Welch's two-sample independent t-test. Compares the mean of `value` between the two groups in `group`, returns t, p-value, df, per-group means + sample sizes. Assumes the value column is roughly normal within each group; use ks_test if you can't assume that.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref",
+      "label": "Value column (numeric)",
+      "columnFrom": "in",
+      "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "group": {
+      "type": "column_ref",
+      "label": "Group column (binary)",
+      "columnFrom": "in",
+      "required": true,
+      "help": "Categorical column with exactly two distinct non-null values."
+    },
+    "alternative": {
+      "type": "enum",
+      "label": "Alternative hypothesis",
+      "enumValues": ["two-sided", "less", "greater"],
+      "default": "two-sided",
+      "help": "two-sided = means differ; less = group A < group B; greater = group A > group B (alphabetical order)."
+    },
+    "equal_var": {
+      "type": "boolean",
+      "label": "Assume equal variance",
+      "default": false,
+      "help": "Off (default) = Welch's t (recommended). On = classical Student's t — only correct when both groups have similar variance."
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["statistics", "hypothesis-test", "compare-groups"],
+  "aliases": ["t test", "ttest", "compare means", "two sample test", "welch"],
+  "requires": [
+    { "kind": "numeric" },
+    { "kind": ["string", "boolean", "any"] }
+  ]
+}

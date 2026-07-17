@@ -1,0 +1,30 @@
+{
+  "id": "roc_curve",
+  "version": "1.0.0",
+  "label": "📈 ROC + AUC curve",
+  "description": "Render a Receiver Operating Characteristic curve with the AUC reported in the legend. Pairs with logistic_regression: feed `actual` (the true 0/1 column) and `predicted_proba` (the probability column the classifier produced).",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "actualColumn": {
+      "type": "column_ref", "label": "Actual (true class) column", "columnFrom": "in", "required": true,
+      "help": "The true 0/1 (or true/false) outcome column."
+    },
+    "probaColumn": {
+      "type": "column_ref", "label": "Predicted probability column", "columnFrom": "in", "required": true,
+      "help": "The classifier's predicted probability of the positive class — output of logistic_regression's predicted_proba."
+    },
+    "title": { "type": "string", "label": "Title", "default": "ROC Curve" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1000, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 800,  "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "classification", "ml", "roc", "auc", "evaluation"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}],
+  "aliases": ["receiver operating characteristic", "auc curve", "classifier evaluation"]
+}

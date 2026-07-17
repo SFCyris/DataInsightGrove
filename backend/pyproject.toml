@@ -7,7 +7,7 @@ name = "dig"
 #   • frontend display         → reads /health.version (no hardcoded copy)
 # The frontend's package.json carries its own "version" only because npm
 # tooling expects the field; nothing user-facing reads it.
-version = "1.0.0rc3"
+version = "1.0.0"
 description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -32,8 +32,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Runtime engines and storage — required from Phase 1 onwards. Listed here as
-# extras so Phase 0 can install a minimal footprint.
+# Runtime engines and storage — required for core functionality. Listed here as
+# extras so a minimal footprint can be installed.
 engine = [
   "polars>=1.0",
   "duckdb>=1.0",

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "id": "llm_augment_demo",
+  "name": "\u2728 llm_augment \u00b7 ticket triage",
+  "description": "Real customer-support tickets, free text. The flow uses the configured LLM to (1) classify each ticket as bug / billing / feature_request / general_question, (2) extract structured fields (sentiment, urgency, blocker_yes_no), and (3) generate a one-line summary suitable for a triage table.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "support tickets"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_class",
+      "step": "llm_classify",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "text_column": "body",
+        "labels": "bug, billing, feature_request, general_question, churn_risk, praise",
+        "context": "Classify the support-ticket body into the most fitting category from the labels list.",
+        "output_column": "category"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Classify \u00b7 6-way"
+      }
+    },
+    {
+      "id": "n_extract",
+      "step": "llm_extract",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_class"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "text_column": "body",
+        "fields": "sentiment, urgency, blocker_yes_no, mentioned_competitor",
+        "context": "From the support-ticket body, extract: sentiment (positive/neutral/negative), urgency (low/medium/high), blocker_yes_no (yes if the user can't proceed at all), mentioned_competitor (the competitor's name if any, else null)."
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Extract \u00b7 4 fields"
+      }
+    },
+    {
+      "id": "n_summary",
+      "step": "llm_summarize",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_extract"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "text_column": "body",
+        "max_words": 15,
+        "output_column": "summary"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "Summarise \u00b7 \u226415 words"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o",
+      "name": "tickets_triaged",
+      "from": {
+        "ref": "n_summary"
+      }
+    }
+  ]
+}

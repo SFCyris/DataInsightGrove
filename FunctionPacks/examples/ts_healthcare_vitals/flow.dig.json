@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_healthcare_vitals_demo",
+  "name": "\ud83c\udfe5 Healthcare \u00b7 vitals anomaly detection",
+  "description": "Run rolling z-score on heart rate and SpO2. Catches the tachycardia event (heart rate spike) and the desat (oxygen drop) without flapping on the gentle baseline drift.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "6 hours of patient vital signs with 2 synthetic alert windows (tachycardia + desat)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_hr",
+      "step": "anomaly_zscore",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "heart_rate_bpm",
+        "window": 30,
+        "threshold": 3.0,
+        "min_periods": 15
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "HR z-score \u00b7 5min window"
+      }
+    },
+    {
+      "id": "n_chart",
+      "step": "export_to_image",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_hr"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "kind": "line",
+        "x": "ts",
+        "y": "heart_rate_bpm",
+        "y2": "spo2_pct",
+        "y3": "sbp_mmhg",
+        "title": "Patient vitals \u00b7 6-hour monitoring window",
+        "format": "png",
+        "width": 1400,
+        "height": 540,
+        "dpi": 96
+      },
+      "ui": {
+        "x": 580,
+        "y": 80,
+        "label": "Plot HR + anomalies"
+      }
+    }
+  ],
+  "outputs": []
+}

@@ -1,0 +1,20 @@
+{
+  "id": "impute_knn",
+  "version": "1.0.0",
+  "label": "🧬 K-Nearest-Neighbours imputation",
+  "description": "Fill nulls in numeric columns by averaging the K nearest non-null rows (Euclidean distance over the chosen feature columns). Preserves multivariate structure better than per-column statistics.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "columns": { "type": "column_refs", "label": "Numeric columns to impute (and use as features)", "columnFrom": "in", "required": true },
+    "k":       { "type": "integer", "label": "K", "default": 5, "min": 1, "max": 50 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["imputation", "knn", "missing", "multivariate", "clean"],
+  "aliases": ["knn imputer", "nearest neighbour fill"],
+  "requires": []
+}

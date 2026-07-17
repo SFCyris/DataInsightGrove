@@ -1,0 +1,31 @@
+{
+  "id": "analytics_charts",
+  "version": "0.2.0",
+  "label": "📊 Analytics Charts",
+  "description": "Visualizations that close the loop on an analysis: ROC + AUC and precision-recall curves for classifiers, confusion matrix, coefficient + confidence interval plots, calendar heatmaps for time-of-week patterns, treemaps for composition, data-flow Sankey, chord diagrams for closed-set relationships, force-directed network graphs for arbitrary relationships, dendrograms for hierarchical clustering, and KPI cards for executive dashboards. Pairs with stats_pro for the full classification deliverable.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": [
+    "roc_curve",
+    "pr_curve",
+    "confusion_matrix",
+    "coefficient_ci_plot",
+    "calendar_heatmap",
+    "treemap",
+    "sankey_flow",
+    "chord_diagram",
+    "dendrogram",
+    "kpi_card",
+    "network_graph"
+  ],
+  "connectors": [],
+  "pythonRequirements": [
+    "matplotlib>=3.8",
+    "scikit-learn>=1.3",
+    "scipy>=1.11",
+    "squarify>=0.4",
+    "networkx>=3.0"
+  ]
+}

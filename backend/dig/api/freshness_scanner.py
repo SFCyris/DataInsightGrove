@@ -1,4 +1,4 @@
-"""Phase A — periodic freshness scanner.
+"""Periodic freshness scanner.
 
 Walks every pipeline that has freshness policies declared (per-node OR
 per-group), recomputes their state against the latest succeeded run,
@@ -9,7 +9,7 @@ Runs every SCAN_INTERVAL_SECONDS (default 60s) inside the API process
 as a background asyncio task. Started + stopped via the FastAPI
 lifespan in main.py.
 
-Why scan vs push: in Phase A we don't have a real scheduler emitting
+Why scan vs push: we don't have a real scheduler emitting
 per-step run events as they finish, AND a node can transition to
 "stale" purely by the wall clock advancing — no run event would fire
 that. A periodic poll covers both cases without any new infrastructure.

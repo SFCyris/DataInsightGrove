@@ -13,8 +13,6 @@ Two discovery channels, both upgrade-immune:
 
 Both channels are best-effort: a broken extension logs at WARNING and is
 skipped, never blocks DIG startup.
-
-See `internal/EXTENSION_ARCHITECTURE.md` for the full architecture.
 """
 from dig.extensions.loader import (
     DiscoveredExtension,

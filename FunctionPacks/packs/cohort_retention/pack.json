@@ -1,0 +1,13 @@
+{
+  "id": "cohort_retention",
+  "version": "0.1.0",
+  "label": "👥 Cohort Retention",
+  "description": "Cohort-table builder, retention curve fitter, survival-style retention analysis, and lifetime-value with discounting. The product-analytics primitives for activation + retention reporting.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["cohort_table", "retention_curve", "survival_retention", "ltv_with_discount"],
+  "connectors": [],
+  "pythonRequirements": []
+}

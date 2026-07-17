@@ -1,0 +1,30 @@
+{
+  "id": "normalize_phone",
+  "version": "1.0.0",
+  "label": "📞 Normalize phone (E.164)",
+  "description": "Parse a free-form phone-number column to canonical E.164 (e.g. `+15551234567`). Adds two columns: the normalised form and a boolean `valid` flag. Use the country hint when input numbers are formatted nationally without a country code.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "phone_column": {
+      "type": "column_ref", "label": "Phone column",
+      "columnFrom": "in", "required": true
+    },
+    "default_country": {
+      "type": "string", "label": "Default country (ISO 3166 alpha-2)",
+      "default": "US",
+      "help": "Used when numbers don't include a + prefix. e.g. US, GB, DE, FR, IN."
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "default": "phone_e164"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["formats", "phone"],
+  "aliases": ["e164", "phone format", "libphonenumber"],
+  "requires": [{"kind": "string"}]
+}

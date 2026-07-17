@@ -1,0 +1,23 @@
+{
+  "id": "provenance_certificate",
+  "version": "1.0.0",
+  "label": "📋 Provenance certificate",
+  "description": "Emit a signed-style certificate capturing the run's identity (run id, timestamp), the input frame's content hash, and the user-supplied source / pipeline metadata. The artifact is a JSON object suitable for archiving alongside exported data.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "issuer":      { "type": "string", "label": "Issuer (org / team)", "default": "DataInsightGrove" },
+    "datasetName": { "type": "string", "label": "Dataset name", "required": true,
+                      "help": "Human-readable name for the data being certified." },
+    "intendedUse": { "type": "string", "label": "Intended use",
+                      "help": "Optional. e.g. 'Q4 board report', 'monthly compliance pack'." }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["audit", "provenance", "certificate", "compliance"],
+  "aliases": ["data certificate", "provenance proof", "data passport"],
+  "requires": []
+}

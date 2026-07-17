@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase-A-pro #5 — single-run detail page.
+ * Single-run detail page.
  *
  * Shows everything DIG knows about one executed job:
  *   - Header: pipeline + status + duration + tags + "open editor" link

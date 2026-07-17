@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_retail_forecast_demo",
+  "name": "\ud83d\udecd Retail \u00b7 weekly sales forecast",
+  "description": "Forecast 12 weeks ahead with Holt-Winters. Holiday spikes (weeks 47-51) and the upward trend are both picked up by the seasonal+trend decomposition.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "2 years of weekly unit sales with seasonality + trend + holiday spikes"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_decomp",
+      "step": "seasonal_decompose",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "week",
+        "value_column": "units_sold",
+        "model": "additive",
+        "period": 52,
+        "render": true,
+        "title": "Retail sales \u00b7 trend + seasonal + residual"
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "Decompose \u00b7 52w period"
+      }
+    },
+    {
+      "id": "n_forecast",
+      "step": "forecast",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "week",
+        "value_column": "units_sold",
+        "horizon": 12,
+        "method": "holt_winters",
+        "seasonal_period": 52,
+        "render": true,
+        "title": "Weekly sales forecast \u00b7 12 weeks"
+      },
+      "ui": {
+        "x": 300,
+        "y": 240,
+        "label": "Forecast \u00b7 12 weeks ahead"
+      }
+    }
+  ],
+  "outputs": []
+}

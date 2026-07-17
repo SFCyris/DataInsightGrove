@@ -1,0 +1,33 @@
+{
+  "id": "multiple_comparison_correction",
+  "version": "1.0.0",
+  "label": "📐 Multiple-comparison correction",
+  "description": "Adjust p-values for multiple-test inflation. Takes a column of raw p-values, returns adjusted p-values + significance flags under the chosen method (Bonferroni, Holm, Benjamini-Hochberg FDR). Without correction, running 20 tests at α=0.05 yields a 64% chance of a false positive somewhere.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "p_column": {
+      "type": "column_ref", "label": "p-value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["double"]
+    },
+    "method": {
+      "type": "enum", "label": "Method",
+      "enumValues": ["bonferroni", "holm", "fdr_bh", "fdr_by"],
+      "default": "fdr_bh",
+      "help": "fdr_bh = Benjamini-Hochberg (most common); bonferroni = strictest; holm = step-down Bonferroni; fdr_by = Benjamini-Yekutieli (no independence assumption)."
+    },
+    "alpha": {
+      "type": "number", "label": "α",
+      "default": 0.05, "min": 0.0001, "max": 0.5
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["statistics", "correction"],
+  "aliases": ["bonferroni", "holm", "benjamini hochberg", "fdr", "p adjust"],
+  "requires": [{"kind": "numeric"}]
+}

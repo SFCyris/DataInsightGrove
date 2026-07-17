@@ -133,14 +133,14 @@ class JobManager:
             result = await asyncio.to_thread(execute, pipeline, run_id=run_id, sample_rows=sample_rows)
 
             finished_at = _utcnow()
-            # Phase-A-pro #7: emit data.quality.violation events for any
+            # Emit data.quality.violation events for any
             # check_data step that found violations. We walk the run's
             # validation artifacts (already attached above by the
             # executor's validation pass) and emit one event per
             # violating check. The notification rule engine handles
             # routing to in-app / email / webhook.
             await self._emit_check_violations(pipeline, run_id, result.artifacts)
-            # Phase-A-pro #7 follow-up: profile drift + row-count
+            # Profile drift + row-count
             # anomaly detection runs against this run's metrics + the
             # last N succeeded runs from the DB. Emits
             # `data.profile.drift` and `data.row_count.anomaly` events.

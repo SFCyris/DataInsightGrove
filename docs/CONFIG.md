@@ -23,8 +23,8 @@ wrappers.
 |---|---|---|
 | `DIG_AUTH_TOKEN` | _(unset)_ | Any non-loopback exposure. Strongly recommended. |
 | `DIG_DATA_DIR` | `<repo>/data/` (the dev / OSS-checkout default; resolved by `backend/dig/storage/files.py`) | Move user data to a different disk, or unify multiple checkouts onto one shared dir |
-| `DIG_API_PORT` | `8090` | Port collision with another tool |
-| `DIG_WEB_PORT` | `3000` | Same |
+| `DIG_API_PORT` | `8190` | Port collision with another tool |
+| `DIG_WEB_PORT` | `3100` | Same |
 | `DIG_LOG_FORMAT` | _(unset; emits text)_ | Set to `json` for production deployments piping logs into Loki / Datadog / Splunk. Only `json` is honoured — `text` / anything else / unset all keep the friendly developer format. |
 
 Everything else is power-user / operations territory.
@@ -36,12 +36,12 @@ Everything else is power-user / operations territory.
 | Variable | Default | Notes |
 |---|---|---|
 | `DIG_API_HOST` (alias: `DIG_HOST`) | `127.0.0.1` | Backend bind address. `0.0.0.0` for LAN exposure (combine with `DIG_AUTH_TOKEN`). |
-| `DIG_API_PORT` (alias: `DIG_PORT`) | `8090` | Backend HTTP port. |
+| `DIG_API_PORT` (alias: `DIG_PORT`) | `8190` | Backend HTTP port. |
 | `DIG_API_HTTPS_PORT` | `8443` | Backend HTTPS port — served by the TLS proxy (`scripts/dig_tls_proxy.py`), which forwards decrypted traffic to `DIG_API_PORT`. See the TLS section below. |
 | `DIG_WEB_HOST` | `127.0.0.1` | Frontend dev-server bind address. |
-| `DIG_WEB_PORT` | `3000` | Frontend HTTP port. |
+| `DIG_WEB_PORT` | `3100` | Frontend HTTP port. |
 | `DIG_WEB_HTTPS_PORT` | `3443` | Frontend HTTPS port — same TLS proxy → forwards to `DIG_WEB_PORT`. |
-| `NEXT_PUBLIC_DIG_API` | _(derived)_ | **Frontend-only build-time override** for the API base URL (e.g. `http://localhost:8090`). The backend itself never reads this; the frontend bundle bakes it in via Next.js's `NEXT_PUBLIC_` convention. Set when the frontend is served behind a reverse proxy and the API lives at a non-default host. |
+| `NEXT_PUBLIC_DIG_API` | _(derived)_ | **Frontend-only build-time override** for the API base URL (e.g. `http://localhost:8190`). The backend itself never reads this; the frontend bundle bakes it in via Next.js's `NEXT_PUBLIC_` convention. Set when the frontend is served behind a reverse proxy and the API lives at a non-default host. |
 | `DIG_CORS_ORIGINS` | _(loopback only)_ | Comma-separated list of additional origins allowed by CORS. Prefer leaving unset; if you need cross-origin access, gate it via `DIG_AUTH_TOKEN`. |
 
 ## TLS / HTTPS

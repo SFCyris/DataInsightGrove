@@ -12,8 +12,9 @@ from typing import Any
 import polars as pl
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer, load_only
 from ulid import ULID
 
 from dig.engine.compile import compile_for_browser
@@ -109,14 +110,13 @@ class RunOut(BaseModel):
     outputPaths: list[str] | None = None
     # { output_id: [ {kind: "image"|"file"|"db"|"sink", …}, … ] }
     artifacts: dict[str, list[dict[str, Any]]] | None = None
-    # Per-node execution metrics — drives the canvas Layer 1 run-state
+    # Per-node execution metrics — drives the canvas run-state
     # overlay. Shape: { node_id: { status, rows_out?, elapsed_ms? } }.
     nodeMetrics: dict[str, dict[str, Any]] | None = None
     # Per-node NaN-origin sidecars — drives the orange-⚠ NULL cell
     # rendering + column-header ⚠ N badge for cells that became NULL via
     # a conversion / computation failure on the producing step. Shape:
     # { node_id: [ {column, row_indices, cause, source_column?, count, truncated}, … ] }.
-    # See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
     nanOrigins: dict[str, list[dict[str, Any]]] | None = None
     startedAt: datetime | None = None
     finishedAt: datetime | None = None
@@ -160,11 +160,11 @@ def _local_path(uri: str | None) -> str | None:
     return None
 
 
-def _count_missing_datasets(doc: dict[str, Any]) -> int:
-    """Count dataset references in ``doc.datasets[]`` whose backing file is
-    missing. Skips non-local connectors (we can't check those without a
-    network round-trip)."""
-    missing = 0
+def _dataset_check_paths(doc: dict[str, Any]) -> list[str]:
+    """Local paths backing the dataset references in ``doc.datasets[]``.
+    Skips non-local connectors (we can't check those without a network
+    round-trip)."""
+    paths: list[str] = []
     for ds in doc.get("datasets", []) or []:
         if not isinstance(ds, dict):
             continue
@@ -176,29 +176,33 @@ def _count_missing_datasets(doc: dict[str, Any]) -> int:
             # Connector says local but URI isn't stat-able — treat as healthy
             # rather than scaring the user with a false positive.
             continue
-        if not os.path.exists(path):
-            missing += 1
-    return missing
+        paths.append(path)
+    return paths
 
 
-def _count_missing_outputs(latest_run: Run | None) -> int:
-    """Count output files from the most recent successful run that no longer
-    exist on disk. ``None`` (no runs yet) returns 0 — an unrun pipeline isn't
-    "missing" output, it's just unrun."""
-    if latest_run is None or not latest_run.output_paths:
-        return 0
-    missing = 0
-    for raw in latest_run.output_paths:
-        path = _local_path(raw)
-        if path is None:
-            continue
-        if not os.path.exists(path):
-            missing += 1
-    return missing
+def _output_check_paths(output_paths: list[str] | None) -> list[str]:
+    """Local output paths from the most recent successful run. ``None``
+    (no runs yet) returns [] — an unrun pipeline isn't "missing" output,
+    it's just unrun."""
+    if not output_paths:
+        return []
+    return [p for p in (_local_path(raw) for raw in output_paths) if p is not None]
 
 
-def _summary(row: PipelineRow, latest_run: Run | None = None) -> PipelineSummary:
+def _count_missing(paths: list[str], path_exists: dict[str, bool]) -> int:
+    """Count paths that are absent per the pre-resolved ``path_exists``
+    map. Paths missing from the map are treated as healthy — same "don't
+    scare the user with a false positive" bias as the collectors above."""
+    return sum(1 for p in paths if not path_exists.get(p, True))
+
+
+def _summary(
+    row: PipelineRow,
+    latest_output_paths: list[str] | None = None,
+    path_exists: dict[str, bool] | None = None,
+) -> PipelineSummary:
     doc = row.document or {}
+    exists = path_exists or {}
     return PipelineSummary(
         id=row.id,
         name=row.name,
@@ -208,8 +212,8 @@ def _summary(row: PipelineRow, latest_run: Run | None = None) -> PipelineSummary
         etag=row.etag,
         createdAt=row.created_at,
         updatedAt=row.updated_at,
-        missingDatasetCount=_count_missing_datasets(doc),
-        missingOutputCount=_count_missing_outputs(latest_run),
+        missingDatasetCount=_count_missing(_dataset_check_paths(doc), exists),
+        missingOutputCount=_count_missing(_output_check_paths(latest_output_paths), exists),
     )
 
 
@@ -261,21 +265,44 @@ async def list_pipelines(
         .offset(max(0, offset))
     )
     rows = res.scalars().all()
-    # Batch-fetch the latest succeeded run per pipeline so the missing-output
-    # check on _summary() doesn't fan out into N queries. We pull all
-    # succeeded runs for the page's pipelines in one shot, sorted newest-
-    # first, and keep the first row per pipeline_id.
-    latest_runs: dict[str, Run] = {}
+    # Latest succeeded run per pipeline via a row_number() window so the
+    # database returns one narrow (pipeline_id, output_paths) row per
+    # pipeline — the missing-output check on _summary() needs only the
+    # newest run's output paths, not every succeeded run's heavy JSON
+    # columns shipped over the wire.
+    latest_outputs: dict[str, list[str] | None] = {}
     if rows:
-        runs_res = await session.execute(
-            select(Run)
+        ranked = (
+            select(
+                Run.pipeline_id,
+                Run.output_paths,
+                func.row_number()
+                .over(partition_by=Run.pipeline_id, order_by=Run.created_at.desc())
+                .label("rn"),
+            )
             .where(Run.pipeline_id.in_([r.id for r in rows]))
             .where(Run.status == "succeeded")
-            .order_by(Run.pipeline_id, Run.created_at.desc())
+            .subquery()
         )
-        for run in runs_res.scalars().all():
-            latest_runs.setdefault(run.pipeline_id, run)
-    return [_summary(r, latest_runs.get(r.id)) for r in rows]
+        runs_res = await session.execute(
+            select(ranked.c.pipeline_id, ranked.c.output_paths)
+            .where(ranked.c.rn == 1)
+        )
+        latest_outputs = {run.pipeline_id: run.output_paths for run in runs_res.all()}
+    # Resolve every candidate file's existence in ONE thread hop instead of
+    # a blocking os.path.exists per dataset/output on the event loop — a
+    # page of 100 pipelines can reference hundreds of files, and each stat
+    # would otherwise stall every other request.
+    candidates: set[str] = set()
+    for r in rows:
+        candidates.update(_dataset_check_paths(r.document or {}))
+        candidates.update(_output_check_paths(latest_outputs.get(r.id)))
+    path_exists: dict[str, bool] = {}
+    if candidates:
+        path_exists = await asyncio.to_thread(
+            lambda: {p: os.path.exists(p) for p in candidates}
+        )
+    return [_summary(r, latest_outputs.get(r.id), path_exists) for r in rows]
 
 
 @router.post("", response_model=PipelineDoc, status_code=201)
@@ -364,7 +391,7 @@ async def update_pipeline(
         triggered_by=trigger, change_reason=reason,
     )
     await session.commit()
-    # broadcast (Phase 5 will use this for multi-session sync)
+    # broadcast the change for multi-session sync
     await hub.publish(f"pipeline:{pipeline_id}", {"event": "changed", "etag": row.etag})
     return _doc(row)
 
@@ -635,6 +662,9 @@ async def list_pipeline_history(
     rows = (
         await session.execute(
             select(PipelineHistory)
+            # The list never returns the snapshot document — skip fetching
+            # the (potentially large) JSON blob for every row.
+            .options(defer(PipelineHistory.document))
             .where(PipelineHistory.pipeline_id == pipeline_id)
             .order_by(PipelineHistory.created_at.desc())
             .limit(max(1, min(limit, 200)))
@@ -885,18 +915,24 @@ async def validate_pipeline(
 
     from dig.engine.executor import compile_to_sql as _compile
 
-    node_status: dict[str, dict[str, Any]] = {}
-    for node in p.nodes:
-        try:
-            _compile(p, terminal=node.id)
-            node_status[node.id] = {"ok": True}
-        except Exception as e:
-            node_status[node.id] = {
-                "ok": False,
-                "error": f"{type(e).__name__}: {e}"[:500],
-            }
+    # The probe is pure CPU over the already-loaded pipeline (no session
+    # access), so run the whole loop — including schema inference, which
+    # walks the same DAG — in a worker thread; on a large DAG the per-node
+    # compiles would otherwise block every other request.
+    def _probe_nodes() -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        status: dict[str, dict[str, Any]] = {}
+        for node in p.nodes:
+            try:
+                _compile(p, terminal=node.id)
+                status[node.id] = {"ok": True}
+            except Exception as e:
+                status[node.id] = {
+                    "ok": False,
+                    "error": f"{type(e).__name__}: {e}"[:500],
+                }
+        return status, dict(infer_schemas(p))
 
-    schemas = {k: v for k, v in infer_schemas(p).items()}
+    node_status, schemas = await asyncio.to_thread(_probe_nodes)
     overall_ok = all(s.get("ok") for s in node_status.values()) if node_status else True
     return {
         "ok": overall_ok,
@@ -1546,8 +1582,20 @@ async def preview_pipeline(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    sample_clause = f"{sql} LIMIT {int(sample_rows)}" if sample_rows else sql
-    preview_sql = f"SELECT * FROM ({sample_clause}) AS __preview LIMIT {int(preview_limit)}"
+    # Server-side clamps: sample_rows <= 0 would drop the LIMIT entirely
+    # (unbounded scan of the full source); preview_limit < 1 is meaningless.
+    if sample_rows <= 0:
+        sample_rows = 100_000
+    preview_limit = max(1, preview_limit)
+
+    sample_clause = f"{sql} LIMIT {int(sample_rows)}"
+    # Two statements, back-to-back on the SAME connection inside the one
+    # thread hop below: the rows page, then a projection-pruned count(*).
+    # A count(*) OVER () window riding on the rows query forces DuckDB to
+    # materialize every projected column before the LIMIT (the empty OVER
+    # defeats both limit-pushdown and count projection-pruning) — measured
+    # 21x-830x slower on derived-column-heavy pipelines.
+    rows_sql = f"SELECT * FROM ({sample_clause}) AS __preview LIMIT {int(preview_limit)}"
     count_sql = f"SELECT count(*) FROM ({sample_clause}) AS __preview"
 
     def _run() -> dict[str, Any]:
@@ -1559,7 +1607,7 @@ async def preview_pipeline(
         try:
             if _requires_spatial(sql):
                 _ensure_spatial(con)
-            cur = con.execute(preview_sql)
+            cur = con.execute(rows_sql)
             cols = [{"name": d[0], "type": str(d[1])} for d in cur.description]
             rows_raw = cur.fetchall()
             row_count = int(con.execute(count_sql).fetchone()[0])
@@ -1626,6 +1674,12 @@ async def preview_step_rows(
     )
     from dig.engine.step import PolarsContext
     from dig.storage.files import data_dir as _data_dir
+
+    # Server-side clamps: sample_rows <= 0 would drop the sampling LIMIT
+    # entirely (unbounded scan); preview_limit < 1 is meaningless.
+    if sample_rows <= 0:
+        sample_rows = 20_000
+    preview_limit = max(1, preview_limit)
 
     # Defensive: reject a pipeline_id that doesn't match the strict ULID
     # pattern before we interpolate it into a filesystem path below. The
@@ -1720,12 +1774,19 @@ async def preview_step_rows(
                 sql = wrap_with_sampling(sql, sampling_cfg)
                 if _requires_spatial(sql):
                     _ensure_spatial(con)
-                preview_sql = f"SELECT * FROM ({sql}) AS __preview LIMIT {int(preview_limit)}"
-                count_sql = f"SELECT count(*) FROM ({sql}) AS __preview"
-                cur = con.execute(preview_sql)
+                # Two statements on the same connection/thread: rows page,
+                # then a projection-pruned count(*). See /preview for why
+                # the single-pass count(*) OVER () form was reverted (the
+                # empty OVER defeats limit-pushdown + projection-pruning).
+                rows_sql = (
+                    f"SELECT * FROM ({sql}) AS __preview LIMIT {int(preview_limit)}"
+                )
+                cur = con.execute(rows_sql)
                 cols = [{"name": d[0], "type": str(d[1])} for d in cur.description]
                 raw_rows = cur.fetchall()
-                row_count = int(con.execute(count_sql).fetchone()[0])
+                row_count = int(
+                    con.execute(f"SELECT count(*) FROM ({sql}) AS __preview").fetchone()[0]
+                )
 
                 def _coerce(v: Any) -> Any:
                     if v is None or isinstance(v, (str, int, float, bool)):
@@ -2057,7 +2118,7 @@ async def list_runs(
     return [_run_out(r) for r in res.scalars().all()]
 
 
-# ---- Phase A Layer 2: freshness ----------------------------------------
+# ---- Freshness ----------------------------------------
 
 class FreshnessOut(BaseModel):
     """Per-node + per-group freshness state for the canvas halo overlay.
@@ -2081,8 +2142,8 @@ async def get_pipeline_freshness(
 
     Pure read — combines the pipeline document's freshness declarations
     with the most recent succeeded run's `finished_at` to decide each
-    node's halo color. The scheduler that *acts on* staleness lives in
-    Phase B; this endpoint is read-only.
+    node's halo color. The scheduler that *acts on* staleness lives
+    elsewhere; this endpoint is read-only.
     """
     from dig.engine.freshness import compute_node_freshness
 
@@ -2121,11 +2182,11 @@ async def get_pipeline_freshness(
             continue
         group_declared.append((g["id"], sla, warn_at))
 
-    # Phase A — opportunistic event emission. We compare the just-computed
+    # Opportunistic event emission. We compare the just-computed
     # state to whatever we saw last time for this (pipeline, target) and
     # emit a transition event if it crossed a boundary (fresh → due → stale,
     # or recovered the other way). Stored in-process; reset on restart.
-    # A proper periodic scanner is Phase B's scheduler.
+    # A proper periodic scanner is a separate scheduler.
 
     if not declared and not group_declared:
         return FreshnessOut(states={}, group_states={})
@@ -2170,7 +2231,7 @@ async def get_pipeline_freshness(
 
 # Per-process cache of last-seen freshness states. Keyed by
 # (pipeline_id, target_kind, target_id) → state. Cleared on restart;
-# Phase B's scheduler will replace this with persistent state.
+# a dedicated scheduler will replace this with persistent state.
 #
 # Round-4 QA-2 fix: bounded LRU. The previous unbounded dict grew
 # without limit — every (pipeline, target) tuple ever observed stuck
@@ -2307,7 +2368,7 @@ async def _emit_freshness_transitions(
 runs_router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-# Phase-A-pro #5 — workspace-wide runs listing.
+# Workspace-wide runs listing.
 # Compact summary shape: lighter than RunOut (no full artifacts /
 # nodeMetrics blobs), suitable for the runs list page where we render
 # many rows at once. Click a row → fetch full RunOut from /runs/{id}.
@@ -2404,7 +2465,14 @@ async def list_all_runs(
             cursor_dt = None
             cursor_id = None
 
-    stmt = select(Run).order_by(Run.created_at.desc(), Run.id.desc())
+    # List items never read the per-node NaN sidecars or artifacts — skip
+    # fetching those (potentially large) JSON blobs for the up-to-1000
+    # rows the internal paging loop below may scan.
+    stmt = (
+        select(Run)
+        .options(defer(Run.nan_origins), defer(Run.artifacts))
+        .order_by(Run.created_at.desc(), Run.id.desc())
+    )
     if pipeline_id:
         stmt = stmt.where(Run.pipeline_id == pipeline_id)
     if statuses:
@@ -2462,8 +2530,12 @@ async def list_all_runs(
             break
 
         pipeline_ids = {r.pipeline_id for r in page_rows}
+        # `document` stays loaded — pipelineName/pipelineTags come from it —
+        # but the audit/identity columns aren't needed for list items.
         pres = await session.execute(
-            select(PipelineRow).where(PipelineRow.id.in_(pipeline_ids))
+            select(PipelineRow)
+            .options(load_only(PipelineRow.id, PipelineRow.document))
+            .where(PipelineRow.id.in_(pipeline_ids))
         )
         pipes_by_id = {p.id: p for p in pres.scalars().all()}
 
@@ -2920,9 +2992,16 @@ async def get_run_output(
     # iter_rows materialisation (QA#1 #25).
     limit = max(1, min(int(limit), 1000))
     # Push parquet I/O off the event loop so other API calls don't stall.
-    df = await asyncio.to_thread(
-        lambda: pl.scan_parquet(target).slice(offset, limit).collect()
-    )
+    # The total-row count shares the same thread hop (and parquet scan
+    # setup) as the page read instead of re-opening the file afterwards.
+    def _read_page() -> tuple[pl.DataFrame, int]:
+        lf = pl.scan_parquet(target)
+        return (
+            lf.slice(offset, limit).collect(),
+            lf.select(pl.len()).collect().item(),
+        )
+
+    df, total = await asyncio.to_thread(_read_page)
     cols = [{"name": c, "type": str(df.schema[c])} for c in df.columns]
     rows = []
     for row in df.iter_rows(named=True):
@@ -2932,7 +3011,6 @@ async def get_run_output(
                 v = v.isoformat()
             out[k] = v
         rows.append(out)
-    total = pl.scan_parquet(target).select(pl.len()).collect().item()
     return {
         "runId": run_id,
         "outputPath": target,

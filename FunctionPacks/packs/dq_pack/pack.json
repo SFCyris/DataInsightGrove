@@ -1,0 +1,13 @@
+{
+  "id": "dq_pack",
+  "version": "0.1.0",
+  "label": "🛡 Data Quality",
+  "description": "Drift detection (PSI / KS), outlier flagging (IQR, Isolation Forest), and missing-pattern audits. Production-grade DQ on top of the built-in expectations step.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["psi_drift", "outliers_iqr", "outliers_isolation_forest", "null_pattern_audit"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

@@ -55,7 +55,7 @@ _This page is auto-generated from `backend/dig/observability/error_codes.py` via
 | `DIG_E_4003` | `E_4003_PACK_DEPENDENCY_REJECTED` | Pack `pythonRequirements` entry rejected by the strict PEP-508 allowlist. |
 | `DIG_E_4004` | `E_4004_STEP_REGISTRATION_FAILED` | A step in a pack failed to register at load time. |
 
-## 5xxx — Auth / multi-user (mostly Enterprise tier)
+## 5xxx — Auth / multi-user
 
 | Code | Identifier | Meaning |
 |------|------------|---------|
@@ -91,4 +91,3 @@ _This page is auto-generated from `backend/dig/observability/error_codes.py` via
 
 - [`backend/dig/observability/error_codes.py`](../backend/dig/observability/error_codes.py) — the `ErrorCode` enum (source of truth)
 - [`SECURITY.md`](../SECURITY.md) — what failure modes have stable codes vs free-text
-- [`docs/API_STABILITY.md`](API_STABILITY.md) — code-stability commitment across MAJOR / MINOR / PATCH

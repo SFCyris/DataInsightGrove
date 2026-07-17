@@ -1,0 +1,26 @@
+{
+  "id": "effect_size",
+  "version": "1.0.0",
+  "label": "📐 Effect size",
+  "description": "Effect-size measures for two-group comparisons. Cohen's d (standardized mean difference), Hedges' g (small-sample-corrected d), and Glass' delta. A p-value tells you whether a difference exists; effect size tells you how big it is.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "group": {
+      "type": "column_ref", "label": "Group column (binary)", "columnFrom": "in", "required": true
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["statistics"],
+  "aliases": ["cohens d", "hedges g", "glass delta", "cohen", "hedges"],
+  "requires": [{"kind": "numeric"}, {"kind": "any"}]
+}

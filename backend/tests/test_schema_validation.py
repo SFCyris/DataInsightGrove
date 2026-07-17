@@ -1,12 +1,11 @@
 """Tests for the pre-1.0 schema lockdown.
 
-Covers the forward-compatibility surfaces that protect users from
-breaking changes when the Enterprise tier ships:
+Covers the forward-compatibility surfaces of the schema:
 
   - Opened enums (`engine.primary`, `webhook.on`, `step.category`) accept
     both the original closed set + arbitrary new values.
   - Relaxed ID regex (`^[a-z0-9][a-z0-9_:-]*$`) accepts hyphens + colons
-    for enterprise namespacing while remaining backwards-compatible
+    for namespacing while remaining backwards-compatible
     with the original `^[a-z][a-z0-9_]*$` IDs.
   - `metadata` + `extensions` slots round-trip on pipeline / step /
     pack / connector manifests without rejection.

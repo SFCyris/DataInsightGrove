@@ -1,0 +1,27 @@
+{
+  "id": "candlestick_chart",
+  "version": "1.0.0",
+  "label": "🕯 Candlestick / OHLC chart",
+  "description": "Financial candlestick chart from Open / High / Low / Close columns. Each row is one bar; green for rise (close >= open), red for fall. The standard chart for any financial reporting deliverable.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "dateColumn":  { "type": "column_ref", "label": "Date column", "columnFrom": "in", "required": true },
+    "openColumn":  { "type": "column_ref", "label": "Open column", "columnFrom": "in", "required": true },
+    "highColumn":  { "type": "column_ref", "label": "High column", "columnFrom": "in", "required": true },
+    "lowColumn":   { "type": "column_ref", "label": "Low column",  "columnFrom": "in", "required": true },
+    "closeColumn": { "type": "column_ref", "label": "Close column", "columnFrom": "in", "required": true },
+    "volumeColumn": { "type": "column_ref", "label": "Volume column (optional)", "columnFrom": "in",
+                       "help": "If set, draws a volume bar chart in a sub-panel below the candles." },
+    "title": { "type": "string", "label": "Title", "default": "Candlestick chart" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "time-series", "finance", "candlestick", "ohlc"],
+  "aliases": ["ohlc", "candle chart", "japanese candles"],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}, {"kind": "numeric"}, {"kind": "numeric"}, {"kind": "numeric"}]
+}

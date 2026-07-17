@@ -1,4 +1,4 @@
-"""Catalog API — Phase A Layer 5.
+"""Catalog API.
 
 Workspace-wide cross-pipeline lineage. Walks every saved pipeline,
 extracts its dataset references + output sinks, and builds a meta-graph
@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dig.storage.db import get_session
@@ -42,7 +42,7 @@ class CatalogNodeOut(BaseModel):
     kind: str            # "pipeline" | "consumer"
     name: str
     description: str | None = None
-    # Aggregated state — drives the Layer 1/2 overlays at meta-level.
+    # Aggregated state — drives the overlays at meta-level.
     last_run_at: datetime | None = None
     last_run_status: str | None = None
     node_count: int = 0
@@ -51,7 +51,7 @@ class CatalogNodeOut(BaseModel):
     # (pipeline writes to these). Surfaced for the side panel.
     inputs: list[str] = []
     outputs: list[str] = []
-    # Phase-A-pro #3 — user-applied tags from the pipeline document.
+    # User-applied tags from the pipeline document.
     # Powers the catalog tag-filter chips + the workspace search.
     tags: list[str] = []
 
@@ -62,7 +62,7 @@ class CatalogEdgeOut(BaseModel):
     to_id: str
     # The matching path / dataset uri, for debugging + tooltips.
     via: str | None = None
-    # Phase-A-pro #6 — column-level lineage. When a registered Dataset
+    # Column-level lineage. When a registered Dataset
     # row exists for `via`, we attach its column names so the catalog
     # frontend can render "→ N columns flow through this edge" and an
     # expandable list of column names. Empty when the URI is foreign
@@ -135,29 +135,43 @@ async def get_catalog_lineage(
     # `source_uri` and `storage_uri` (each can match the URI a sink
     # writes to OR a downstream pipeline reads from), normalised the
     # same way as `_normalise_uri()`.
-    ds_res = await session.execute(select(Dataset))
+    # Column-only select: skips the heavy `profile` JSON blob, which
+    # this endpoint never reads.
+    ds_res = await session.execute(
+        select(Dataset.source_uri, Dataset.storage_uri, Dataset.columns)
+    )
     columns_by_uri: dict[str, list[str]] = {}
-    for d in ds_res.scalars().all():
+    for source_uri, storage_uri, ds_columns in ds_res.all():
         cols = [
-            c.get("name") for c in (d.columns or [])
+            c.get("name") for c in (ds_columns or [])
             if isinstance(c, dict) and isinstance(c.get("name"), str)
         ]
         cols = [c for c in cols if c]
-        for u in (d.source_uri, d.storage_uri):
+        for u in (source_uri, storage_uri):
             key = _normalise_uri(u)
             if key and key not in columns_by_uri:
                 columns_by_uri[key] = cols
 
-    # Latest succeeded run per pipeline — used to surface
-    # last_run_status + last_run_at on each node.
-    runs_res = await session.execute(
-        select(Run).order_by(Run.created_at.desc())
+    # Latest run per pipeline — used to surface last_run_status +
+    # last_run_at on each node. Windowed subquery so SQLite returns one
+    # row per pipeline instead of us scanning the whole runs table
+    # (with its heavy JSON columns) in Python.
+    ranked = (
+        select(
+            Run.pipeline_id,
+            Run.status,
+            Run.finished_at,
+            func.row_number()
+            .over(partition_by=Run.pipeline_id, order_by=Run.created_at.desc())
+            .label("rn"),
+        )
+        .subquery()
     )
-    latest_run_by_pipeline: dict[str, Run] = {}
-    for r in runs_res.scalars().all():
-        if r.pipeline_id in latest_run_by_pipeline:
-            continue
-        latest_run_by_pipeline[r.pipeline_id] = r
+    runs_res = await session.execute(
+        select(ranked.c.pipeline_id, ranked.c.status, ranked.c.finished_at)
+        .where(ranked.c.rn == 1)
+    )
+    latest_run_by_pipeline = {row.pipeline_id: row for row in runs_res.all()}
 
     nodes: list[CatalogNodeOut] = []
     inputs_by_pipeline: dict[str, list[str]] = {}

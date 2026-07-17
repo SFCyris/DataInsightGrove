@@ -1,0 +1,36 @@
+{
+  "id": "nearest_neighbors",
+  "version": "1.0.0",
+  "label": "🧭 Nearest neighbours (k-NN)",
+  "description": "For each row, find its k closest rows by embedding distance. Output is a long-form (source_idx, neighbour_idx, distance, rank) DataFrame ready to feed group_aggregate or join. Distance metrics: cosine (default for sentence-transformers) or euclidean.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "embedding_column": {
+      "type": "column_ref", "label": "Embedding column",
+      "columnFrom": "in", "required": true,
+      "help": "List/array column produced by embed_text or vector_similarity."
+    },
+    "label_column": {
+      "type": "column_ref", "label": "Label column (optional)",
+      "columnFrom": "in",
+      "help": "If set, neighbours' labels are surfaced in the output."
+    },
+    "k": {
+      "type": "integer", "label": "Number of neighbours",
+      "default": 5, "min": 1, "max": 100
+    },
+    "metric": {
+      "type": "enum", "label": "Distance metric",
+      "enumValues": ["cosine", "euclidean"], "default": "cosine"
+    }
+  },
+  "preview": { "rowImpact": "may_grow", "schemaImpact": "rebuilds" },
+  "tags": ["ai", "search", "embedding"],
+  "aliases": ["knn", "k nearest", "ann"],
+  "requires": [{"kind": ["vector", "array", "string"]}]
+}

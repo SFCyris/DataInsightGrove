@@ -1,0 +1,11 @@
+ticket_id,subject,body
+T-1001,Login fails after 2FA,"I enter my password, get the SMS code, then the app spins forever and logs me out. Started yesterday afternoon. Chrome on macOS Sonoma. Tried clearing cookies. Same on Safari."
+T-1002,Refund request for double charge,"My card was charged twice for invoice INV-99821 ($89.99 each). Please refund one of them. Order placed 2026-04-22."
+T-1003,Dark mode looks great,"Just want to say the new dark mode you shipped is fantastic. Keep up the good work, team."
+T-1004,Cannot export to PDF,"Pressing Export → PDF in the dashboard does nothing. No error, just the button greys out for a second. Other formats (CSV, PNG) work fine."
+T-1005,How do I invite a teammate,"Trying to add my colleague to my workspace but the People tab only shows my profile. Am I missing something?"
+T-1006,Slow query on large datasets,"Aggregations on the 12M-row sales_2025 table take 90+ seconds. Used to be 5-10. Started after the upgrade last week."
+T-1007,Cancel my account,"I want to cancel my subscription. Have been with you for 2 years but switching to a competitor. Bill on the 15th — please make sure I'm not charged again."
+T-1008,Loving the new AI features,"The auto-suggest in the pipeline editor saved me an hour today. More like this please!"
+T-1009,Charts are hard to read on mobile,"Browsing your dashboard on my iPhone — the X-axis labels overlap and there's no way to zoom. Desktop is fine."
+T-1010,Password reset email never arrives,"Tried resetting my password 4 times. No email in inbox or spam. Email is alice@example.com — definitely correct, I get other things from your domain."

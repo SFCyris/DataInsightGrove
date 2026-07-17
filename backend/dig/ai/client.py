@@ -18,13 +18,16 @@ Returns:
     {"choices": [{"message": {"content": "..."}}], "usage": {...}}
 
 We use httpx (already a transitive dep via FastAPI/starlette) so no new
-package needed. Streaming is supported but not required by current
-features — they're all "one prompt → one response" shape.
+package needed. JSON-structured features use the one-shot `chat()`;
+free-text surfaces stream tokens via `chat_stream()`.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +39,47 @@ log = logging.getLogger(__name__)
 # on a cold model. 120s covers cold-start + a typical generation; users
 # with sluggish hardware can override per-call.
 _DEFAULT_TIMEOUT_S = 120.0
+
+# Shared HTTP client — one keep-alive connection pool for every AI call
+# in the process instead of a fresh client (and TCP handshake) per call.
+# Created lazily on first use. Endpoint URL, headers, and timeout all
+# vary per request (the AI config can change between calls), so they are
+# passed per-request rather than baked into the client.
+_shared_client: httpx.AsyncClient | None = None
+
+# Serializes client creation — two coroutines hitting a cold/closed
+# client at once would otherwise each build an AsyncClient and one
+# connection pool would leak unclosed.
+_client_lock = asyncio.Lock()
+
+
+async def _get_client() -> httpx.AsyncClient:
+    """Return the shared AsyncClient, creating it on first use.
+
+    follow_redirects=False is pinned here — the pre-call URL validation
+    (assert_ai_url_safe) is a TOCTOU pre-check; a 302 to an internal
+    address would silently bypass it. Pin the default so an httpx
+    version flip doesn't reopen the SSRF gate.
+    """
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        # Double-checked under the lock: the outer check keeps the hot
+        # path lock-free; the inner re-check catches a concurrent
+        # coroutine that created the client while we awaited the lock.
+        async with _client_lock:
+            if _shared_client is None or _shared_client.is_closed:
+                _shared_client = httpx.AsyncClient(follow_redirects=False)
+    return _shared_client
+
+
+async def aclose_client() -> None:
+    """Close the shared client, dropping its pooled connections. The next
+    AI call transparently recreates it — use this when pooled connections
+    should be discarded (app shutdown, tests)."""
+    global _shared_client
+    if _shared_client is not None:
+        client, _shared_client = _shared_client, None
+        await client.aclose()
 
 
 class AiError(Exception):
@@ -173,20 +217,16 @@ async def chat(
         raise AiError(f"AI endpoint URL rejected: {e}") from e
 
     try:
-        # follow_redirects=False — pre-call URL validation (above) is a
-        # TOCTOU pre-check; a 302 to an internal address would silently
-        # bypass it. Pin the default so an httpx version flip doesn't
-        # reopen the SSRF gate.
-        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
-            r = await client.post(url, json=payload, headers=headers)
-            # Defence-in-depth against DNS rebinding TOCTOU, AI-endpoint
-            # policy (loopback peer allowed; other-private gated on
-            # DIG_AI_ALLOW_PRIVATE).
-            try:
-                from dig.ai.url_safety import assert_ai_response_peer_safe
-                assert_ai_response_peer_safe(r, allow_nonlocal=cfg.allow_nonlocal)
-            except RuntimeError as e:
-                raise AiError(f"AI endpoint rejected post-connect: {e}") from e
+        client = await _get_client()
+        r = await client.post(url, json=payload, headers=headers, timeout=timeout_s)
+        # Defence-in-depth against DNS rebinding TOCTOU, AI-endpoint
+        # policy (loopback peer allowed; other-private gated on
+        # DIG_AI_ALLOW_PRIVATE).
+        try:
+            from dig.ai.url_safety import assert_ai_response_peer_safe
+            assert_ai_response_peer_safe(r, allow_nonlocal=cfg.allow_nonlocal)
+        except RuntimeError as e:
+            raise AiError(f"AI endpoint rejected post-connect: {e}") from e
     except httpx.TimeoutException as e:
         raise AiError(f"AI request timed out after {timeout_s}s — model may be cold-loading") from e
     except httpx.RequestError as e:
@@ -227,6 +267,112 @@ async def chat(
     )
 
 
+async def chat_stream(
+    cfg: AiConfig,
+    messages: list[dict[str, str]],
+    *,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    timeout_s: float = _DEFAULT_TIMEOUT_S,
+) -> AsyncIterator[str]:
+    """Stream a chat completion, yielding assistant-text deltas as the
+    provider generates them.
+
+    Speaks the OpenAI-compat streaming shape — ``"stream": true`` in the
+    request, SSE ``data: {...}`` chunks carrying
+    ``choices[0].delta.content`` back, terminated by ``data: [DONE]``.
+    Every provider this client targets implements it (Ollama /v1,
+    llama.cpp, vLLM, OpenAI, Anthropic compat, Groq, OpenRouter,
+    Together, LiteLLM), so one parser covers the field.
+
+    Free-text surfaces only — features that need structured JSON output
+    must stay on `chat()` (no ``response_format`` support here, and a
+    partial JSON document is useless anyway).
+
+    Raises AiError before the first yield on config, policy, connection,
+    or HTTP errors, so callers can fall back to the non-streaming path
+    cleanly. Mid-stream transport failures also surface as AiError.
+    """
+    if not cfg.enabled or cfg.provider == "disabled":
+        raise AiError("AI is disabled — enable it in Settings → AI")
+
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    if cfg.api_key:
+        headers["Authorization"] = f"Bearer {cfg.api_key}"
+
+    payload: dict[str, Any] = {
+        "model": cfg.model,
+        "messages": messages,
+        "temperature": temperature if temperature is not None else cfg.temperature,
+        "max_tokens": max_tokens if max_tokens is not None else cfg.max_tokens,
+        "stream": True,
+    }
+
+    url = _normalize_endpoint(cfg.endpoint) + "/chat/completions"
+    log.debug("AI POST (stream) %s model=%s", url, cfg.model)
+
+    # Same AI-endpoint policy as `chat()` — loopback allowed, non-local
+    # gated on the ai_allow_nonlocal toggle / DIG_AI_ALLOW_PRIVATE.
+    try:
+        from dig.ai.url_safety import assert_ai_url_safe
+        assert_ai_url_safe(url, allow_nonlocal=cfg.allow_nonlocal)
+    except ValueError as e:
+        raise AiError(f"AI endpoint URL rejected: {e}") from e
+
+    try:
+        client = await _get_client()
+        async with client.stream(
+            "POST", url, json=payload, headers=headers, timeout=timeout_s,
+        ) as r:
+            # Same DNS-rebinding TOCTOU defence as `chat()`, checked
+            # before a single body byte is consumed.
+            try:
+                from dig.ai.url_safety import assert_ai_response_peer_safe
+                assert_ai_response_peer_safe(r, allow_nonlocal=cfg.allow_nonlocal)
+            except RuntimeError as e:
+                raise AiError(f"AI endpoint rejected post-connect: {e}") from e
+
+            if r.status_code != 200:
+                body_bytes = await r.aread()
+                # Same bearer-token redaction rule as `chat()` — some
+                # misbehaving upstreams echo headers into error pages.
+                if cfg.api_key:
+                    raise AiError(f"AI provider returned HTTP {r.status_code}")
+                raise AiError(
+                    f"AI provider returned {r.status_code}: "
+                    f"{body_bytes.decode('utf-8', errors='replace')[:300]}",
+                )
+
+            got_text = False
+            async for line in r.aiter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue  # SSE comments / keep-alives / blank lines
+                data = line[len("data:"):].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue  # tolerate malformed keep-alive chunks
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = (choices[0].get("delta") or {}).get("content")
+                if delta:
+                    got_text = True
+                    yield delta
+            if not got_text:
+                raise AiError("AI provider returned an empty message")
+    except httpx.TimeoutException as e:
+        raise AiError(f"AI request timed out after {timeout_s}s — model may be cold-loading") from e
+    except httpx.RequestError as e:
+        raise AiError(
+            f"AI provider unreachable at {url}: {e}. "
+            "Check Settings → AI · Test connection.",
+        ) from e
+
+
 async def list_models(cfg: AiConfig, *, timeout_s: float = 10.0) -> list[str]:
     """Fetch the list of available models from the configured endpoint.
 
@@ -259,10 +405,18 @@ async def list_models(cfg: AiConfig, *, timeout_s: float = 10.0) -> list[str]:
         log.debug("AI list_models: URL rejected (%s)", e)
         return []
     try:
-        async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=False) as client:
-            r = await client.get(url, headers=headers)
+        client = await _get_client()
+        r = await client.get(url, headers=headers, timeout=timeout_s)
     except (httpx.RequestError, httpx.TimeoutException) as e:
         log.debug("AI list_models: %s unreachable (%s)", url, e)
+        return []
+    # Same DNS-rebinding TOCTOU defence as `chat()` / `chat_stream()` —
+    # never-raises contract, so a rejected peer maps to empty + debug log.
+    try:
+        from dig.ai.url_safety import assert_ai_response_peer_safe
+        assert_ai_response_peer_safe(r, allow_nonlocal=cfg.allow_nonlocal)
+    except RuntimeError as e:
+        log.debug("AI list_models: endpoint rejected post-connect (%s)", e)
         return []
     if r.status_code != 200:
         log.debug("AI list_models: HTTP %d from %s", r.status_code, url)

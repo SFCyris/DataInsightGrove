@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "embedding_search_demo",
+  "name": "\ud83e\udded embedding_search \u00b7 cluster + nearest-neighbour",
+  "description": "Toy 3-D embeddings split into three obvious topics (pets / cars / food). semantic_cluster should recover those three groups exactly; nearest_neighbors finds each doc's two closest siblings.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "documents + embeddings"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_cluster",
+      "step": "semantic_cluster",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "embedding_column": "embedding",
+        "n_clusters": 3,
+        "linkage": "average",
+        "output_column": "cluster"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Agglomerative \u00b7 k=3"
+      }
+    },
+    {
+      "id": "n_knn",
+      "step": "nearest_neighbors",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "embedding_column": "embedding",
+        "label_column": "text",
+        "k": 2,
+        "metric": "cosine"
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "Top-2 nearest neighbours per doc"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_cluster",
+      "name": "clustered",
+      "from": {
+        "ref": "n_cluster"
+      }
+    },
+    {
+      "id": "o_knn",
+      "name": "knn",
+      "from": {
+        "ref": "n_knn"
+      }
+    }
+  ]
+}

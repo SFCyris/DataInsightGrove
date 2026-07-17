@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from dig.storage.db import Base
@@ -17,7 +17,8 @@ class Dataset(Base):
     __tablename__ = "datasets"
 
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
-    name: Mapped[str] = mapped_column(String(255))
+    # Indexed: upload registration scans for name conflicts on every upload.
+    name: Mapped[str] = mapped_column(String(255), index=True)
     connector: Mapped[str] = mapped_column(String(64))
     source_uri: Mapped[str] = mapped_column(Text)
     storage_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -30,8 +31,7 @@ class Dataset(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Per-column free-text notes from the user. Shape: { "<col_name>": "this is in cents, not dollars" }
     annotations: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
-    # Enterprise-anticipatory identity columns. Always NULL in OSS / single-user.
-    # See internal/TIER_ARCHITECTURE.md § 4.2.
+    # Identity columns — always NULL in single-user deployments.
     owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -40,14 +40,18 @@ class Dataset(Base):
     # Free-form metadata + namespaced extensions slot.
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Indexed: list_datasets orders by `created_at desc`. Without an index
+    # the planner does a full sort over every row.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
 
 class Pipeline(Base):
-    """Phase 2+. Defined here so the schema is forward-compatible."""
+    """Defined here so the schema is forward-compatible."""
 
     __tablename__ = "pipelines"
 
@@ -55,8 +59,7 @@ class Pipeline(Base):
     name: Mapped[str] = mapped_column(String(255))
     document: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     etag: Mapped[int] = mapped_column(Integer, default=1)
-    # Enterprise-anticipatory identity + audit columns. Always NULL in OSS.
-    # See internal/TIER_ARCHITECTURE.md § 4.2.
+    # Identity + audit columns — always NULL in single-user deployments.
     owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -107,9 +110,18 @@ class PipelineHistory(Base):
 
 
 class Run(Base):
-    """Phase 2+."""
+    """A single backend execution of a pipeline over the full dataset."""
 
     __tablename__ = "runs"
+
+    # Composite index for the latest-run-per-pipeline window
+    # (row_number() OVER (PARTITION BY pipeline_id ORDER BY created_at DESC))
+    # used by catalog.get_catalog_lineage and pipelines.list_pipelines. The
+    # two single-column indexes below can't serve this ordering, forcing a
+    # per-partition sort; (pipeline_id, created_at DESC) matches it directly.
+    __table_args__ = (
+        Index("ix_runs_pipeline_created", "pipeline_id", text("created_at DESC")),
+    )
 
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
     # Indexed: list_runs filters by pipeline_id; without it every page-load
@@ -127,7 +139,7 @@ class Run(Base):
     # Per-node execution metrics — populated by the executor when each node
     # runs. Shape: { node_id: { rows_in?: int, rows_out?: int, elapsed_ms?: int,
     # status?: "success"|"failed"|"skipped" } }. Drives the canvas run-state
-    # overlay (Phase A Layer 1). Optional fields because not every engine path
+    # overlay. Optional fields because not every engine path
     # gives us cheap row counts.
     node_metrics: Mapped[dict[str, dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     # Per-node NaN-origin sidecars — populated by the executor's post-step
@@ -135,11 +147,9 @@ class Run(Base):
     # { node_id: [ {column, row_indices, cause, source_column?, count, truncated}, … ] }.
     # Surfaces in the grid as the orange-⚠ NULL variant on cells that became
     # NULL via a conversion / computation failure on THIS step. Lives on the
-    # producing step only — the next step sees plain NULL. See
-    # `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    # producing step only — the next step sees plain NULL.
     nan_origins: Mapped[dict[str, list[dict[str, Any]]] | None] = mapped_column(JSON, nullable=True)
-    # Enterprise-anticipatory identity + cost columns. Always NULL in OSS / single-user.
-    # See internal/TIER_ARCHITECTURE.md § 3.3 + § 4.2.
+    # Identity + cost columns — always NULL in single-user deployments.
     owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     org_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     tenant_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -149,9 +159,10 @@ class Run(Base):
     cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    # Indexed: list_runs orders by `created_at desc`. Composite with
-    # pipeline_id would be ideal but two single-column indexes are
-    # cheap enough on this workload.
+    # Indexed: list_runs orders by `created_at desc`. The composite
+    # ix_runs_pipeline_created (pipeline_id, created_at DESC) above serves
+    # the latest-run-per-pipeline window; this single-column index serves
+    # the cross-pipeline ORDER BY created_at DESC list query.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True,
     )
@@ -186,9 +197,7 @@ class NotificationRule(Base):
     and produces a notification (or, in the future, dispatches to email
     / Slack / webhook).
 
-    Pattern matches the way enterprise notification systems work
-    (Redis Enterprise alerts, Alteryx Cloud notifications, PagerDuty
-    rules) — separation of "what happened" from "who cares about it".
+    Separates "what happened" from "who cares about it".
     """
 
     __tablename__ = "notification_rules"
@@ -268,7 +277,7 @@ class Notification(Base):
     )
 
 
-# ---- Server-side settings (Phase 6) ---------------------------------------
+# ---- Server-side settings ---------------------------------------
 #
 # Three new tables back the /settings UI. Kept narrow on purpose — these are
 # the things a user genuinely wants to change at runtime without restarting

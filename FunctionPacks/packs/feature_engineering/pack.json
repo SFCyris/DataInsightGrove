@@ -1,0 +1,13 @@
+{
+  "id": "feature_engineering",
+  "version": "0.1.0",
+  "label": "🛠 Feature Engineering",
+  "description": "ML-ready feature transformations: lag features (shift columns by N rows), target encoding (mean-of-target per category), polynomial features, weight-of-evidence + information value, four scalers (standard / robust / min-max), Yeo-Johnson power transform.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["lag_features", "target_encoding", "polynomial_features", "woe_iv", "scale_standard", "scale_robust", "scale_minmax", "yeo_johnson"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

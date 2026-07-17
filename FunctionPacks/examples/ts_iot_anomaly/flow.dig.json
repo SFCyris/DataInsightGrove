@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_iot_anomaly_demo",
+  "name": "\ud83c\udfed IoT \u00b7 sensor anomaly detection",
+  "description": "Roll a z-score over a 60-min window and flag points that exceed 3\u03c3. Catches the 3 anomalous bursts without false-positives on the slow drift.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "8-hour shift of factory sensor readings (vibration + bearing temp) with 3 injected anomalies"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_anomaly",
+      "step": "anomaly_zscore",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "vibration_mm_s",
+        "window": 60,
+        "threshold": 3.0,
+        "min_periods": 30
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "Z-score \u00b7 60-min window"
+      }
+    },
+    {
+      "id": "n_chart",
+      "step": "export_to_image",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_anomaly"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "kind": "scatter",
+        "x": "ts",
+        "y": "vibration_mm_s",
+        "value": "is_anomaly",
+        "title": "Vibration \u00b7 anomalies highlighted (yellow = is_anomaly)",
+        "format": "png",
+        "width": 1400,
+        "height": 520,
+        "dpi": 96,
+        "max_points": 1000
+      },
+      "ui": {
+        "x": 580,
+        "y": 80,
+        "label": "Plot vibration + anomalies"
+      }
+    }
+  ],
+  "outputs": []
+}

@@ -26,7 +26,7 @@ _TYPE_TO_SQL = {
     #     values that overflow BIGINT, e.g. SHA-256 fragments).
     #   scientific            → DOUBLE  (for now; range-aware storage in
     #     the multi-storage detection step picks VARCHAR when values
-    #     exceed ±1.8e308 — see Phase 1.2).
+    #     exceed ±1.8e308).
     #
     # Anything that's semantically a string keeps VARCHAR — leading-zero
     # phone numbers, email addresses, IANA timezones, etc.
@@ -60,7 +60,7 @@ _TYPE_TO_SQL = {
     "country":        "VARCHAR",
     "color":          "VARCHAR",
     "timezone":       "VARCHAR",
-    # decimal_string is implemented in Phase 1.5 — VARCHAR storage for
+    # decimal_string uses VARCHAR storage for
     # arbitrary-precision decimals beyond DECIMAL's 38-digit limit.
 }
 

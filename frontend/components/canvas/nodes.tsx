@@ -1,10 +1,11 @@
 "use client";
 
+import { memo, useSyncExternalStore } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { motion } from "motion/react";
 import { CATEGORY_EMOJI } from "@/lib/category-emoji";
 
-// ---- Phase A Layer 1: run-state overlay ---------------------------------
+// ---- Run-state overlay ---------------------------------
 
 export type RunState = "success" | "failed" | "stale" | "never" | "running";
 
@@ -16,7 +17,7 @@ const RUN_STATE_STRIP: Record<RunState, string> = {
   running: "border-t-sky-500",
 };
 
-// ---- Phase A Layer 2: freshness halo ------------------------------------
+// ---- Freshness halo ------------------------------------
 
 export type Freshness = "fresh" | "due" | "stale" | "never";
 
@@ -48,6 +49,59 @@ function relativeTime(ms: number | null | undefined): string {
   return `${day}d ago`;
 }
 
+// ---- shared "Xs ago" clock ---------------------------------------------
+// One module-level interval feeds every node's relative-time chip via
+// useSyncExternalStore. A single 30s tick notifies all subscribers in one
+// synchronous pass, so React batches the re-renders instead of the N
+// independent per-node intervals a per-node hook would create on a large
+// DAG. The interval is created lazily on the first subscriber and cleared
+// when the last one leaves, and only nodes that actually have a
+// finishedAtMs subscribe — so nodes with no chip pay nothing.
+
+let clockNow = 0;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+const clockListeners = new Set<() => void>();
+
+function tickClock(): void {
+  clockNow = Date.now();
+  for (const notify of clockListeners) notify();
+}
+
+function subscribeClock(notify: () => void): () => void {
+  // Seed on subscribe so a node mounting between ticks reads a fresh value.
+  clockNow = Date.now();
+  clockListeners.add(notify);
+  if (clockTimer === null) clockTimer = setInterval(tickClock, 30_000);
+  return () => {
+    clockListeners.delete(notify);
+    if (clockListeners.size === 0 && clockTimer !== null) {
+      clearInterval(clockTimer);
+      clockTimer = null;
+    }
+  };
+}
+
+function getClockSnapshot(): number {
+  return clockNow;
+}
+
+// No-op store used when a node has no chip: it stays out of the listener
+// set and its snapshot never changes, so it never re-renders on a tick.
+const subscribeNever = (): (() => void) => () => {};
+const getZeroSnapshot = (): number => 0;
+
+/** Current epoch-ms for the relative-time chip, refreshed every 30s from the
+ *  shared clock above. `enabled` is false for nodes without a finishedAtMs so
+ *  they neither subscribe nor re-render. SSR / pre-mount returns 0 so server
+ *  and first client paint agree; the real value arrives after mount. */
+function useNowMs(enabled: boolean): number {
+  return useSyncExternalStore(
+    enabled ? subscribeClock : subscribeNever,
+    enabled ? getClockSnapshot : getZeroSnapshot,
+    getZeroSnapshot,
+  );
+}
+
 function formatRows(n: number | null | undefined): string {
   if (n == null) return "";
   if (n < 1_000) return `${n}`;
@@ -70,13 +124,13 @@ export interface StepNodeData extends Record<string, unknown> {
   inputPorts: string[];
   outputPorts: string[];
   hasError?: boolean;
-  // Phase A Layer 1 — optional run-state overlay. Strip color + clock chip.
+  // Optional run-state overlay. Strip color + clock chip.
   runState?: RunState;
   rowsOut?: number | null;
   finishedAtMs?: number | null;   // epoch ms; relativeTime formats it
-  // Phase A Layer 1 — Hex-style inline peek (top 3 rows of step output).
+  // Hex-style inline peek (top 3 rows of step output).
   peek?: { headers: string[]; rows: (string | number | null)[][] };
-  // Phase A Layer 2 — freshness halo.
+  // Freshness halo.
   freshness?: Freshness;
 }
 
@@ -86,7 +140,10 @@ export interface OutputNodeData extends Record<string, unknown> {
   sink?: string | null;
 }
 
-export function DatasetNode({ data, selected }: NodeProps) {
+// All node components are memoized: graph-canvas keeps each node's `data`
+// object referentially stable across unrelated re-renders (buildGraph runs
+// inside useMemo), so memo lets untouched nodes skip repainting entirely.
+export const DatasetNode = memo(function DatasetNode({ data, selected }: NodeProps) {
   const d = data as DatasetNodeData;
   return (
     <motion.div
@@ -108,10 +165,11 @@ export function DatasetNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Right} id="out" className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30" />
     </motion.div>
   );
-}
+});
 
-export function StepNode({ data, selected }: NodeProps) {
+export const StepNode = memo(function StepNode({ data, selected }: NodeProps) {
   const d = data as StepNodeData;
+  const nowMs = useNowMs(d.finishedAtMs != null);
   const emoji = CATEGORY_EMOJI[d.category] ?? "🧩";
   // Run-state strip — only when we have last-run data. Falls back to no
   // strip (just the standard border) on never-run nodes if we don't even
@@ -120,13 +178,15 @@ export function StepNode({ data, selected }: NodeProps) {
   const haloClass = d.freshness
     ? `ring-2 ring-offset-2 ring-offset-card ${FRESHNESS_HALO[d.freshness]}`
     : "";
-  // Relative time chip — rendered when we have a finishedAt.
-  const timeAgo = d.finishedAtMs != null
-    ? relativeTime(Date.now() - d.finishedAtMs)
+  // Relative time chip — rendered when we have a finishedAt. nowMs === 0
+  // is the SSR / pre-mount state: skip the chip so server and client
+  // first paint agree; it appears (and then ticks) after mount.
+  const timeAgo = d.finishedAtMs != null && nowMs !== 0
+    ? relativeTime(Math.max(0, nowMs - d.finishedAtMs))
     : null;
   const rowsLabel = d.rowsOut != null ? formatRows(d.rowsOut) : null;
 
-  // Round-4 UX#2 finding: the step node had no accessible name; screen
+  // The step node had no accessible name; screen
   // readers heard a bare emoji + the category + label crammed
   // together with no semantics. Add an aria-label that reads as
   // "{category} step: {label}, {run-state}" — the latter only
@@ -236,9 +296,9 @@ export function StepNode({ data, selected }: NodeProps) {
       ))}
     </motion.div>
   );
-}
+});
 
-export function OutputNode({ data, selected }: NodeProps) {
+export const OutputNode = memo(function OutputNode({ data, selected }: NodeProps) {
   const d = data as OutputNodeData;
   return (
     <motion.div
@@ -260,9 +320,9 @@ export function OutputNode({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} id="out" className="!bg-emerald-500/60 hover:!bg-emerald-500 hover:!scale-150 !transition-all !ring-1 !ring-emerald-500/30" />
     </motion.div>
   );
-}
+});
 
-// ---- Phase A Layer 4: groups + collapse ---------------------------------
+// ---- Node groups + collapse ---------------------------------
 
 export interface GroupNodeData extends Record<string, unknown> {
   kind: "group";
@@ -285,7 +345,7 @@ const GROUP_COLOR_BY_FRESHNESS: Record<Freshness, string> = {
  *  body has `pointerEvents: none` so clicks fall through to step nodes,
  *  but the title chip overrides that — clicking it fires the
  *  onGroupClick callback (wired from the page) to open the edit popover. */
-export function GroupNode({ id, data }: NodeProps) {
+export const GroupNode = memo(function GroupNode({ id, data }: NodeProps) {
   const d = data as GroupNodeData & {
     onGroupClick?: (id: string, anchor: { x: number; y: number }) => void;
   };
@@ -331,7 +391,7 @@ export function GroupNode({ id, data }: NodeProps) {
       </button>
     </div>
   );
-}
+});
 
 export const nodeTypes = {
   dataset: DatasetNode,

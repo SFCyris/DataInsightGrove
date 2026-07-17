@@ -21,8 +21,8 @@ Usage:
     dig_tls_proxy.py \\
         --cert ~/.config/dig/tls/dig.crt \\
         --key  ~/.config/dig/tls/dig.key \\
-        --forward 8443:8090 \\
-        --forward 3443:3000
+        --forward 8443:8190 \\
+        --forward 3443:3100
 
 ``--forward LISTEN:BACKEND`` opens a TLS listener on ``LISTEN`` and
 forwards every connection to ``127.0.0.1:BACKEND``. May be repeated.
@@ -155,9 +155,9 @@ async def _serve_forward(
 
 
 def _parse_forward(spec: str) -> Forward:
-    """``8443:8090`` → forward LISTEN 8443 → backend 127.0.0.1:8090.
+    """``8443:8190`` → forward LISTEN 8443 → backend 127.0.0.1:8190.
 
-    Also accepts the long form ``8443:127.0.0.1:8090`` for the rare
+    Also accepts the long form ``8443:127.0.0.1:8190`` for the rare
     deployment where the backend lives on a non-loopback address (e.g.
     a sibling container). Listen port + backend port are required;
     backend host defaults to ``127.0.0.1``.
@@ -234,8 +234,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="Bind address for the TLS listeners (default 0.0.0.0).")
     p.add_argument(
         "--forward", action="append", default=[], metavar="LISTEN:BACKEND",
-        help="TLS listener → plain-HTTP backend. e.g. `8443:8090` or "
-             "`8443:127.0.0.1:8090`. May be repeated.",
+        help="TLS listener → plain-HTTP backend. e.g. `8443:8190` or "
+             "`8443:127.0.0.1:8190`. May be repeated.",
     )
     args = p.parse_args(argv)
     try:

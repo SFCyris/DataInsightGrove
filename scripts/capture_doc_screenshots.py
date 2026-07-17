@@ -2,9 +2,9 @@
 
 Drives a headless Chromium against the running preview server, navigates
 to specific routes, applies small DOM tweaks (dismiss popups, switch
-modes), and writes half-resolution PNGs into docs/images/phase-a-pro/.
+modes), and writes half-resolution PNGs into docs/images/workspace/.
 
-Run with the dev server (port 3000) and DIG backend (port 8090) up:
+Run with the dev server (port 3100) and DIG backend (port 8190) up:
 
     python3 scripts/capture_doc_screenshots.py [name1 name2 ...]
 
@@ -25,12 +25,12 @@ from playwright.sync_api import Page, sync_playwright
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "docs" / "images" / "phase-a-pro"
+OUT_DIR = ROOT / "docs" / "images" / "workspace"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 TOKEN_PATH = Path("~/.config/dig/auth.token").expanduser()
 TOKEN = TOKEN_PATH.read_text().strip() if TOKEN_PATH.exists() else ""
-PIPELINE_ID = "01KR4K2K8SRTDAEN18RQETX3FH"   # Phase A testbed
+PIPELINE_ID = "01KR4K2K8SRTDAEN18RQETX3FH"   # testbed
 
 
 def half_resize(png_bytes: bytes) -> bytes:
@@ -50,7 +50,7 @@ def write(name: str, png_bytes: bytes) -> Path:
 
 def goto_pipeline(page: Page) -> None:
     """Navigate to the testbed pipeline + dismiss the tune-up popup."""
-    page.goto(f"http://localhost:3000/pipelines/{PIPELINE_ID}", timeout=15000)
+    page.goto(f"http://localhost:3100/pipelines/{PIPELINE_ID}", timeout=15000)
     page.wait_for_load_state("networkidle", timeout=15000)
     # Dismiss the autosave/tune-up popup if present.
     try:
@@ -238,7 +238,7 @@ def cap_impact_badge(page: Page) -> None:
 
 
 def cap_catalog(page: Page) -> None:
-    page.goto("http://localhost:3000/catalog", timeout=15000)
+    page.goto("http://localhost:3100/catalog", timeout=15000)
     page.wait_for_load_state("networkidle", timeout=15000)
     page.wait_for_timeout(2500)
     write("06-catalog-column-edges", page.screenshot(full_page=False))
@@ -304,21 +304,21 @@ def cap_workspace_cmdk(page: Page) -> None:
 
 
 def cap_catalog_tags(page: Page) -> None:
-    page.goto("http://localhost:3000/catalog", timeout=15000)
+    page.goto("http://localhost:3100/catalog", timeout=15000)
     page.wait_for_load_state("networkidle", timeout=15000)
     page.wait_for_timeout(2500)
     write("10-catalog-tags", page.screenshot(full_page=False))
 
 
 def cap_runs_list(page: Page) -> None:
-    page.goto("http://localhost:3000/runs", timeout=15000)
+    page.goto("http://localhost:3100/runs", timeout=15000)
     page.wait_for_load_state("networkidle", timeout=15000)
     page.wait_for_timeout(2000)
     write("11-runs-list", page.screenshot(full_page=False))
 
 
 def cap_run_detail(page: Page) -> None:
-    page.goto("http://localhost:3000/runs", timeout=15000)
+    page.goto("http://localhost:3100/runs", timeout=15000)
     page.wait_for_load_state("networkidle", timeout=15000)
     page.wait_for_timeout(1500)
     # Click the first run row.
@@ -363,7 +363,7 @@ def main(argv: list[str]) -> int:
                 "cookies": [],
                 "origins": [
                     {
-                        "origin": "http://localhost:3000",
+                        "origin": "http://localhost:3100",
                         "localStorage": [
                             {"name": "dig_auth_token", "value": TOKEN},
                         ],

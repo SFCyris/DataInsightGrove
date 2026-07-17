@@ -1,0 +1,26 @@
+{
+  "id": "confusion_matrix",
+  "version": "1.0.0",
+  "label": "🧪 Confusion matrix",
+  "description": "Compute the confusion-matrix counts table for a classification result. Returns one row per (actual, predicted) pair with the count and the row-normalised rate. Pair with export_to_image (heatmap) to render visually.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "actual": {
+      "type": "column_ref", "label": "Actual column",
+      "columnFrom": "in", "required": true
+    },
+    "predicted": {
+      "type": "column_ref", "label": "Predicted column",
+      "columnFrom": "in", "required": true
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["ml", "evaluation"],
+  "aliases": ["confusion", "classification matrix"],
+  "requires": []
+}

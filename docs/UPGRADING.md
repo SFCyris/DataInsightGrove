@@ -11,7 +11,7 @@ newer one?" a one-command answer.
 ./upgrade.sh --check          # is there a newer release on GitHub?
 ./upgrade.sh                  # interactive upgrade (prompts before applying)
 ./upgrade.sh --yes            # non-interactive upgrade (CI / scripted)
-./upgrade.sh --to v1.0.0-rc2     # upgrade to a specific tag
+./upgrade.sh --to v1.0.0     # upgrade to a specific tag
 ```
 
 After the script finishes, restart the backend. On boot, DIG records the
@@ -77,8 +77,7 @@ boot-time `init_db()` walks the additive-patches list and ALTERs in any
 columns that aren't present yet.
 
 For non-additive changes (column removed / renamed / retyped) — these
-only happen at MAJOR version bumps per
-[`docs/API_STABILITY.md`](API_STABILITY.md). When a MAJOR ships with a
+only happen at MAJOR version bumps. When a MAJOR ships with a
 non-additive change, the upgrade flow surfaces an explicit prompt:
 
 ```
@@ -114,7 +113,7 @@ Exit codes:
 Pin a known-good version in a corporate / disconnected environment:
 
 ```bash
-./upgrade.sh --to v1.0.0-rc2 --yes
+./upgrade.sh --to v1.0.0 --yes
 ```
 
 ## Manual upgrade (without the script)
@@ -123,7 +122,7 @@ If you can't or don't want to use `upgrade.sh`:
 
 ```bash
 git fetch --tags origin
-git checkout v1.0.0-rc2          # or whichever tag
+git checkout v1.0.0          # or whichever tag
 ./backend/.venv/bin/pip install -e ./backend
 ( cd frontend && pnpm install )
 printf '0.10.0\n' > "${DIG_DATA_DIR:-./data}/.installed_version"  # OLD version — the boot rewrites it after firing the transition event
@@ -192,7 +191,5 @@ follows automatically on the next boot.
 ## See also
 
 - [`CHANGELOG.md`](../CHANGELOG.md) — what changed between releases
-- [`docs/API_STABILITY.md`](API_STABILITY.md) — what's allowed to break
-  between MAJOR / MINOR / PATCH
 - [`docs/lifecycle.md`](lifecycle.md) — start/stop/status of the
   running DIG instance

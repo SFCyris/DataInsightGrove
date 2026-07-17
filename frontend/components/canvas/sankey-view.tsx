@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase A Layer 6 — Sankey volume view.
+ * Sankey volume view.
  *
  * A parallel view to the structural xyflow canvas: shows where data
  * volume reshapes through every step. Width encodes row count; color
@@ -35,7 +35,7 @@ type OpKind =
   | "source" | "filter" | "join" | "aggregate" | "derive"
   | "passthrough" | "sink";
 
-// Tier 2 polish: flow alphas raised from 0.30-0.35 → 0.55-0.60 so
+// Flow alphas raised from 0.30-0.35 → 0.55-0.60 so
 // bands feel like real "rivers of data," not pastel watercolour. The
 // jump is subtle on light bands (passthrough) and dramatic on the
 // chromatic ones (filter, join, derive) — matching how Flourish and
@@ -114,7 +114,7 @@ interface Props {
   /** Hard floor on height. The actual rendered height grows from here
    *  based on the number of nodes per column so bands don't overlap. */
   height?: number;
-  /** Phase A Layer 3 link: when the user is hovering a column header in
+  /** Link: when the user is hovering a column header in
    *  the live grid, this carries the set of canvas node IDs that
    *  contribute to that column. The Sankey dims off-lineage bands /
    *  nodes to match. */
@@ -133,7 +133,7 @@ export function SankeyView({
   doc, manifests, nodeMetrics, width = 1400, height = 560,
   tracedNodeIds, onClose,
 }: Props) {
-  // Phase-A-pro #2 — URL-encoded interactive state. One blob per
+  // URL-encoded interactive state. One blob per
   // surface under `?sk=` so the user can refresh / share / bookmark
   // any drilled-in view. Set is encoded as an array; no extra
   // wrapping needed.
@@ -172,15 +172,15 @@ export function SankeyView({
     { idx: number; x: number; y: number } | null
   >(null);
   const [previousMetrics, setPreviousMetrics] = useState<Record<string, NodeRunMetrics> | null>(null);
-  // Round-8 UX: annotation editor modal state (replaces window.prompt).
+  // Annotation editor modal state (replaces window.prompt).
   const [annotEditor, setAnnotEditor] = useState<{ bandKey: string; value: string } | null>(null);
 
-  // Tier 3: annotation pins — ephemeral, session-scoped notes the user
+  // Annotation pins — ephemeral, session-scoped notes the user
   // can drop on bands. Persisted in localStorage keyed by pipeline id
   // so notes survive a page refresh without polluting the saved doc.
   const [annotations, setAnnotations] = useState<Record<string, string>>({});
   const [annotateMode, setAnnotateMode] = useState(false);
-  // Tier-pro zoom+pan: scroll-wheel zoom 0.5×–5×, drag pan, double-
+  // Zoom+pan: scroll-wheel zoom 0.5×–5×, drag pan, double-
   // click reset. Powered by d3-zoom on the SVG with the transform
   // applied to a single inner <g> wrapping every visible element.
   const [zoomScale, setZoomScale] = useState(1);
@@ -188,7 +188,7 @@ export function SankeyView({
   const zoomGroupRef = useRef<SVGGElement | null>(null);
   const zoomBehaviorRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
-  // Load annotations from localStorage on mount. Round-8 fix: skip the
+  // Load annotations from localStorage on mount. Skip the
   // load/save entirely when the doc has no id — previously a "anon"
   // sentinel was shared by every unsaved pipeline, so notes from one
   // new pipeline leaked into another.
@@ -267,7 +267,7 @@ export function SankeyView({
   // in Flourish / Total Sankey / ECharts.
   const drillPath = useMemo<Set<string> | null>(() => {
     if (!drill) return null;
-    // Round-3 QA finding: a stale ?sk= URL (e.g. an old shared link
+    // A stale ?sk= URL (e.g. an old shared link
     // pointing at a node that no longer exists in the current pipeline)
     // would create a one-element set with no neighbours, which dim
     // logic interprets as "the entire canvas is off-path". Without a
@@ -325,7 +325,7 @@ export function SankeyView({
     return totals;
   }, [links]);
 
-  // Tier 3 dim policy: drill (path isolation) wins; then legend filter
+  // Dim policy: drill (path isolation) wins; then legend filter
   // (only show selected kinds); then external column trace from grid
   // hover. Each predicate works on a node-id, with band dim logic that
   // ANDs the two endpoint nodes.
@@ -351,7 +351,7 @@ export function SankeyView({
     });
   };
 
-  // Round-8 UX: replaced ``window.prompt`` (jarring native dialog,
+  // Replaced ``window.prompt`` (jarring native dialog,
   // un-themed, breaks dark mode + reduced-motion) with a state-driven
   // inline modal that uses the same sonner + motion patterns as the
   // rest of the editor.
@@ -647,7 +647,7 @@ export function SankeyView({
         </button>
       </div>
 
-      {/* Tier 3 — interactive legend. Each chip is a toggle that
+      {/* Interactive legend. Each chip is a toggle that
           isolates that op kind across the diagram. Multiple chips can
           stack (Filter + Aggregate, e.g.). Click a chip again or any
           dimmed area to clear. */}
@@ -757,7 +757,7 @@ export function SankeyView({
                 y1: l.y1,
               } as never) as string | null;
               if (!path) return null;
-              // Tier 2: bands fade in left-to-right based on source x —
+              // Bands fade in left-to-right based on source x —
               // creates a brief "data flowing into view" wave on first
               // render. The delay is small enough to feel snappy, big
               // enough to read as motion.
@@ -813,7 +813,7 @@ export function SankeyView({
               const midY = (l.y0 + l.y1) / 2;
               const xNorm = Math.max(0, Math.min(1, l.source.x1 / Math.max(width, 1)));
 
-              // Tier 3 compare-runs: render the delta vs prior run
+              // Compare-runs: render the delta vs prior run
               // alongside the row count when compareMode is on.
               let deltaText = "";
               let deltaColor = "";
@@ -861,7 +861,7 @@ export function SankeyView({
               );
             })}
 
-            {/* Tier 3: annotation pins. One small badge per band that
+            {/* Annotation pins. One small badge per band that
                 has a saved note. Hover for tooltip via title. Clicking
                 in annotateMode also lets the user edit the existing
                 note, so this is the primary edit surface too. */}

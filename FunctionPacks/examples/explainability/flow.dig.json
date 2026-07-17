@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "id": "explainability_demo",
+  "name": "\ud83d\udd0d explainability \u00b7 why the model defaults",
+  "description": "Synthetic credit-default dataset. The truth: defaults are driven by `n_late_payments`, `credit_score`, and `years_employed`. `noise_a` / `noise_b` are random. permutation_importance should rank the real features at the top; partial_dependence on n_late_payments shows the monotonic 'more late payments = higher default risk' relationship.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "credit-default features + labels"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_imp",
+      "step": "permutation_importance",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "target": "defaulted",
+        "features": [
+          "age",
+          "income",
+          "credit_score",
+          "n_late_payments",
+          "years_employed",
+          "noise_a",
+          "noise_b"
+        ],
+        "task": "classification",
+        "n_repeats": 15,
+        "seed": 42
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Permutation importance \u00b7 7 features"
+      }
+    },
+    {
+      "id": "n_pdp",
+      "step": "partial_dependence",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "target": "defaulted",
+        "features": [
+          "age",
+          "income",
+          "credit_score",
+          "n_late_payments",
+          "years_employed",
+          "noise_a",
+          "noise_b"
+        ],
+        "explain_feature": "n_late_payments",
+        "task": "classification",
+        "grid_resolution": 20,
+        "seed": 42
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "PDP \u00b7 n_late_payments"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_imp",
+      "name": "feature_importance",
+      "from": {
+        "ref": "n_imp"
+      }
+    },
+    {
+      "id": "o_pdp",
+      "name": "pdp",
+      "from": {
+        "ref": "n_pdp"
+      }
+    }
+  ]
+}

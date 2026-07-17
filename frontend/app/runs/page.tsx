@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase-A-pro #5 — workspace-wide runs list.
+ * Workspace-wide runs list.
  *
  * Filterable grid of every run across every pipeline. Rows are runs;
  * columns are status / pipeline / triggered-by / started / duration /
@@ -18,13 +18,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 
 import { api, searchApi, type RunListItem } from "@/lib/api/client";
 import { fmtDuration, fmtInt } from "@/lib/format-number";
 import { useURLState } from "@/lib/use-url-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { PositiveLoader } from "@/components/positive-loader";
 
 // ---- Helpers -----------------------------------------------------------
 
@@ -82,7 +81,7 @@ const DEFAULT_FILTERS: FilterState = {
 export default function RunsPage() {
   useDocumentTitle('Run history');
   // URL-state for shareable filtered views (synergy with the URL state
-  // hook from Phase-A-pro #2).
+  // hook).
   const [filters, setFilters] = useURLState<FilterState>("rf", DEFAULT_FILTERS);
 
   const tagsQ = useQuery({
@@ -268,8 +267,34 @@ export default function RunsPage() {
       {/* Grid */}
       <div className="flex-1 overflow-y-auto">
         {runsQ.isLoading ? (
-          <div className="h-full grid place-items-center">
-            <PositiveLoader variant="rendering" primary="Loading runs…" size="md" showTimer={false} />
+          // Table-shaped skeleton: the real header row plus pulsing row
+          // bands matching the column layout, so the frame paints
+          // instantly and the data lands with zero layout shift. The
+          // pulse is a pure-CSS opacity animation (same style as the
+          // list-page skeletons), which is gentle enough under
+          // prefers-reduced-motion.
+          <div className="overflow-x-auto" aria-busy="true">
+            <span className="sr-only">Loading runs…</span>
+            <table className="w-full min-w-[720px] text-xs" aria-hidden>
+              <RunsTableHead />
+              <tbody>
+                {Array.from({ length: 8 }, (_, i) => (
+                  <tr key={i} className="border-b border-border/40">
+                    {SKELETON_CELLS.map((c, j) => (
+                      <td key={j} className="px-4 py-2">
+                        <div
+                          className={[
+                            "h-4 rounded bg-muted/40 animate-pulse",
+                            c.w,
+                            c.right ? "ml-auto" : "",
+                          ].join(" ")}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : items.length === 0 ? (
           <div className="h-full grid place-items-center text-center text-muted-foreground">
@@ -304,18 +329,7 @@ export default function RunsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-xs">
-              <thead className="sticky top-0 bg-background/95 backdrop-blur border-b border-border z-10">
-                <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                  <th className="px-4 py-2 w-[120px]">Status</th>
-                  <th className="px-4 py-2">Pipeline</th>
-                  <th className="px-4 py-2 w-[110px]">Triggered</th>
-                  <th className="px-4 py-2 w-[110px] text-right">Started</th>
-                  <th className="px-4 py-2 w-[90px] text-right">Duration</th>
-                  <th className="px-4 py-2 w-[70px] text-right">Outputs</th>
-                  <th className="px-4 py-2 w-[100px] text-right">Rows</th>
-                  <th className="px-4 py-2 w-[140px]">Tags</th>
-                </tr>
-              </thead>
+              <RunsTableHead />
               <tbody>
                 {items.map((r) => (
                   <RunRow key={r.id} run={r} />
@@ -343,13 +357,48 @@ export default function RunsPage() {
   );
 }
 
+// ---- Table chrome ------------------------------------------------------
+
+// Header row shared by the loading skeleton and the real table so the
+// column layout matches exactly and the data lands with no shift.
+function RunsTableHead() {
+  return (
+    <thead className="sticky top-0 bg-background/95 backdrop-blur border-b border-border z-10">
+      <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+        <th className="px-4 py-2 w-[120px]">Status</th>
+        <th className="px-4 py-2">Pipeline</th>
+        <th className="px-4 py-2 w-[110px]">Triggered</th>
+        <th className="px-4 py-2 w-[110px] text-right">Started</th>
+        <th className="px-4 py-2 w-[90px] text-right">Duration</th>
+        <th className="px-4 py-2 w-[70px] text-right">Outputs</th>
+        <th className="px-4 py-2 w-[100px] text-right">Rows</th>
+        <th className="px-4 py-2 w-[140px]">Tags</th>
+      </tr>
+    </thead>
+  );
+}
+
+// Pulse-band widths per column, sized to typical cell content. Bands in
+// right-aligned numeric columns hug the right edge like the real values.
+const SKELETON_CELLS = [
+  { w: "w-20", right: false }, // Status
+  { w: "w-40", right: false }, // Pipeline
+  { w: "w-14", right: false }, // Triggered
+  { w: "w-16", right: true },  // Started
+  { w: "w-12", right: true },  // Duration
+  { w: "w-8",  right: true },  // Outputs
+  { w: "w-14", right: true },  // Rows
+  { w: "w-24", right: false }, // Tags
+] as const;
+
 // ---- Row component -----------------------------------------------------
 
 function RunRow({ run }: { run: RunListItem }) {
   const m = statusMeta(run.status);
+  const reduce = useReducedMotion();
   return (
     <motion.tr
-      initial={{ opacity: 0, y: 4 }}
+      initial={reduce ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
       className="border-b border-border/40 hover:bg-muted/40 transition-colors"

@@ -393,7 +393,7 @@ def cmd_list() -> int:
     here = Path(__file__).resolve()
     repo_root = here.parents[3]
     roots = [
-        repo_root / "Step-Pack-internal" / "packs",
+        repo_root / "FunctionPacks" / "packs",
         repo_root / "plugins" / "packs",
     ]
     from dig.storage.files import data_dir
@@ -510,7 +510,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_scaffold = sub.add_parser("scaffold", help="Create a new pack skeleton")
     p_scaffold.add_argument("name", type=str)
     p_scaffold.add_argument("--dir", dest="parent", type=Path,
-                            default=Path("Step-Pack-internal/packs"))
+                            default=Path("FunctionPacks/packs"))
 
     return p
 

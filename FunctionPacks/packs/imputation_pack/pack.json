@@ -1,0 +1,13 @@
+{
+  "id": "imputation_pack",
+  "version": "0.1.0",
+  "label": "🩹 Imputation Pack",
+  "description": "Fill in missing values five ways: mean / median / mode (per-column statistics), forward / backward fill (use the prior or next row's value), interpolation (linear or spline), KNN (nearest-neighbours by other features), and MICE (chained equations multivariate imputation).",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["impute_mean_median_mode", "impute_forward_backward", "impute_interpolation", "impute_knn", "impute_mice"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

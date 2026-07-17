@@ -75,9 +75,9 @@ const nextConfig: NextConfig = {
   // even after the user has clicked through on the page origin.
   //
   // The TLS proxy handles HTTPS termination on port 3443 and forwards plain
-  // HTTP to next dev on 3000; Next's `fallback` rewrites then forward those
+  // HTTP to next dev on 3100; Next's `fallback` rewrites then forward those
   // same-origin API requests server-side (no CORS, no cert) to uvicorn on
-  // 8090. WebSocket upgrades go through the same rewrite (Next 12+).
+  // 8190. WebSocket upgrades go through the same rewrite (Next 12+).
   //
   // ``fallback`` rewrites only run when the path matches neither a Next
   // page nor any file in /public — so /, /pipelines, /pipelines/<ulid>,
@@ -89,8 +89,8 @@ const nextConfig: NextConfig = {
   //   - the HTTPS page at https://localhost:3443 fetches
   //     https://localhost:3443/api/pipelines — same origin, no
   //     second per-origin cert prompt
-  //   - the HTTP page at http://localhost:3000 fetches
-  //     http://localhost:3000/api/pipelines — no cross-origin CORS hop
+  //   - the HTTP page at http://localhost:3100 fetches
+  //     http://localhost:3100/api/pipelines — no cross-origin CORS hop
   //
   // The /api/ prefix is mandatory because frontend pages and API
   // endpoints share the same name namespace (both have /pipelines).
@@ -102,7 +102,7 @@ const nextConfig: NextConfig = {
   // is stripped, not forwarded. WebSocket upgrades are proxied through
   // the same rule automatically (Next 12+).
   async rewrites() {
-    const target = (process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8090").replace(/\/$/, "");
+    const target = (process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8190").replace(/\/$/, "");
     return [
       { source: "/api/:path*", destination: `${target}/:path*` },
     ];

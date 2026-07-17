@@ -1,0 +1,13 @@
+{
+  "id": "llm_augment",
+  "version": "0.1.0",
+  "label": "✨ LLM augment",
+  "description": "Use the configured AI provider as a column transformer: zero-shot classification, structured extraction, summarization. All steps require AI to be enabled in Settings → AI; the same backend is used (Ollama, OpenAI, Anthropic).",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["llm_classify", "llm_extract", "llm_summarize"],
+  "connectors": [],
+  "pythonRequirements": []
+}

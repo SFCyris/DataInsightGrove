@@ -1,0 +1,13 @@
+{
+  "id": "healthcare_pack",
+  "version": "0.1.0",
+  "label": "🏥 Healthcare Pack",
+  "description": "Healthcare-data primitives: ICD-10 + CPT code lookup (small bundled tables), HIPAA-style de-identification of safe-harbor identifiers, Charlson Comorbidity Index computation.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/EE-DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["icd10_lookup", "cpt_lookup", "hipaa_deidentify", "charlson_index"],
+  "connectors": [],
+  "pythonRequirements": []
+}

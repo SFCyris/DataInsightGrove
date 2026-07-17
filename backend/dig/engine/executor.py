@@ -18,8 +18,13 @@ Outputs are written one at a time:
 
 from __future__ import annotations
 
+import hashlib
 import inspect
+import json
 import logging
+import os
+import re
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,8 +56,8 @@ class ExecutionResult:
     # Free-form artifacts produced by Polars-engine steps (export_to_image, …).
     # Shape: { output_id: [ {kind, path?, table?, mime?, …}, … ] }
     artifacts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    # Per-node execution metrics for the canvas run-state overlay
-    # (Phase A Layer 1). Shape: { node_id: { rows_out?, elapsed_ms?,
+    # Per-node execution metrics for the canvas run-state overlay.
+    # Shape: { node_id: { rows_out?, elapsed_ms?,
     # status: "success"|"failed"|"skipped" } }. Populated for Polars
     # nodes (we have the dataframe) and terminal output nodes (we count
     # the parquet). SQL-only intermediate nodes are marked "success"
@@ -61,9 +66,8 @@ class ExecutionResult:
     # Per-node NaN-origin sidecars — surfaced by the grid as the
     # orange-⚠ NULL variant on the step that produced the failure.
     # Shape: { node_id: [ {column, row_indices, cause, source_column?}, … ] }.
-    # See `internal/proposals/NULL_AND_NAN_DISPLAY.md`. Each entry lives on
-    # the producing step ONLY; the next step sees plain NULL because the
-    # executor coerces NaN→None after capturing this record.
+    # Each entry lives on the producing step ONLY; the next step sees plain
+    # NULL because the executor coerces NaN→None after capturing this record.
     nanOrigins: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
@@ -462,6 +466,73 @@ def _terminal_polars_node(p: Pipeline, terminal: str) -> Node | None:
     return node if step.engine_primary == "polars" else None
 
 
+# Matches DuckDB table-function file reads in a compiled input SQL, so the
+# materialization fingerprint can fold in each referenced file's mtime+size.
+# Captures the single-quoted path (SQL-escaped '' handled by the caller).
+_READ_PATH_RE = re.compile(
+    r"read_(?:parquet|csv|csv_auto|json|json_auto|ndjson)\(\s*'((?:[^']|'')*)'",
+    re.IGNORECASE,
+)
+
+
+def _fp_for_input_sql(sql: str) -> str:
+    """Fingerprint one input port's compiled SQL, folding in the mtime+size of
+    every source/intermediate file it reads (read_parquet/read_csv/read_json).
+
+    Because an upstream Polars ancestor is referenced by its parquet path here,
+    re-materializing it (which rewrites the parquet, bumping mtime) — or a
+    dataset refresh on disk — changes this fingerprint and correctly busts the
+    downstream cache.
+    """
+    parts: list[str] = [sql]
+    for raw in sorted(set(_READ_PATH_RE.findall(sql))):
+        pth = raw.replace("''", "'")  # un-double SQL-escaped quotes
+        try:
+            st = os.stat(pth)
+            # mtime_ns + size + ctime_ns. ctime (inode change time) is bumped by
+            # the kernel on every write and cannot be forged from userspace, so
+            # it catches same-size edits that reset mtime (cp -p, rsync --times,
+            # tar -x, restore-from-backup) which mtime+size alone would miss.
+            parts.append(f"{pth}\x1f{st.st_mtime_ns}\x1f{st.st_size}\x1f{st.st_ctime_ns}")
+        except OSError:
+            parts.append(f"{pth}\x1fMISSING")
+    return hashlib.sha256("\x00".join(parts).encode()).hexdigest()
+
+
+def _materialize_fingerprint(
+    step_id: str,
+    params: dict[str, Any],
+    sample_rows: int | None,
+    input_sqls: dict[str, str],
+    pipeline_variables: dict[str, Any],
+) -> str:
+    """Content fingerprint for a materialized Polars-ancestor parquet.
+
+    Combines the step id, its params, the row-sample cap, the pipeline
+    variables, and a per-input fingerprint of the compiled input SQL. Steps
+    receive raw params and render templates internally against the pipeline
+    variables (e.g. ``add_runtime_column``), so a variable change with
+    unchanged raw params must still bust the cache — hence it's folded in here.
+    Two calls whose upstream data, step config, sample size, and variables are
+    identical produce the same fingerprint, letting the preview path reuse the
+    on-disk parquet instead of re-running ``execute_polars`` on every focus.
+    """
+    h = hashlib.sha256()
+    h.update(step_id.encode())
+    h.update(b"\x00")
+    h.update(json.dumps(params, sort_keys=True, default=str).encode())
+    h.update(b"\x00")
+    h.update(json.dumps(pipeline_variables, sort_keys=True, default=str).encode())
+    h.update(b"\x00")
+    h.update(str(sample_rows).encode())
+    for port in sorted(input_sqls):
+        h.update(b"\x00")
+        h.update(port.encode())
+        h.update(b"=")
+        h.update(_fp_for_input_sql(input_sqls[port]).encode())
+    return h.hexdigest()
+
+
 def materialize_polars_ancestors(
     con: "duckdb.DuckDBPyConnection",
     p: Pipeline,
@@ -510,6 +581,9 @@ def materialize_polars_ancestors(
                 queue.append(ref.ref)
 
     materialized: dict[str, str] = {}
+    # Pipeline variables are pipeline-wide and steps render templates against
+    # them, so they participate in every node's fingerprint.
+    pipeline_vars = dict(((p.metadata or {}).get("variables")) or {})
     out_dir.mkdir(parents=True, exist_ok=True)
     for node in topo_sort(p):
         if node.id not in ancestors:
@@ -520,13 +594,48 @@ def materialize_polars_ancestors(
             continue
         if step.engine_primary != "polars":
             continue
-        # Materialise this Polars ancestor — SQL inputs are built using
-        # the running `materialized` dict so chains-of-polars work.
-        input_frames: dict[str, pl.DataFrame] = {}
+        # Compile each input port's SQL once (used for both the cache
+        # fingerprint and, on a miss, the actual materialization). Building
+        # SQL with the running `materialized` dict keeps chains-of-polars
+        # correct — an upstream Polars parquet is referenced by path here.
+        up_sqls: dict[str, str] = {}
         for port, ref in node.inputs.items():
             up_sql = compile_to_sql(p, terminal=ref.ref, overrides=materialized)
             if sample_rows:
                 up_sql = f"{up_sql} LIMIT {int(sample_rows)}"
+            up_sqls[port] = up_sql
+
+        # Fingerprint the work: step + params + sample size + variables + a
+        # fingerprint of each input SQL (which folds in the mtime/size/ctime of
+        # every source file it reads, and — because an upstream Polars ancestor
+        # is referenced by its own fingerprint-named parquet — any upstream
+        # change too). The fingerprint is baked into the parquet filename, so
+        # distinct inputs get distinct files: a warm re-focus of an unchanged
+        # chain reuses the exact file instead of re-running the Polars step.
+        # Any valid materialization of the same inputs is interchangeable, so
+        # concurrent previews racing on the same path are safe. Stale files from
+        # earlier edits are harmless and cleared by the boot sweep.
+        #
+        # Steps that declare ``engine.deterministic: false`` (e.g.
+        # add_runtime_column with ``{{ now }}``) legitimately produce different
+        # output each call, so they are never reused — they always re-execute
+        # and overwrite a single stable file in place (no cache, no growth).
+        deterministic = bool(step.manifest.get("engine", {}).get("deterministic", True))
+        if deterministic:
+            node_fp = _materialize_fingerprint(
+                step.id, node.params, sample_rows, up_sqls, pipeline_vars
+            )
+            intermed_path = out_dir / f"{node.id}.{node_fp[:32]}.parquet"
+            if intermed_path.exists():
+                materialized[node.id] = str(intermed_path)
+                continue
+        else:
+            intermed_path = out_dir / f"{node.id}.nondet.parquet"
+
+        # Cache miss — materialise this Polars ancestor. SQL inputs are built
+        # using the running `materialized` dict so chains-of-polars work.
+        input_frames: dict[str, pl.DataFrame] = {}
+        for port, up_sql in up_sqls.items():
             input_frames[port] = _materialize_sql_to_polars(con, up_sql)
         from dig.engine.step import PolarsContext  # local: avoid module cycle
         ctx = PolarsContext(
@@ -540,8 +649,17 @@ def materialize_polars_ancestors(
             raise RuntimeError(
                 f"polars step '{node.id}' ({step.id}) failed during preview: {e}"
             ) from e
-        intermed_path = out_dir / f"{node.id}.parquet"
-        res.output.write_parquet(intermed_path, compression="zstd")
+        # Write to a unique tmp name, then atomically rename onto the
+        # fingerprinted path — previews share data/outputs/__preview/<pid>/, so
+        # a concurrent preview of the same pipeline must never read a
+        # half-written parquet. os.replace is atomic on POSIX; readers
+        # (compile_to_sql overrides) see the file whole or not at all.
+        tmp_path = out_dir / f".{node.id}.{uuid.uuid4().hex}.tmp.parquet"
+        try:
+            res.output.write_parquet(tmp_path, compression="zstd")
+            os.replace(tmp_path, intermed_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         materialized[node.id] = str(intermed_path)
     return materialized
 
@@ -753,7 +871,7 @@ def execute(
     outputs: dict[str, str] = {}
     row_counts: dict[str, int] = {}
     artifacts: dict[str, list[dict[str, Any]]] = {}
-    # Per-node metrics for the canvas Layer 1 overlay. Keyed by node id;
+    # Per-node metrics for the canvas run-state overlay. Keyed by node id;
     # values are { rows_out?, elapsed_ms?, status }. Polars-engine nodes
     # populate row counts cheaply (dataframe is already materialized);
     # SQL-intermediate nodes get a status-only entry.

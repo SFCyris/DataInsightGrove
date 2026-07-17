@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "id": "business_charts_demo",
+  "name": "\ud83d\udcc8 business_charts \u00b7 revenue dashboard",
+  "description": "Three classic BI charts from three small datasets: a revenue waterfall (start \u2192 drivers \u2192 end), a product Pareto (which SKUs drive 80% of revenue?), and an onboarding funnel (where do users drop off?).",
+  "datasets": [
+    {
+      "id": "{{DATASET_BRIDGE_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_BRIDGE_URI}}",
+      "label": "Q1 revenue bridge"
+    },
+    {
+      "id": "{{DATASET_PARETO_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_PARETO_URI}}",
+      "label": "product revenue"
+    },
+    {
+      "id": "{{DATASET_FUNNEL_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_FUNNEL_URI}}",
+      "label": "onboarding funnel"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_waterfall",
+      "step": "waterfall_chart",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_BRIDGE_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "label": "label",
+        "value": "value",
+        "title": "Q1 \u2192 Q2 revenue bridge ($)"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Waterfall \u00b7 revenue bridge"
+      }
+    },
+    {
+      "id": "n_pareto",
+      "step": "pareto_chart",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_PARETO_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "label": "product",
+        "value": "revenue",
+        "top_n": 12,
+        "title": "Pareto \u00b7 product revenue"
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "Pareto \u00b7 product mix"
+      }
+    },
+    {
+      "id": "n_funnel",
+      "step": "funnel_chart",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_FUNNEL_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "stage": "stage",
+        "value": "users",
+        "title": "Onboarding funnel \u00b7 30-day cohort"
+      },
+      "ui": {
+        "x": 280,
+        "y": 400,
+        "label": "Funnel \u00b7 onboarding"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_w",
+      "name": "waterfall",
+      "from": {
+        "ref": "n_waterfall"
+      }
+    },
+    {
+      "id": "o_p",
+      "name": "pareto",
+      "from": {
+        "ref": "n_pareto"
+      }
+    },
+    {
+      "id": "o_f",
+      "name": "funnel",
+      "from": {
+        "ref": "n_funnel"
+      }
+    }
+  ]
+}

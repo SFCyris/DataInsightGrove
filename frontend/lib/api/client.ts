@@ -12,10 +12,10 @@ import type { components, paths } from "./types";
  *   1. window.__DIG_API__         (runtime override, e.g. set by Mac .app)
  *   2. NEXT_PUBLIC_DIG_API env    (build-time, embedded into the bundle)
  *   3. Same hostname as the page  (when running in a browser) — so visiting
- *      `http://10.0.0.5:3000` from a phone on the LAN talks to the backend
- *      at `http://10.0.0.5:8090`, not the phone's own loopback. This is
+ *      `http://10.0.0.5:3100` from a phone on the LAN talks to the backend
+ *      at `http://10.0.0.5:8190`, not the phone's own loopback. This is
  *      what "DIG --global" mode relies on.
- *   4. http://127.0.0.1:8090      (SSR / Node fallback)
+ *   4. http://127.0.0.1:8190      (SSR / Node fallback)
  *
  * IMPORTANT: don't render this string into HTML attributes (`<a href={…}/>`,
  * `<form action={…}/>`, `<img src={…}/>`). Server and client resolve to
@@ -29,7 +29,7 @@ import type { components, paths } from "./types";
  *
  * In the browser we use the same-origin `/api` prefix that Next.js's
  * rewrite (next.config.ts → ``rewrites()``) forwards server-side to
- * uvicorn at http://127.0.0.1:8090. Same-origin matters because:
+ * uvicorn at http://127.0.0.1:8190. Same-origin matters because:
  *
  *   - the HTTPS page at https://localhost:3443 would otherwise need to
  *     fetch a *different* origin (https://localhost:8443) carrying the
@@ -37,7 +37,7 @@ import type { components, paths } from "./types";
  *     — clicking through on 3443 doesn't carry to 8443, so the fetch
  *     gets silently dropped. The "unable to connect to the server"
  *     banner you used to see.
- *   - the HTTP page at http://localhost:3000 to http://localhost:8090
+ *   - the HTTP page at http://localhost:3100 to http://localhost:8190
  *     would be cross-origin → CORS preflight → another moving part to
  *     get wrong.
  *
@@ -60,7 +60,7 @@ function _resolveApiBase(): string {
   // 3. In-browser: same-origin /api prefix.
   if (typeof window !== "undefined") return "/api";
   // 4. SSR: server-to-server, absolute URL.
-  return process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8090";
+  return process.env.DIG_API_INTERNAL_URL || "http://127.0.0.1:8190";
 }
 
 export const API_BASE = _resolveApiBase();
@@ -130,7 +130,7 @@ export type PipelineSummary = components["schemas"]["PipelineSummary"];
 export type PipelineDoc = components["schemas"]["PipelineDoc"];
 export type RunOut = components["schemas"]["RunOut"];
 
-// Phase-A-pro #5 — runs list types (mirrors backend RunListItem +
+// Runs list types (mirrors backend RunListItem +
 // RunListPage). Kept inline so the runs UI doesn't need to wait for
 // an OpenAPI regeneration.
 export interface RunListItem {
@@ -605,7 +605,7 @@ export const api = {
     return (await res.json()) as Dataset;
   },
 
-  /** Round-5 W3: re-ingest a dataset in place from its existing
+  /** Re-ingest a dataset in place from its existing
    *  source_uri + options. Keeps the dataset_id stable so downstream
    *  pipelines stay attached. */
   refreshDataset: (datasetId: string) =>
@@ -876,7 +876,7 @@ export const api = {
     }),
   listRuns: (pipelineId: string) =>
     request<RunOut[]>(`/pipelines/${pipelineId}/runs`),
-  /** Phase A Layer 2 — fetch per-node + per-group freshness states for
+  /** Fetch per-node + per-group freshness states for
    *  the canvas halo overlay. */
   getFreshness: (pipelineId: string) =>
     request<{
@@ -885,14 +885,14 @@ export const api = {
     }>(
       `/pipelines/${pipelineId}/freshness`,
     ),
-  // (Phase A Layer 3 column lineage trace lives at line ~699 above —
+  // (the column lineage trace lives at line ~699 above —
   // `getColumnLineage` returning ColumnLineageGraph. Don't duplicate it.)
   getRun: (runId: string) => request<RunOut>(`/runs/${runId}`),
-  /** Round-5 W4: cancel a queued or running run. 200 with
+  /** Cancel a queued or running run. 200 with
    *  ``status: "already terminal"`` when the run already finished. */
   cancelRun: (runId: string) =>
     request<{ ok: boolean; status: string }>(`/runs/${runId}/cancel`, { method: "POST" }),
-  /** Phase-A-pro #5 — workspace-wide runs list. Compact summary
+  /** Workspace-wide runs list. Compact summary
    *  shape; click into a row to fetch the full RunOut. */
   listAllRuns: (params: {
     pipeline_id?: string;
@@ -1544,7 +1544,7 @@ export interface CatalogNodeOut {
   group_count: number;
   inputs: string[];
   outputs: string[];
-  /** Phase-A-pro #3 — user tags. Powers the catalog filter chips. */
+  /** User tags. Powers the catalog filter chips. */
   tags?: string[];
 }
 
@@ -1552,7 +1552,7 @@ export interface CatalogEdgeOut {
   from_id: string;
   to_id: string;
   via?: string | null;
-  /** Phase-A-pro #6 — column names that flow through this edge.
+  /** Column names that flow through this edge.
    *  Populated when the URI in `via` matches a registered Dataset's
    *  source/storage URI; empty otherwise. */
   columns?: string[];
@@ -1565,7 +1565,7 @@ export const catalogApi = {
     ),
 };
 
-// Phase-A-pro #3 — workspace search.
+// Workspace search.
 export interface SearchHit {
   kind: "pipeline" | "dataset" | "column" | "tag";
   id: string;
@@ -1594,8 +1594,7 @@ export const searchApi = {
    * Update a pipeline's tag list. Pass the current ``etag`` so the backend
    * can reject the call (HTTP 409) if another writer modified the pipeline
    * in the meantime — without this gate, a tag-edit can race against the
-   * editor's autosave and silently lose the autosave's changes (round-3
-   * QA finding).
+   * editor's autosave and silently lose the autosave's changes.
    */
   setPipelineTags: (pipelineId: string, tags: string[], etag?: number | null) => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -1662,7 +1661,7 @@ export const notificationRulesApi = {
   list: () => request<NotificationRuleOut[]>("/notification-rules"),
   eventKinds: () =>
     request<{ kinds: string[] }>("/notification-rules/event-kinds"),
-  /** Round-5 W4: dry-run a rule against the last N events so the
+  /** Dry-run a rule against the last N events so the
    *  user can see which historical events would have fired BEFORE saving. */
   test: (body: { event_kind: string; filters?: Record<string, unknown> | null }, limit = 50) =>
     request<NotificationRuleTestOut>(

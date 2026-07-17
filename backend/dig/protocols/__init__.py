@@ -55,9 +55,6 @@ out-of-tree enterprise impls have a stable shape to satisfy):
     StorageBackend      — file/object-store backend Protocol
     AuthProvider        — identity + RBAC Protocol
     ComputeBackend      — pluggable compute (Spark, Dask, pushdown) Protocol
-
-See `internal/EXTENSION_ARCHITECTURE.md` for the full architectural
-picture of how OSS + enterprise interact.
 """
 from __future__ import annotations
 
@@ -101,12 +98,11 @@ if TYPE_CHECKING:
     import polars as pl
 
 
-# ── Future-tier protocols (Protocol ABCs for type-checking) ─────────────
+# ── Protocol interfaces (Protocol ABCs for type-checking) ───────────────
 #
-# These are interface declarations, not implementations. The OSS tier ships
-# trivial impls (LocalFSBackend, single-user auth, in-process Polars
-# compute); the enterprise tier ships drop-in alternatives that satisfy
-# the same shape. See internal/TIER_ARCHITECTURE.md § 3.
+# These are interface declarations, not implementations. The shipped
+# impls are LocalFSBackend, single-user auth, and in-process Polars
+# compute.
 
 
 @runtime_checkable

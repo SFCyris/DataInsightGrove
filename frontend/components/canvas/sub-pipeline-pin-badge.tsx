@@ -13,9 +13,9 @@ import { Button } from "@/components/ui/button";
  * Pinning is intentional — when a parent installs a sub-pipeline,
  * the parent's compiled output stays stable until the user
  * explicitly upgrades. This avoids surprise behaviour changes when
- * the sub-pipeline author iterates on their copy. Compare to
- * Tableau's "auto-update" macros which are notorious for breaking
- * downstream calcs without warning.
+ * the sub-pipeline author iterates on their copy — the
+ * surprise-breakage failure mode of tools that auto-update shared
+ * macro definitions underneath dependent calcs.
  */
 interface Props {
   step: string;        // "pipeline:<id>"

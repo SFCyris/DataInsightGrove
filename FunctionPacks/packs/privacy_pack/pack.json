@@ -1,0 +1,13 @@
+{
+  "id": "privacy_pack",
+  "version": "0.1.0",
+  "label": "🔒 Privacy Pack",
+  "description": "Privacy-preserving primitives. K-anonymity / l-diversity / t-closeness checks, differential-privacy aggregation (Laplace / Gaussian mechanisms), seeded pseudonymization, PII redaction, salted hashing.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["k_anonymity_check", "l_diversity_check", "t_closeness", "dp_aggregate_laplace", "dp_aggregate_gaussian", "pseudonymize_seeded", "pii_redact", "salt_hash"],
+  "connectors": [],
+  "pythonRequirements": []
+}

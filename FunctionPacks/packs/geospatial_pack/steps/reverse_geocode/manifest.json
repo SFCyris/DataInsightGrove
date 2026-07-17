@@ -1,0 +1,27 @@
+{
+  "id": "reverse_geocode",
+  "version": "1.0.0",
+  "label": "📍 Reverse geocode",
+  "description": "Resolve lat/lon points to country / state / city via a bundled lookup table (no external network call). Uses the natural-earth admin-0 + admin-1 polygon set; resolution is country + first-level subdivision (state, province, prefecture). For street-level reverse geocoding, an external service is required.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "latColumn": { "type": "column_ref", "label": "Latitude column",  "columnFrom": "in", "required": true },
+    "lonColumn": { "type": "column_ref", "label": "Longitude column", "columnFrom": "in", "required": true },
+    "level": {
+      "type": "enum", "label": "Resolution",
+      "enumValues": ["country", "state"], "default": "country",
+      "help": "country: ISO-A3 country code + name. state: country + first-level subdivision (US state, Canadian province, German Land, etc.)."
+    },
+    "countryColumn": { "type": "string", "label": "Output country column name", "default": "country" },
+    "stateColumn":   { "type": "string", "label": "Output state/region column name", "default": "state" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["geo", "reverse-geocode", "country", "state", "lookup"],
+  "aliases": ["coords to country", "spatial join admin", "where is this point"],
+  "requires": [{"kind": "numeric"}, {"kind": "numeric"}]
+}

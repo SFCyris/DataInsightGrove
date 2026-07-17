@@ -46,7 +46,7 @@ def compile_for_browser(
 ) -> CompileResult:
     """Compile pipeline to SQL + binding info for DuckDB-WASM.
 
-    Currently every dataset must already exist as a Phase-1 cached parquet — i.e.
+    Currently every dataset must already exist as a cached parquet — i.e.
     the dataset spec has connector='parquet' and uri pointing at the cached
     file. (Pipelines built in the canvas always use this form.) Pipelines that
     reference raw CSVs by path can run on the backend but not in the browser

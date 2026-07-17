@@ -6,8 +6,9 @@ import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,6 +32,41 @@ from dig.jobs.manager import jobs
 from dig.storage.db import init_db
 
 log = logging.getLogger(__name__)
+
+
+class _RedactTokenFilter(logging.Filter):
+    """Strip ``?token=…`` from access-log query strings before they hit the
+    file handler. The WS-upgrade path carries the auth token in the query
+    string (browsers can't set custom headers on a WS connect), and uvicorn's
+    default access log would otherwise write the full URL including the secret.
+    Redacts ANY query parameter named ``token`` in any logged URL.
+
+    Defined at module scope (not inside ``run()``) so uvicorn's reloader —
+    which spawns the worker via ``multiprocessing`` and must pickle the log
+    config — can reference it by dotted path. A local class is unpicklable and
+    crashes ``--reload`` startup.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:  # noqa: BLE001
+            return True
+        if "token=" in msg:
+            import re as _re
+            # Match only URL-safe token characters (RFC 3986 unreserved + a
+            # few url-safe extras) so trailing separators some loggers append
+            # (``;`` ``]`` ``}`` ``,``) don't leak the credential.
+            redacted = _re.sub(
+                r"token=[A-Za-z0-9._~+/=\-]+",
+                "token=<redacted>",
+                msg,
+            )
+            if redacted != msg:
+                # Replace the args so getMessage returns the redacted form.
+                record.msg = redacted
+                record.args = ()
+        return True
 
 
 def _resolve_auth_token() -> str | None:
@@ -79,10 +115,9 @@ class Health(BaseModel):
     status: str
     version: str
     name: str
-    # Out-of-tree extensions discovered at startup. Empty in OSS without
-    # any plugins; populated when dig-enterprise (or any other plugin)
-    # is installed via pip / dropped into data/extensions/.
-    # See `internal/EXTENSION_ARCHITECTURE.md`.
+    # Out-of-tree extensions discovered at startup. Empty without any
+    # plugins; populated when a plugin is installed via pip or dropped
+    # into data/extensions/.
     extensions: list[HealthExtension] = []
     # Surface-version stamp for the dig.protocols module — extension
     # builds compare their pinned target against this value.
@@ -107,6 +142,18 @@ _AUTH_BYPASS_PATHS = {"/health"}
 # (a 700-node DAG serialised to ~2 MB of JSON).
 _DEFAULT_MAX_BODY_BYTES = 32 * 1024 * 1024
 
+# Per-route caps for routes that legitimately carry payloads larger than
+# the global default. /packs/upload accepts .dpack archives up to the
+# 50 MB pack cap (`_MAX_ARCHIVE_BYTES` in dig/plugins/packs.py), plus
+# multipart framing overhead — 64 MiB gives the full legal pack range
+# headroom while every other route stays at the 32 MiB default. The
+# effective limit for a listed route is the larger of this value and
+# the global cap, so raising DIG_MAX_BODY_BYTES past 64 MiB still
+# applies here too.
+_ROUTE_MAX_BODY_BYTES: dict[str, int] = {
+    "/packs/upload": 64 * 1024 * 1024,
+}
+
 
 def _max_body_bytes() -> int:
     raw = os.environ.get("DIG_MAX_BODY_BYTES")
@@ -119,80 +166,125 @@ def _max_body_bytes() -> int:
         return _DEFAULT_MAX_BODY_BYTES
 
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+class _BodyTooLarge(Exception):
+    """Raised from the wrapped ASGI receive once the running body-byte
+    total crosses the cap. Carries the total seen so the 413 can report
+    it."""
+
+    def __init__(self, received: int) -> None:
+        super().__init__(received)
+        self.received = received
+
+
+class BodySizeLimitMiddleware:
     """Reject requests whose body exceeds DIG_MAX_BODY_BYTES.
 
-    Two paths:
+    Pure ASGI middleware. It sits directly on the raw ASGI receive
+    channel that the entire downstream stack (the auth middleware, then
+    the matched route) actually pulls body chunks from — so both paths
+    are enforced where the bytes really flow, not on a wrapper that the
+    server-supplied receive bypasses:
+
       1. Content-Length present → fast-reject with 413 before any body
          bytes are read. Catches the common case (pydantic-shaped
          JSON PUTs).
-      2. Content-Length missing (chunked/transfer-encoded) → wrap the
-         ASGI receive callable to count bytes; bail with 413 the first
-         time we'd cross the threshold. Without this, an attacker could
-         skip Content-Length and stream forever.
+      2. Content-Length missing (chunked/transfer-encoded) → the wrapped
+         receive counts ``http.request`` body bytes and raises once the
+         cap is crossed; the 413 is emitted before the downstream app
+         has produced a response (it is still reading the body). Without
+         this, an attacker could skip Content-Length and stream forever.
 
-    Multipart uploads (.dpack archives) have their own per-payload cap
-    (`_MAX_ARCHIVE_BYTES = 50 MB` in packs.py) — the body cap is a
-    coarser outer limit and should always be ≥ the most generous
-    per-route cap. If the operator raises one without raising the
-    other, the per-route cap still wins, which is fine.
+    Routes listed in `_ROUTE_MAX_BODY_BYTES` get a higher cap — the
+    larger of the global and per-route values. /packs/upload must admit
+    .dpack archives up to the 50 MB pack cap (`_MAX_ARCHIVE_BYTES` in
+    dig/plugins/packs.py) plus multipart framing, which the 32 MiB
+    default would reject before the endpoint's own cap ever ran.
+    Everything else stays at the global cap.
     """
 
     def __init__(self, app, max_bytes: int) -> None:
-        super().__init__(app)
+        self.app = app
         self._max = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
+    async def __call__(self, scope, receive, send):
+        # Only HTTP requests carry bodies; pass websocket/lifespan through.
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
         # Skip GET/HEAD/DELETE/OPTIONS — bodies on these are unusual and
         # we'd rather not pay the wrapper cost. (POST/PUT/PATCH carry
         # essentially all our write traffic.)
-        if request.method in ("GET", "HEAD", "DELETE", "OPTIONS"):
-            return await call_next(request)
-        cl = request.headers.get("content-length")
+        if scope.get("method") in ("GET", "HEAD", "DELETE", "OPTIONS"):
+            await self.app(scope, receive, send)
+            return
+        limit = max(self._max, _ROUTE_MAX_BODY_BYTES.get(scope.get("path", ""), 0))
+
+        # Content-Length fast pre-check — reject before reading any body.
+        cl = None
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                cl = value
+                break
         if cl is not None:
             try:
-                if int(cl) > self._max:
-                    return JSONResponse(
-                        {
-                            "detail": (
-                                f"request body too large: {int(cl):,} bytes "
-                                f"(max {self._max:,})"
-                            ),
-                        },
-                        status_code=413,
-                    )
+                declared = int(cl)
             except ValueError:
-                return JSONResponse(
+                await JSONResponse(
                     {"detail": "invalid content-length header"},
                     status_code=400,
-                )
-        else:
-            # Chunked encoding — wrap receive to enforce the cap.
-            received = 0
-            original_receive = request.receive
-            cap = self._max
+                )(scope, receive, send)
+                return
+            if declared > limit:
+                await JSONResponse(
+                    {
+                        "detail": (
+                            f"request body too large: {declared:,} bytes "
+                            f"(max {limit:,})"
+                        ),
+                    },
+                    status_code=413,
+                )(scope, receive, send)
+                return
 
-            async def _capped_receive():
-                nonlocal received
-                msg = await original_receive()
-                if msg.get("type") == "http.request":
-                    body = msg.get("body") or b""
-                    received += len(body)
-                    if received > cap:
-                        # Force the consumer to see EOF + an error. We
-                        # can't synchronously return a 413 from inside
-                        # receive (the request has already begun), so
-                        # raise — Starlette's ServerErrorMiddleware
-                        # will translate to a 500. The Content-Length
-                        # path catches the common case; this is a
-                        # belt-and-braces guard.
-                        raise ValueError(
-                            f"chunked request body exceeded {cap:,} bytes",
-                        )
-                return msg
+        # Chunked / streamed body (or a truthful Content-Length that we
+        # still enforce byte-for-byte). Count bytes on the receive the
+        # downstream app reads from.
+        received = 0
 
-            request._receive = _capped_receive  # noqa: SLF001
-        return await call_next(request)
+        async def _capped_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body") or b"")
+                if received > limit:
+                    raise _BodyTooLarge(received)
+            return message
+
+        response_started = False
+
+        async def _tracked_send(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, _capped_receive, _tracked_send)
+        except _BodyTooLarge as exc:
+            if response_started:
+                # The app already began responding before finishing the
+                # read — we can't inject a 413 without corrupting the
+                # in-flight response, so let it surface.
+                raise
+            await JSONResponse(
+                {
+                    "detail": (
+                        f"request body too large: {exc.received:,} bytes "
+                        f"(max {limit:,})"
+                    ),
+                },
+                status_code=413,
+            )(scope, receive, send)
 
 
 class BearerAuthMiddleware(BaseHTTPMiddleware):
@@ -292,6 +384,70 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # *signal* that a transition happened, not the migration engine.
     from dig.storage.version_state import detect_and_record_version_transition
     await detect_and_record_version_transition()
+    # Repair datasets stranded by an unclean shutdown. An ingest that was
+    # in flight when the previous process died (kill -9, power loss — the
+    # graceful path in jobs.shutdown() never ran) leaves its row stuck at
+    # status='ingesting' forever, and the UI shows a spinner that never
+    # resolves. Mirror of the run-abort repair in JobManager.shutdown():
+    # a fresh boot can have no legitimately in-flight ingest, so mark
+    # them all failed.
+    from datetime import datetime, timezone
+
+    from sqlalchemy import update as sa_update
+
+    from dig.storage.db import SessionLocal
+    from dig.storage.models import Dataset, Run
+    async with SessionLocal() as session:
+        res = await session.execute(
+            sa_update(Dataset)
+            .where(Dataset.status == "ingesting")
+            .values(status="failed", error="interrupted by restart"),
+        )
+        await session.commit()
+        if res.rowcount:
+            log.info(
+                "boot sweep: marked %d dataset(s) stranded at 'ingesting' as failed",
+                res.rowcount,
+            )
+        # Same repair for runs. A hard kill (kill -9, power loss) skips
+        # JobManager.shutdown(), leaving rows stuck at 'running'/'queued' —
+        # the exact non-terminal states the manager treats as in-flight
+        # (terminal set: succeeded/failed/cancelled). The UI then spins on
+        # a run that will never resume. A fresh boot has no legitimately
+        # in-flight run, so mark them all failed.
+        res = await session.execute(
+            sa_update(Run)
+            .where(Run.status.in_(("running", "queued")))
+            .values(
+                status="failed",
+                error="interrupted by restart",
+                finished_at=datetime.now(timezone.utc),
+            ),
+        )
+        await session.commit()
+        if res.rowcount:
+            log.info(
+                "boot sweep: marked %d run(s) stranded at 'running'/'queued' as failed",
+                res.rowcount,
+            )
+    # Clear the transient preview caches left by the previous process.
+    # __preview holds fingerprint-keyed Polars-ancestor parquets for canvas
+    # focus; __ai_samples holds the same for AI node-context sampling. Both are
+    # rebuilt on demand — wiping them on boot bounds their size and guarantees a
+    # step-code change across a restart can never serve a stale cached result.
+    # Best-effort — never block startup.
+    try:
+        from dig.storage.files import data_dir as _pv_data_dir
+        import shutil as _pv_shutil
+        _outputs = _pv_data_dir() / "outputs"
+        for _cache_name in ("__preview", "__ai_samples"):
+            _cache_root = _outputs / _cache_name
+            if _cache_root.exists():
+                _pv_shutil.rmtree(_cache_root, ignore_errors=True)
+                log.info("boot sweep: cleared preview cache at %s", _cache_root)
+    except Exception:
+        log.exception("boot sweep: failed clearing preview caches (non-fatal)")
+
     # Seed built-in notification rules. Idempotent — only adds missing
     # rows, never touches user customisations.
     from dig.api.notification_rules import seed_default_rules
@@ -300,7 +456,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     connectors()
     steps()
 
-    # Phase A — emit system.startup event. Notification rules can match
+    # Emit system.startup event. Notification rules can match
     # this to surface "DIG API started" rows in the panel; default rules
     # don't (would be too noisy on dev with frequent restarts) but a
     # user can add one.
@@ -326,6 +482,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("shutting down — cancelling %d in-flight run(s)", len(jobs._tasks))  # noqa: SLF001
     await stop_freshness_scanner(scanner_task)
     await jobs.shutdown()
+    # Release the shared AI HTTP client's pooled connections.
+    from dig.ai.client import aclose_client
+
+    await aclose_client()
     await emit_event(EventKinds.SYSTEM_SHUTDOWN, level="notification")
 
 
@@ -338,14 +498,14 @@ def create_app() -> FastAPI:
     )
 
     # CORS origin parsing must trim whitespace per entry — browsers compare
-    # origins byte-exactly, so a stray space in `"http://x:3000, http://y"`
+    # origins byte-exactly, so a stray space in `"http://x:3100, http://y"`
     # would make the second origin literally `" http://y"` and silently break
     # all requests from that origin. Drop empty entries too.
     cors_origins = [
         o.strip()
         for o in os.environ.get(
             "DIG_CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000",
+            "http://localhost:3100,http://127.0.0.1:3100",
         ).split(",")
         if o.strip()
     ]
@@ -514,8 +674,7 @@ def create_app() -> FastAPI:
 
     # ── Out-of-tree extension wiring ────────────────────────────────────
     #
-    # Two channels (see dig/extensions/loader.py + internal/
-    # EXTENSION_ARCHITECTURE.md):
+    # Two channels (see dig/extensions/loader.py):
     #
     #  1. `dig.routers` entry points → FastAPI routers contributed by
     #     out-of-tree packages (e.g. dig-enterprise's audit-log router,
@@ -617,43 +776,14 @@ def run() -> None:
         )
 
     # Custom logging config that strips ``?token=…`` from access-log query
-    # strings before they hit the file handler. Round-3 pen-tester finding:
-    # the WS-upgrade path uses ``?token=<secret>`` because browsers can't
-    # set custom headers on a WS connect — and uvicorn's default access
-    # log writes the full URL including that query string. Anyone with
-    # read access to the access log (operators, log-shippers, SIEMs)
-    # could harvest tokens. The filter is permissive: it redacts ANY
-    # query parameter named ``token`` in any URL, not just WS upgrades.
-    import logging as _logging
-
-    class _RedactTokenFilter(_logging.Filter):
-        def filter(self, record: _logging.LogRecord) -> bool:
-            try:
-                msg = record.getMessage()
-            except Exception:  # noqa: BLE001
-                return True
-            if "token=" in msg:
-                import re as _re
-                # Round-9 fix: only match URL-safe token characters
-                # (RFC 3986 unreserved + a few url-safe extras). The
-                # previous negative class missed separators like ``;``
-                # and ``]``/``}``/``,`` that some loggers append after
-                # the token, leaking the credential.
-                redacted = _re.sub(
-                    r"token=[A-Za-z0-9._~+/=\-]+",
-                    "token=<redacted>",
-                    msg,
-                )
-                if redacted != msg:
-                    # Replace the args so getMessage returns the redacted form.
-                    record.msg = redacted
-                    record.args = ()
-            return True
-
+    # strings before they hit the file handler (see _RedactTokenFilter at
+    # module scope). Referenced by dotted path — a factory ``"()"`` value —
+    # rather than the class object, so uvicorn's spawn-based reloader can
+    # pickle the log config without crashing.
     log_config = uvicorn.config.LOGGING_CONFIG
     # Inject the filter onto the access logger.
     log_config.setdefault("filters", {})
-    log_config["filters"]["redact_token"] = {"()": _RedactTokenFilter}
+    log_config["filters"]["redact_token"] = {"()": "dig.api.main._RedactTokenFilter"}
     log_config["loggers"].setdefault("uvicorn.access", {}).setdefault("handlers", []).append("default")
     log_config["loggers"]["uvicorn.access"]["filters"] = ["redact_token"]
 
@@ -664,7 +794,7 @@ def run() -> None:
     # into ``jq`` got mixed lines (DIG = JSON, uvicorn = ascii table).
     # When JSON mode is on, swap uvicorn's two formatters to the same
     # JsonFormatter the rest of DIG uses.
-    from dig.observability.logging_setup import JsonFormatter, is_json_logging
+    from dig.observability.logging_setup import is_json_logging
     if is_json_logging():
         log_config.setdefault("formatters", {})["dig_json"] = {
             "()": "dig.observability.logging_setup.JsonFormatter",
@@ -689,10 +819,29 @@ def run() -> None:
     # and forwards plain HTTP to us. That keeps uvicorn's signal /
     # job-manager / WebSocket state in one place and avoids running two
     # API instances against the same SQLite DB.
+    # In dev (--reload), scope the file watcher to the backend source trees.
+    # Left unscoped, uvicorn watches the whole cwd (backend/, including the
+    # multi-thousand-file .venv) and restarts the worker — a full cold-cache
+    # respawn — on any *.py touch. We watch backend/dig (the package) AND
+    # backend/steps (the built-in step implementations, a sibling dir that the
+    # registry loads) so editing either still hot-reloads, while .venv, tests,
+    # and data/build artifacts no longer trigger spurious cold restarts.
+    # `reload=False` ignores these entirely.
+    reload_kwargs: dict[str, Any] = {}
+    if reload:
+        _backend_root = Path(__file__).resolve().parents[2]  # .../backend
+        reload_kwargs["reload_dirs"] = [
+            str(_backend_root / "dig"),
+            str(_backend_root / "steps"),
+        ]
+        reload_kwargs["reload_excludes"] = [
+            "*.parquet", "*.sqlite*", "*.log", ".venv/*", "__pycache__/*", "data/*",
+        ]
     uvicorn.run(
         "dig.api.main:app", host=host, port=port, reload=reload,
         log_config=log_config,
         ws_max_size=ws_max_size,
+        **reload_kwargs,
     )
 
 

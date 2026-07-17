@@ -1,0 +1,13 @@
+{
+  "id": "bayesian_pack",
+  "version": "0.1.0",
+  "label": "🎲 Bayesian Pack",
+  "description": "Bayesian primitives: Beta-Binomial conjugate posterior, conjugate Normal-Normal posterior, Bayesian linear regression, Bayes factor between two models, optional MCMC via PyMC for the general-case sampler.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/EE-DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["beta_binomial_posterior", "conjugate_normal", "bayesian_regression", "bayes_factor", "mcmc_pymc"],
+  "connectors": [],
+  "pythonRequirements": ["scipy>=1.11"]
+}

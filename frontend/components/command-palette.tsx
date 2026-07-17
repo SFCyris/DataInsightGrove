@@ -56,7 +56,7 @@ export function CommandPalette() {
   const datasets = useQuery({ queryKey: ["datasets"], queryFn: api.listDatasets, enabled: open });
   const pipelines = useQuery({ queryKey: ["pipelines"], queryFn: api.listPipelines, enabled: open });
   const stepsQ = useQuery({ queryKey: ["steps"], queryFn: api.listSteps, enabled: open, staleTime: 60_000 });
-  // Phase-A-pro #3 — workspace search runs in parallel: when the user
+  // Workspace search runs in parallel: when the user
   // types a query, we hit /search to surface column-level matches the
   // local cmdk filter doesn't see (since columns aren't part of the
   // local action list). Debounced via the trimmed query as the key.
@@ -477,7 +477,7 @@ export function CommandPalette() {
         },
       });
     }
-    // Phase-A-pro #3 — workspace search hits. We skip pipeline /
+    // Workspace search hits. We skip pipeline /
     // dataset hits (the local cmdk filter already covers them via the
     // separate Datasets / Pipelines groups) and surface only the
     // novel signal: column matches + tag matches.

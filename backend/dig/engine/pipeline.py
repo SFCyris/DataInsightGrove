@@ -76,9 +76,9 @@ class ExposedParam(BaseModel):
 class FreshnessPolicy(BaseModel):
     """Optional declarative freshness SLA on a node's output.
 
-    Phase A (LINEAGE_AND_SCALE.md §2.2) — declaration only; the canvas
-    renders halos based on `last_run_at + sla` vs `now()`. The scheduler
-    that *acts on* this lands in Phase B (not implemented here).
+    Declaration only; the canvas renders halos based on `last_run_at +
+    sla` vs `now()`. The scheduler that *acts on* this is not implemented
+    here.
 
     Durations are short strings: "30m", "2h", "1d", "7d". Anything pydantic
     rejects gets a clean error message at pipeline-save time.
@@ -186,8 +186,8 @@ class NodeGroup(BaseModel):
     """A labeled grouping of pipeline nodes for visual organization +
     aggregate run-state on the canvas.
 
-    Phase A (LINEAGE_AND_SCALE.md §2.4). Pure UI metadata; does not affect
-    execution semantics. Groups can nest via `parent_group_id` — the
+    Pure UI metadata; does not affect execution semantics. Groups can
+    nest via `parent_group_id` — the
     outer group's bbox auto-expands to include child group bboxes, so a
     user can group sub-clusters inside a larger logical region (e.g.
     "Revenue Models" containing "Forecast" and "Anomaly" as sub-groups).
@@ -237,7 +237,7 @@ class Pipeline(BaseModel):
     # Optional visual node groupings for canvas organization. See
     # NodeGroup. Empty list = no groups (canvas renders flat).
     groups: list[NodeGroup] = Field(default_factory=list)
-    # Phase-A-pro #3 — workspace tags. Lowercase-normalised + dedup'd
+    # Workspace tags. Lowercase-normalised + dedup'd
     # alphanumeric / dash / underscore strings. Used by /search and
     # the catalog tag-filter chips. Set via /search/pipelines/{id}/tags.
     tags: list[str] = Field(default_factory=list)

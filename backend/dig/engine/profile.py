@@ -199,8 +199,8 @@ def profile_dataframe(
         if candidates:
             ci["type"] = candidates[0].type_id
             # Storage choice: detector override wins, otherwise descriptor
-            # default. Phase 1.4 surfaces this in the UI; Phase 1.3 uses it
-            # to drive cast SQL.
+            # default. The UI surfaces this, and it drives the
+            # cast SQL.
             top = candidates[0]
             top_descriptor = descriptor(top.type_id)
             ci["storage"] = top.storage or (top_descriptor.sql_type if top_descriptor else None)

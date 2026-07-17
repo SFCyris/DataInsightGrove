@@ -1,0 +1,32 @@
+{
+  "id": "roc_curve",
+  "version": "1.0.0",
+  "label": "🧪 ROC curve",
+  "description": "Compute (FPR, TPR, threshold) points along the ROC curve plus the AUC. Output is a long-form DataFrame ready to feed export_to_image (line) for plotting. Binary classification only.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "actual": {
+      "type": "column_ref", "label": "Actual column (0/1 or True/False)",
+      "columnFrom": "in", "required": true
+    },
+    "probability": {
+      "type": "column_ref", "label": "Probability column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["double"]
+    },
+    "positive_label": {
+      "type": "string", "label": "Positive label",
+      "default": "1",
+      "help": "Value in `actual` that represents the positive class. Defaults to 1."
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["ml", "evaluation", "auc"],
+  "aliases": ["receiver operating characteristic", "auc curve"],
+  "requires": [{"kind": "numeric"}]
+}

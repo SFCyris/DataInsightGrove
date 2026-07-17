@@ -1,0 +1,13 @@
+{
+  "id": "ab_test_pack",
+  "version": "0.1.0",
+  "label": "🧪 A/B Test Pack",
+  "description": "A/B test analysis primitives. Delta-method ratio CIs, Bayesian best-arm probability, sample-size calculator, sequential SPRT for early stopping. The standard toolkit for online experimentation.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["delta_method_ratio", "best_bayesian_ab", "sample_size_calc", "sequential_sprt"],
+  "connectors": [],
+  "pythonRequirements": ["scipy>=1.11"]
+}

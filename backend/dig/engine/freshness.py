@@ -1,9 +1,9 @@
-"""Freshness computation — Phase A Layer 2.
+"""Freshness computation.
 
 Pure functions: parse human duration strings, compute per-node freshness
 state from the declared SLA + the latest run timestamp. The scheduler
 that *acts on* these values (running pipelines whose freshness expired)
-lands in Phase B. This module is consumed by the
+is a separate component. This module is consumed by the
 `GET /pipelines/{id}/freshness` endpoint to drive the canvas halo.
 """
 from __future__ import annotations

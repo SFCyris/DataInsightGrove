@@ -5,8 +5,7 @@ in dataset URIs, output sink URIs, and any string-typed cell-content
 expressions that opt in. Resolved once per run (at pipeline-load /
 execution-start time) so every node sees consistent timestamps.
 
-Design lock per `internal/proposals/NULL_AND_NAN_DISPLAY.md`-style
-sandbox philosophy: no control flow (`{% if %}`, `{% for %}`),
+Sandbox philosophy: no control flow (`{% if %}`, `{% for %}`),
 no arbitrary attribute access (`{{ vars.__class__ }}`), no Python
 expression evaluation. Only `name | filter | filter('arg')` chains
 against a fixed built-in namespace + the user-defined `vars` namespace.

@@ -1,0 +1,33 @@
+{
+  "id": "convert_units_pro",
+  "version": "1.0.0",
+  "label": "🔧 Convert units (Pint)",
+  "description": "Convert a numeric column between any pair of compatible units using the Pint library. Supports length, mass, time, energy, pressure, temperature, electric charge, etc. — anything Pint understands. The output column has the converted values; the original column is preserved unless you rename.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "from_unit": {
+      "type": "string", "label": "From unit", "required": true,
+      "help": "e.g. meter, mile, kg, pound, celsius, joule"
+    },
+    "to_unit": {
+      "type": "string", "label": "To unit", "required": true
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["units"],
+  "aliases": ["convert", "unit conversion", "pint", "imperial metric"],
+  "requires": [{"kind": "numeric"}]
+}

@@ -301,7 +301,7 @@ Should DIG be reachable only from this machine, or from any device on
 your local network (phone, laptop, another computer)?
 
   • LOCAL (default)  Only this computer. The web UI lives at
-                     http://localhost:3000 and nothing else can talk to it.
+                     http://localhost:3100 and nothing else can talk to it.
                      Best for personal use and the safest default.
 
   • LAN-wide         Any device on your home / office network can reach
@@ -454,7 +454,7 @@ if [[ "$START_NOW" -eq 1 ]]; then
     echo
     ok "DIG is running."
     echo
-    info "Open http://localhost:3000 in your browser."
+    info "Open http://localhost:3100 in your browser."
     info "Use ./stop.sh to shut it down."
   else
     err "✗ start failed — see error above"
@@ -466,7 +466,7 @@ else
   echo
   info "When you're ready to use DIG:"
   echo "    ./start.sh                 # start the API + web UI"
-  echo "    Open http://localhost:3000"
+  echo "    Open http://localhost:3100"
   echo "    ./stop.sh                  # stop everything"
 fi
 

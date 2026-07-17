@@ -1,0 +1,13 @@
+{
+  "id": "explainability",
+  "version": "0.1.0",
+  "label": "🔍 Explainability",
+  "description": "Model-agnostic explainability — permutation importance and partial-dependence curves. Trains a quick gradient-boosted regressor / classifier on the data internally so no external fitted model is required. Skips SHAP for now (heavy dep); this is a lighter-weight starting point that covers the core questions.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["permutation_importance", "partial_dependence"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

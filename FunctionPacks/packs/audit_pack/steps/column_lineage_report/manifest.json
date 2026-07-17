@@ -1,0 +1,22 @@
+{
+  "id": "column_lineage_report",
+  "version": "1.0.0",
+  "label": "📜 Column lineage report",
+  "description": "Render a per-column lineage report describing each column's name, dtype, distinct count, null count, min/max (numeric), and provenance hint. Pass-through on the data; a side-effect JSON + CSV artifact carries the report for compliance reviews.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "stageLabel": {
+      "type": "string", "label": "Stage label", "default": "post-pipeline",
+      "help": "Free-form label for the report — e.g. 'after-cleansing', 'pre-export'."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["audit", "lineage", "compliance", "reproducibility"],
+  "aliases": ["lineage report", "column report", "data audit"],
+  "requires": []
+}

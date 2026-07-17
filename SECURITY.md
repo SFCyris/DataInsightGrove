@@ -7,7 +7,7 @@ DIG runs in two deployment shapes today:
 1. **Single-user local install** — `pip install` on a developer machine, accessed via loopback. No auth gate. The threat model assumes the host machine is trusted; DIG's job is to refuse to do dangerous things on behalf of an attacker who *did* reach the API (e.g. via a malicious browser tab making a same-origin request).
 2. **LAN install with bearer-token gate** — `DIG_AUTH_TOKEN` set in the environment; all API + WebSocket requests require the token. The threat model adds: the attacker has network reach to the host but does not have the token.
 
-Multi-user / multi-tenant deployments are not yet supported in OSS. Those scenarios are covered by the planned Enterprise tier (see `internal/TIER_ARCHITECTURE.md`).
+Multi-user / multi-tenant deployments are not supported.
 
 ### What we defend against
 
@@ -23,9 +23,9 @@ Multi-user / multi-tenant deployments are not yet supported in OSS. Those scenar
 - **REST/HTTPS connector** — SSRF allowlist, 100 MB body cap, scheme gate to block `file://` / `gopher://` / etc.
 - **JDBC connector** — table-name regex; SQL denylist closes the quoted-identifier bypass.
 
-### What we don't defend against (yet)
+### What we don't defend against
 
-- **Multi-user authentication / authorization** — there is no user model, no RBAC, no audit log. The database schema has been pre-shaped to accept those columns (see `internal/TIER_ARCHITECTURE.md` § 4.2), but the auth provider, policy engine, and audit writer ship with the Enterprise tier.
+- **Multi-user authentication / authorization** — there is no user model, no RBAC, no audit log.
 - **Data residency / VPC isolation** — single-tenant, single-host.
 - **Side-channel attacks on co-tenants** — not applicable to the OSS deployment model.
 - **Denial-of-service against the loopback gateway** — out of scope; deploy behind a real reverse proxy if exposed.

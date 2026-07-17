@@ -6,7 +6,7 @@ pipelines instead of duplicating them.
 
 ## Run
 
-With the backend up on http://127.0.0.1:8090:
+With the backend up on http://127.0.0.1:8190:
 
 ```bash
 cd <repo-root>
@@ -14,7 +14,7 @@ backend/.venv/bin/python scripts/demos/sampling_join_demos.py
 ```
 
 The script prints two URLs on success — open them in the editor at
-http://localhost:3000.
+http://localhost:3100.
 
 ## Demo 1 — Customer churn × orders, with stratified sampling
 

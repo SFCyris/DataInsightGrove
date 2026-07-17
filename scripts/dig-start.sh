@@ -12,7 +12,7 @@
 #   ./scripts/dig-start.sh --data-dir /var/dig  # override data directory
 #   ./scripts/dig-start.sh --save               # persist any --*-port / --*-host / --data-dir flags to config
 #
-# Defaults: api 127.0.0.1:8090  · web 127.0.0.1:3000  · data <repo>/data
+# Defaults: api 127.0.0.1:8190  · web 127.0.0.1:3100  · data <repo>/data
 # Persistent overrides live at ~/.config/dig/config.json — see scripts/dig_config.py.
 #
 # Local vs global:
@@ -46,7 +46,7 @@ is_global_bind() {
 }
 
 # Enumerate every non-loopback IPv4 address on this machine. Used to
-# print "open at: http://X:3000" for every interface when running in
+# print "open at: http://X:3100" for every interface when running in
 # --global / 0.0.0.0 mode. Robust across Linux (`ip` or `hostname -I`)
 # and macOS (`ifconfig`). Hostnames are added as well so users can
 # bookmark the friendly form.
@@ -145,10 +145,10 @@ EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export)" || { err "config resolve fa
 eval "$EXPORT"
 
 API_HOST="${DIG_API_HOST:-127.0.0.1}"
-API_PORT="${DIG_API_PORT:-8090}"
+API_PORT="${DIG_API_PORT:-8190}"
 API_HTTPS_PORT="${DIG_API_HTTPS_PORT:-8443}"
 WEB_HOST="${DIG_WEB_HOST:-127.0.0.1}"
-WEB_PORT="${DIG_WEB_PORT:-3000}"
+WEB_PORT="${DIG_WEB_PORT:-3100}"
 WEB_HTTPS_PORT="${DIG_WEB_HTTPS_PORT:-3443}"
 
 # Where to put PIDs + logs. Use XDG_CONFIG_HOME on both Linux and macOS.
@@ -325,8 +325,8 @@ if is_global_bind "$API_HOST"; then
   # Frontend client reads this at build/runtime to attach Bearer header.
   export NEXT_PUBLIC_DIG_AUTH_TOKEN="$DIG_AUTH_TOKEN"
 
-  # CORS allow-list. The backend defaults to `localhost:3000,127.0.0.1:3000`,
-  # which means a remote browser hitting `http://<lan-ip>:3000` triggers
+  # CORS allow-list. The backend defaults to `localhost:3100,127.0.0.1:3100`,
+  # which means a remote browser hitting `http://<lan-ip>:3100` triggers
   # a CORS preflight failure (Firefox masks it as "NetworkError when
   # attempting to fetch resource"). In global mode auto-populate the
   # list with every reachable web origin: localhost/127.0.0.1, the
@@ -337,7 +337,7 @@ if is_global_bind "$API_HOST"; then
     # Build the CORS list for both protocols + every reachable host.
     # The browser sends the page's own origin (scheme + host + port) as
     # the Origin header, so the allow-list has to enumerate every
-    # combination the user could land on — http://lan-ip:3000 and
+    # combination the user could land on — http://lan-ip:3100 and
     # https://lan-ip:3443 are different origins as far as CORS is
     # concerned, even though they reach the same Next dev server.
     _add_origin() {
@@ -402,8 +402,8 @@ API_PID=$!
 
 # next dev — only pin NEXT_PUBLIC_DIG_API for LOCAL mode. In global mode we
 # leave it unset so the frontend's runtime default ( `window.location.hostname`
-# ) kicks in — that way visiting `http://10.0.0.5:3000` from a phone on the
-# LAN talks to the backend at `http://10.0.0.5:8090`, not the phone's own
+# ) kicks in — that way visiting `http://10.0.0.5:3100` from a phone on the
+# LAN talks to the backend at `http://10.0.0.5:8190`, not the phone's own
 # localhost. See `_resolveApiBase()` in frontend/lib/api/client.ts.
 cd "$REPO_ROOT/frontend"
 NEXT_API_ENV=()

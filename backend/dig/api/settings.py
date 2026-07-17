@@ -11,6 +11,8 @@ the API doesn't accumulate junk over time.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
 import sys
@@ -314,7 +316,7 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
     "api.httpsPort": {
         "default": 8443,
         "label": "API HTTPS port",
-        "help": "Port the TLS proxy listens on for the API. The plain HTTP port (default 8090) stays in 'api.port'. Takes effect on next restart.",
+        "help": "Port the TLS proxy listens on for the API. The plain HTTP port (default 8190) stays in 'api.port'. Takes effect on next restart.",
         "type": "integer",
         "source": "config_file",
         "group": "boot",
@@ -324,7 +326,7 @@ _SETTINGS_SPEC: dict[str, dict[str, Any]] = {
     "web.httpsPort": {
         "default": 3443,
         "label": "Web HTTPS port",
-        "help": "Port the TLS proxy listens on for the web UI. The plain HTTP port (default 3000) stays in 'web.port'. Takes effect on next restart.",
+        "help": "Port the TLS proxy listens on for the web UI. The plain HTTP port (default 3100) stays in 'web.port'. Takes effect on next restart.",
         "type": "integer",
         "source": "config_file",
         "group": "boot",
@@ -352,41 +354,103 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DIG_CONFIG_HELPER = _REPO_ROOT / "scripts" / "dig_config.py"
 
 
+_config_helper_mod: Any = None  # lazily-imported scripts/dig_config.py module
+
+# Resolved-config cache for the read path. Keyed on the active config
+# file's identity + mtime + size so a `set` (which rewrites the file)
+# invalidates it on the next read; the key is None while no config file
+# exists. The value is the fully-resolved dict (defaults + file + env).
+_config_cache_key: tuple[str, int, int] | None = None
+_config_cache_val: dict[str, Any] | None = None
+
+
+def _config_helper() -> Any:
+    """Import scripts/dig_config.py as a module (once) so reads use the
+    helper's own path resolution / defaults / env handling rather than a
+    copy that could drift."""
+    global _config_helper_mod
+    if _config_helper_mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_dig_config_helper", _DIG_CONFIG_HELPER)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load {_DIG_CONFIG_HELPER}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _config_helper_mod = mod
+    return _config_helper_mod
+
+
+def _resolved_config() -> dict[str, Any] | None:
+    """Resolve the effective config (defaults + file + env) in-process,
+    re-reading only when the config file's mtime/size changes. Returns
+    None if anything fails — callers then fall back to spec defaults.
+
+    File edits are picked up live: the cache key includes the config
+    file's mtime/size, so the next read after a change re-resolves.
+    ``DIG_*`` environment overrides, by contrast, are read once and
+    reflected as of process start — the cache key does not track the
+    environment, so changing a ``DIG_*`` variable at runtime requires a
+    restart to take effect (env is static post-boot in practice)."""
+    global _config_cache_key, _config_cache_val
+    try:
+        helper = _config_helper()
+        key: tuple[str, int, int] | None = None
+        p = helper.find_config_path()
+        if p is not None:
+            try:
+                st = p.stat()
+                key = (str(p), st.st_mtime_ns, st.st_size)
+            except OSError:
+                # File vanished between find + stat — resolve with
+                # defaults, same as when no config file exists.
+                key = None
+        if _config_cache_val is None or key != _config_cache_key:
+            _config_cache_val = helper.resolve()
+            _config_cache_key = key
+        return _config_cache_val
+    except Exception:
+        return None
+
+
 def _config_file_get(dotted_path: str) -> Any:
     """Read a single dotted-key from the resolved config.
 
     Returns None if anything fails — UI then falls back to the spec's
     default. ``dotted_path`` looks like ``log.maxBytes`` or
     ``tls.enabled`` (the same shape the helper's ``get`` subcommand
-    accepts)."""
-    import subprocess
-    try:
-        r = subprocess.run(
-            [sys.executable, str(_DIG_CONFIG_HELPER), "get", dotted_path],
-            capture_output=True, text=True, timeout=5, check=False,
-        )
-        if r.returncode != 0:
-            return None
-        raw = r.stdout.strip()
-        # The helper prints "(unset)" when the key isn't in the merged
-        # config. Treat it as None so the UI shows the spec default.
-        if not raw or raw == "(unset)":
-            return None
-        # Try to coerce booleans + ints; the helper prints the Python repr
-        # for these, which is JSON-compatible for our types.
-        if raw.lower() in ("true", "false"):
-            return raw.lower() == "true"
-        if raw.lstrip("-").isdigit():
-            return int(raw)
-        return raw
-    except (OSError, subprocess.SubprocessError):
+    accepts). Reads happen in-process against a cached resolve; the
+    value round-trips through the same string form the helper's ``get``
+    subcommand prints, so coercion matches it exactly."""
+    cfg = _resolved_config()
+    if cfg is None:
         return None
+    try:
+        helper = _config_helper()
+        val = helper._get_path(cfg, tuple(dotted_path.split(".")))
+    except Exception:
+        return None
+    if val is None:
+        return None
+    raw = json.dumps(val, indent=2, sort_keys=True) if isinstance(val, (dict, list)) else str(val)
+    raw = raw.strip()
+    # The helper prints "(unset)" when the key isn't in the merged
+    # config. Treat it as None so the UI shows the spec default.
+    if not raw or raw == "(unset)":
+        return None
+    # Try to coerce booleans + ints; the helper prints the Python repr
+    # for these, which is JSON-compatible for our types.
+    if raw.lower() in ("true", "false"):
+        return raw.lower() == "true"
+    if raw.lstrip("-").isdigit():
+        return int(raw)
+    return raw
 
 
 def _config_file_set(dotted_path: str, value: Any) -> None:
     """Persist a value to the config file via the helper's ``set``
     subcommand. Raises ValueError on failure so the PUT endpoint can
-    surface a 400."""
+    surface an error. Blocking (subprocess round-trip, up to 5 s) —
+    async callers must run it via ``asyncio.to_thread``."""
     import subprocess
     # The helper accepts strings; it coerces "true"/"false"/digits/null
     # itself, so we just stringify uniformly.
@@ -647,7 +711,11 @@ async def set_setting(
         except ValueError as e:
             raise HTTPException(400, f"{key}: {e}") from e
         try:
-            _config_file_set(_CONFIG_FILE_PATHS.get(key, key), validated)
+            # _config_file_set shells out to the config helper (up to
+            # 5 s) — keep the blocking subprocess off the event loop.
+            await asyncio.to_thread(
+                _config_file_set, _CONFIG_FILE_PATHS.get(key, key), validated,
+            )
         except ValueError as e:
             raise HTTPException(500, f"could not persist '{key}' to config file: {e}") from e
         return SettingDescriptor(

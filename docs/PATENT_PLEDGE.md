@@ -166,8 +166,7 @@ DIG's pledge takes:
 - **Implementation patents** held by third parties (for example,
   patents on automated transformation-suggestion algorithms in the
   data-preparation space). Avoidance of such patents is a separate
-  engineering concern — see `docs/PRIOR_ART_MAP.md` for the status
-  of each feature.
+  engineering concern.
 - **Standards-essential patents** required to interoperate with closed
   protocols (e.g. proprietary data warehouse APIs).
 - **Trademark protection** for the names "DataInsightGrove" and "DIG".

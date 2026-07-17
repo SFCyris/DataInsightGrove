@@ -77,6 +77,33 @@ def _format_pipeline(doc: dict[str, Any]) -> str:
     return json.dumps(cleaned, indent=2)
 
 
+# Prose, so a small temperature helps it read naturally. Shared by the
+# non-streaming and streaming explain paths.
+EXPLAIN_TEMPERATURE = 0.3
+
+
+def build_explain_messages(
+    doc: dict[str, Any],
+    catalog: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Build the full chat message list for a pipeline explanation.
+
+    Single source of truth for the explain prompt — both the one-shot
+    and SSE-streaming endpoints call this so their prompts can't drift."""
+    prompt = (
+        "Here is the step catalog (id: label — short description):\n"
+        f"{_format_step_catalog(catalog)}\n\n"
+        "Here is the pipeline document:\n"
+        f"```json\n{_format_pipeline(doc)}\n```\n\n"
+        "Explain what this pipeline does, following the format the system "
+        "message specified."
+    )
+    return [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user", "content": prompt},
+    ]
+
+
 async def explain_pipeline(
     cfg: AiConfig,
     pipeline_doc: dict[str, Any],
@@ -84,22 +111,10 @@ async def explain_pipeline(
 ) -> str:
     """Generate a Markdown explanation of the pipeline. Returns the
     raw model text — caller renders it as Markdown."""
-    prompt = (
-        "Here is the step catalog (id: label — short description):\n"
-        f"{_format_step_catalog(step_manifests)}\n\n"
-        "Here is the pipeline document:\n"
-        f"```json\n{_format_pipeline(pipeline_doc)}\n```\n\n"
-        "Explain what this pipeline does, following the format the system "
-        "message specified."
-    )
     resp = await chat(
         cfg,
-        messages=[
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        # Prose, so a small temperature helps it read naturally.
-        temperature=0.3,
+        messages=build_explain_messages(pipeline_doc, step_manifests),
+        temperature=EXPLAIN_TEMPERATURE,
         max_tokens=TOKEN_BUDGETS["explain_pipeline"],
     )
     return resp.text.strip()

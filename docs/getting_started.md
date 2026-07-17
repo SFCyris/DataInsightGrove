@@ -10,14 +10,21 @@ The page is friendly to people coming from spreadsheets — *if you've used Exce
 
 ---
 
-## 0 · Install and start
+## 0 · Install, start, open
 
-Run **one** command:
+From the project root, it's three commands:
 
 ```bash
-cd DataInsightGrove
-./install.sh
+./install.sh     # 1. one-time setup
+./start.sh       # 2. start the server (backend + web)
+./stop.sh        # 3. stop it when you're done
 ```
+
+With the server running, open **[http://localhost:3100](http://localhost:3100)** and click **🌱 Try with sample data**.
+
+> `./install.sh` finishes with DIG already running, so on a fresh install you can open the page straight away — `./start.sh` and `./stop.sh` are how you bring it up and shut it down afterwards.
+
+### What `./install.sh` does
 
 The guided installer:
 
@@ -41,7 +48,9 @@ The installer is idempotent — re-run any time to verify or repair the environm
 | `--non-interactive` | CI-friendly: equivalent to `-y --no-start` |
 | `-h` / `--help` | Print the full help text |
 
-### Day-to-day (after install)
+### Other lifecycle commands
+
+The three commands above are all most people need. The rest are there when you want them:
 
 ```bash
 ./start.sh    # bring up API + web (detached)
@@ -50,26 +59,24 @@ make status   # is it up? where? (uses scripts/dig-status.sh)
 make dev      # foreground mode with prefixed logs (Ctrl-C to stop)
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
-
 > 💡 The installer is the only command most users need. Power users can skip straight to the underlying primitives — [`scripts/dig-bootstrap.sh`](../scripts/dig-bootstrap.sh) for system tools and [`scripts/dig-install.sh`](../scripts/dig-install.sh) for project deps. Both are documented inline.
 
 ### Port configuration
 
-DIG defaults to **API on `127.0.0.1:8090`** and **web UI on `127.0.0.1:3000`**. If either port is taken (another project, an existing dev server, etc.), use any of these — they're all equivalent ways to override the same setting:
+DIG defaults to **API on `127.0.0.1:8190`** and **web UI on `127.0.0.1:3100`**. If either port is taken (another project, an existing dev server, etc.), use any of these — they're all equivalent ways to override the same setting:
 
 ```bash
 # At install time — persisted to ~/.config/dig/config.json
-./install.sh --api-port 8090 --web-port 4000
+./install.sh --api-port 8190 --web-port 4000
 
 # At every start — persisted with --save
-./start.sh --api-port 8090 --save
+./start.sh --api-port 8190 --save
 
 # One launch only (not persisted)
-./start.sh --api-port 8090
+./start.sh --api-port 8190
 
 # Via env var (highest priority — overrides config + defaults)
-DIG_API_PORT=8090 ./start.sh
+DIG_API_PORT=8190 ./start.sh
 
 # Manual edit
 $EDITOR ~/.config/dig/config.json
@@ -148,7 +155,7 @@ DIG's editor is **data-first**: the live result of your current pipeline is in t
 - Header status: rows × cols × elapsed ms · 🦆 sample badge.
 - Click a column **name** → slide-out **📊 column profile drawer** with type, distinct/null counts, mean/median/min/max, distribution chart, and top values.
 
-  ![Column profile drawer — type, distinct/null counts, distribution, top values](images/phase-a-pro/08-profile-drawer.png)
+  ![Column profile drawer — type, distinct/null counts, distribution, top values](images/workspace/08-profile-drawer.png)
 
 - Click a column **⋯ chevron** (or right-click the header) → column-action menu: 🔍 Filter NULL/non-NULL, ↕️ Sort, 🔄 Cast, ✏️ Rename, ✂️ Drop, 📊 Group by, ➕ Derive. Each action becomes a step in the pipeline.
 - ⌘+click on any cell → "filter to this value." ⌘+alt+click → "exclude this value."
@@ -288,7 +295,7 @@ Override the data directory with `DIG_DATA_DIR=/some/path` before starting the b
 
 ## 12 · Troubleshooting
 
-- **Blank page on `127.0.0.1:3000`.** Next 16 dev server blocks cross-origin HMR by default. We set `allowedDevOrigins` in [`frontend/next.config.ts`](../frontend/next.config.ts); add your hostname/IP if accessing from elsewhere.
+- **Blank page on `127.0.0.1:3100`.** Next 16 dev server blocks cross-origin HMR by default. We set `allowedDevOrigins` in [`frontend/next.config.ts`](../frontend/next.config.ts); add your hostname/IP if accessing from elsewhere.
 - **Browser preview slow on first load.** DuckDB-WASM downloads from jsDelivr the first time (~1MB, cached). Backend Run still works offline.
 - **Dataset stuck in `ingesting`.** Check `data/dig.sqlite` and the API logs. A bad row surfaces as `failed` with the error.
 - **Want to start fresh?** `rm -rf data/` and restart. Nothing else holds state.

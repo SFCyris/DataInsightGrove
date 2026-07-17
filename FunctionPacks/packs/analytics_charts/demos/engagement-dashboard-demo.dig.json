@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "name": "📊 Demo · Engagement dashboard (analytics_charts)",
+  "tags": ["demo", "analytics_charts", "dashboard"],
+  "datasets": [
+    {
+      "id": "ds_events",
+      "connector": "csv",
+      "uri": "samples/healthcare-encounters-demo.csv",
+      "label": "demo · healthcare encounters (replace with your event log)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_source",
+      "step": "passthrough",
+      "inputs": {"in": {"port": "out", "ref": "ds_events"}},
+      "params": {},
+      "ui": {"x": 80, "y": 240, "label": "📥 Event log"}
+    },
+    {
+      "id": "n_daily",
+      "step": "group_aggregate",
+      "inputs": {"in": {"port": "out", "ref": "n_source"}},
+      "params": {
+        "groupBy": ["start_time"],
+        "aggregations": [{"column": "encounter_id", "op": "count", "alias": "encounters"}]
+      },
+      "ui": {"x": 320, "y": 80, "label": "📅 Daily counts"}
+    },
+    {
+      "id": "n_calendar",
+      "step": "calendar_heatmap",
+      "inputs": {"in": {"port": "out", "ref": "n_daily"}},
+      "params": {
+        "dateColumn": "start_time",
+        "valueColumn": "encounters",
+        "color_scale": "Greens",
+        "title": "Encounters by day"
+      },
+      "ui": {"x": 600, "y": 80, "label": "📅 Calendar heatmap"}
+    },
+    {
+      "id": "n_by_type",
+      "step": "group_aggregate",
+      "inputs": {"in": {"port": "out", "ref": "n_source"}},
+      "params": {
+        "groupBy": ["encounter_type"],
+        "aggregations": [
+          {"column": "cost", "op": "sum", "alias": "total_cost"},
+          {"column": "encounter_id", "op": "count", "alias": "n"}
+        ]
+      },
+      "ui": {"x": 320, "y": 240, "label": "💰 Cost by type"}
+    },
+    {
+      "id": "n_treemap",
+      "step": "treemap",
+      "inputs": {"in": {"port": "out", "ref": "n_by_type"}},
+      "params": {
+        "labelColumn": "encounter_type",
+        "valueColumn": "total_cost",
+        "title": "Cost composition by encounter type"
+      },
+      "ui": {"x": 600, "y": 240, "label": "🟫 Treemap"}
+    },
+    {
+      "id": "n_kpi_top",
+      "step": "kpi_card",
+      "inputs": {"in": {"port": "out", "ref": "n_by_type"}},
+      "params": {
+        "labelColumn": "encounter_type",
+        "valueColumn": "total_cost",
+        "format_value": "currency_usd",
+        "title": "Total cost by encounter type"
+      },
+      "ui": {"x": 600, "y": 400, "label": "🔢 KPI cards"}
+    }
+  ],
+  "outputs": [
+    {"id": "o_calendar", "name": "calendar_heatmap", "from": {"port": "out", "ref": "n_calendar"}},
+    {"id": "o_treemap", "name": "treemap", "from": {"port": "out", "ref": "n_treemap"}},
+    {"id": "o_kpi", "name": "kpi_cards", "from": {"port": "out", "ref": "n_kpi_top"}}
+  ]
+}

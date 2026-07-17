@@ -1,0 +1,13 @@
+{
+  "id": "stats_research",
+  "version": "0.1.0",
+  "label": "📚 Stats Research",
+  "description": "Research-grade statistical models: GLMs (logit, probit, Poisson), mixed-effects regression, Kaplan-Meier survival, Cox proportional hazards, log-rank test. Pairs with stats_pro for hypothesis testing + this pack for model fitting.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/EE-DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["glm_logit", "glm_probit", "glm_poisson", "mixed_effects", "kaplan_meier", "cox_proportional_hazards", "log_rank_test"],
+  "connectors": [],
+  "pythonRequirements": ["statsmodels>=0.14", "lifelines>=0.27", "scipy>=1.11"]
+}

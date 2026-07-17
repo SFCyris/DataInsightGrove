@@ -37,7 +37,7 @@ fi
 EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export 2>/dev/null || true)"
 [[ -n "$EXPORT" ]] && eval "$EXPORT"
 WEB_HOST="${DIG_WEB_HOST:-127.0.0.1}"
-WEB_PORT="${DIG_WEB_PORT:-3000}"
+WEB_PORT="${DIG_WEB_PORT:-3100}"
 URL="http://$WEB_HOST:$WEB_PORT"
 
 # xdg-open is the standard cross-desktop opener on Linux. Fall back to

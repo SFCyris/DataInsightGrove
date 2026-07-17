@@ -64,6 +64,11 @@ const VALIDATED_TYPES = new Set([
   "url", "email", "uuid", "ip", "country", "color", "phone", "hex", "timezone",
 ]);
 
+// Cap rendered rows at 500 — plain <table> handles this comfortably
+// without virtualization. The status strip shows total + the
+// "showing first N of M" hint when truncated.
+const RENDER_CAP = 500;
+
 interface Column {
   name: string;
   type: string;
@@ -89,8 +94,7 @@ interface Highlights {
 /** NaN-origin sidecar from the current step — drives the orange-⚠ NULL
  *  cell variant and the column-header `⚠ N` badge. One entry per
  *  (column, cause) tuple. The grid converts `row_indices` to a Set for
- *  O(1) per-cell lookup at render time. See
- *  `internal/proposals/NULL_AND_NAN_DISPLAY.md`. */
+ *  O(1) per-cell lookup at render time. */
 export interface NanOriginEntry {
   column: string;
   cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
@@ -110,11 +114,11 @@ interface Props {
   onColumnAction: (action: ColumnAction) => void;
   /** Called when user clicks a cell value — for "filter to this value" quick action. */
   onCellQuickFilter?: (column: string, value: unknown, mode: "eq" | "neq") => void;
-  /** Phase A Layer 3 — called when the user hovers a column header.
+  /** Called when the user hovers a column header.
    *  Page-level handler fetches the column's lineage and applies the
    *  resulting subgraph as a dim/highlight overlay on the canvas. */
   onColumnTrace?: (column: string) => void;
-  /** Phase A Layer 3 — called on mouseleave / unmount to clear the trace. */
+  /** Called on mouseleave / unmount to clear the trace. */
   onColumnTraceClear?: () => void;
   emptyHint?: React.ReactNode;
   highlights?: Highlights;
@@ -126,7 +130,7 @@ interface Props {
    *  (e.g. spatial extension required). Drives a small status badge so the
    *  user understands why this preview took longer than usual. */
   ranLocally?: boolean;
-  /** Phase-A-pro #5 — edit-time impact badge. Per-column count of
+  /** Edit-time impact badge. Per-column count of
    *  downstream consumers in the current pipeline. Renders as a small
    *  `→ N` chip next to the column name; clicking opens Column DNA so
    *  the user can drill into exactly what depends on this column. */
@@ -164,7 +168,6 @@ const _curFmt = new Intl.NumberFormat("en-US", {
 function fmt(v: unknown, type?: string): string {
   // Both NULL variants render the literal "NULL" — colour + icon (◌
   // for plain, ⚠ for conversion failure) carry the state distinction.
-  // See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
   if (v === null || v === undefined) return "NULL";
   if (typeof v === "boolean") return v ? "true" : "false";
   if (typeof v === "number") {
@@ -278,8 +281,30 @@ export function LiveGrid({
     }
   }, []);
   const [menu, setMenu] = useState<{ x: number; y: number; col: Column; initialOpen?: "cast" } | null>(null);
-  const [hoveredCol, setHoveredCol] = useState<string | null>(null);
   const [profileFor, setProfileFor] = useState<Column | null>(null);
+  // Column-hover tint is imperative, not React state: a setState on every
+  // pointer crossing re-rendered the entire table just to tint one column.
+  // Instead we stamp a `data-hovered` attribute on the hovered column's
+  // <th>/<td>s (matched by their data-col attribute) and let data-[hovered]:
+  // Tailwind variants paint the tint — zero re-renders per crossing,
+  // identical visuals. The attribute clears on header/tbody mouseleave and
+  // dies with the DOM on unmount.
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const hoveredColRef = useRef<string | null>(null);
+  const setHoverCol = useCallback((name: string | null) => {
+    if (hoveredColRef.current === name) return;
+    hoveredColRef.current = name;
+    const table = tableRef.current;
+    if (!table) return;
+    for (const el of table.querySelectorAll("[data-hovered]")) {
+      el.removeAttribute("data-hovered");
+    }
+    if (name !== null) {
+      for (const el of table.querySelectorAll(`[data-col="${CSS.escape(name)}"]`)) {
+        el.setAttribute("data-hovered", "");
+      }
+    }
+  }, []);
   // Popover anchored to a column-header `⚠ N` chip — explains the validation
   // check, lists a few offending samples, and surfaces the per-type help text.
   const [whyChip, setWhyChip] = useState<{
@@ -369,12 +394,67 @@ export function LiveGrid({
     [columnNames, onColumnAction],
   );
 
-  // Cap rendered rows at 500 — plain <table> handles this comfortably
-  // without virtualization. The status strip below shows total + the
-  // "showing first N of M" hint when truncated.
-  const RENDER_CAP = 500;
-  const renderedRows = rows.length > RENDER_CAP ? rows.slice(0, RENDER_CAP) : rows;
+  // Rendered slice of the sample (see RENDER_CAP). Memoized so the array
+  // identity is stable across unrelated re-renders — the header-badge memo
+  // below keys on it.
+  const renderedRows = useMemo(
+    () => (rows.length > RENDER_CAP ? rows.slice(0, RENDER_CAP) : rows),
+    [rows],
+  );
   const previewCount = renderedRows.length;
+
+  // Header ⚠-badge data: per-column invalid-cell count + up to 3 offending
+  // samples. Scanning is O(columns × renderedRows), far too hot to redo on
+  // every render — memoized so it only recomputes when the data (or the
+  // predicates derived from it) actually changes. Columns without a
+  // validated type, or with zero invalid cells, have no entry.
+  const invalidBadgeByCol = useMemo(() => {
+    const out = new Map<string, { bad: number; samples: string[] }>();
+    for (const c of columns) {
+      const t = logicalType(c.type);
+      if (t !== "index" && !VALIDATED_TYPES.has(t)) continue;
+      const predicate = cellInvalidByCol[c.name];
+      let bad = 0;
+      const samples: string[] = [];
+      for (const r of renderedRows) {
+        if (predicate(r[c.name])) {
+          bad++;
+          if (samples.length < 3) {
+            samples.push(String(r[c.name]));
+          }
+        }
+      }
+      if (bad > 0) out.set(c.name, { bad, samples });
+    }
+    return out;
+  }, [columns, renderedRows, cellInvalidByCol]);
+
+  // Re-stamp the hover attribute after the data changes: cells mounted by
+  // the new render won't carry the attribute the imperative path set
+  // earlier, so the tint would cover only part of the column otherwise.
+  // Only re-stamp while the pointer is actually still over that column
+  // (the :hover check) — a data swap can unmount the table (empty state)
+  // and remount it later without a mouseleave ever firing, and the stored
+  // name would otherwise repaint a tint for a column nobody is hovering.
+  // When the pointer has moved off (or the column is gone), drop the name.
+  useEffect(() => {
+    const name = hoveredColRef.current;
+    if (name === null) return;
+    hoveredColRef.current = null;
+    const table = tableRef.current;
+    const stillHovered =
+      table?.querySelector(`[data-col="${CSS.escape(name)}"]:hover`) != null;
+    if (stillHovered) {
+      setHoverCol(name);
+    } else if (table) {
+      // Pointer left while the DOM was swapped — sweep any attribute the
+      // reused cells still carry (setHoverCol(null) would early-return
+      // here since the ref is already null).
+      for (const el of table.querySelectorAll("[data-hovered]")) {
+        el.removeAttribute("data-hovered");
+      }
+    }
+  }, [renderedRows, columns, setHoverCol]);
 
   return (
     <div className="flex flex-col h-full min-h-0 relative">
@@ -449,6 +529,7 @@ export function LiveGrid({
           </div>
         ) : (
           <table
+            ref={tableRef}
             // Default cell font: Geist Mono (tight column alignment, clear
             // 0/O and 1/l/I disambiguation for IDs and codes). The <th>
             // overrides back to font-sans below so column names stay in
@@ -465,7 +546,6 @@ export function LiveGrid({
             <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
               <tr>
                 {columns.map((c, ci) => {
-                  const isHover = hoveredCol === c.name;
                   const isAdded = added?.has(c.name);
                   const isRenamed = renamed?.has(c.name);
                   const isExternalHover = hovered === c.name;
@@ -474,6 +554,7 @@ export function LiveGrid({
                   return (
                     <th
                       key={c.name}
+                      data-col={c.name}
                       draggable
                       tabIndex={0}
                       onKeyDown={(e) => {
@@ -518,11 +599,11 @@ export function LiveGrid({
                         handleHeaderDrop(c.name, edge);
                       }}
                       onMouseEnter={() => {
-                        setHoveredCol(c.name);
+                        setHoverCol(c.name);
                         onColumnTrace?.(c.name);
                       }}
                       onMouseLeave={() => {
-                        setHoveredCol((cur) => (cur === c.name ? null : cur));
+                        if (hoveredColRef.current === c.name) setHoverCol(null);
                         onColumnTraceClear?.();
                       }}
                       onContextMenu={(e) => {
@@ -542,11 +623,11 @@ export function LiveGrid({
                             ? "border-amber-400/60 bg-amber-50/60 dark:bg-amber-900/20"
                             : isExternalHover
                               ? "border-emerald-300/40 bg-emerald-50/40 dark:bg-emerald-900/15"
-                              : isHover
-                                // Same emerald tint as the column body so the
-                                // whole column reads as one highlighted unit.
-                                ? "border-emerald-300/40 bg-emerald-100/50 dark:bg-emerald-500/15"
-                                : "border-border",
+                              // Hover: same emerald tint as the column body so
+                              // the whole column reads as one highlighted unit.
+                              // Driven by the data-hovered attribute (stamped
+                              // imperatively — see setHoverCol), not state.
+                              : "border-border data-[hovered]:border-emerald-300/40 data-[hovered]:bg-emerald-100/50 dark:data-[hovered]:bg-emerald-500/15",
                       ].join(" ")}
                     >
                       {/* Drop indicator: vertical accent line on the chosen
@@ -585,24 +666,15 @@ export function LiveGrid({
                         </button>
                         {(() => {
                           // Inline data-quality badge: how many cells in
-                          // this column are invalid? Reads from the same
-                          // memo the cell renderer uses so it stays in
-                          // perfect lockstep. Click → popover with help
-                          // text + sample offending values.
+                          // this column are invalid? Counts + samples come
+                          // from the invalidBadgeByCol memo, which uses the
+                          // same predicates as the cell renderer so the two
+                          // stay in perfect lockstep. Click → popover with
+                          // help text + sample offending values.
+                          const inv = invalidBadgeByCol.get(c.name);
+                          if (!inv) return null;
+                          const { bad, samples } = inv;
                           const t = logicalType(c.type);
-                          if (t !== "index" && !VALIDATED_TYPES.has(t)) return null;
-                          const predicate = cellInvalidByCol[c.name];
-                          let bad = 0;
-                          const samples: string[] = [];
-                          for (const r of renderedRows) {
-                            if (predicate(r[c.name])) {
-                              bad++;
-                              if (samples.length < 3) {
-                                samples.push(String(r[c.name]));
-                              }
-                            }
-                          }
-                          if (bad === 0) return null;
                           const reason =
                             t === "index"
                               ? `${bad} duplicate value(s) — click for details`
@@ -666,7 +738,6 @@ export function LiveGrid({
                           // column on the current step. Only shown on the
                           // producing step (the next step's sidecar is
                           // independent — every count resets to zero).
-                          // See internal/proposals/NULL_AND_NAN_DISPLAY.md.
                           const nc = nanCountByCol.get(c.name);
                           if (!nc || nc <= 0) return null;
                           const info = nanInfoByCol.get(c.name);
@@ -723,11 +794,13 @@ export function LiveGrid({
                           aria-haspopup="menu"
                           // Hit area = ≥24×24 (was p-0.5, ~12×16 — under WCAG
                           // target size). Always-on opacity bumped from 50→70
-                          // so the chevron reads even before hover.
+                          // so the chevron reads even before hover. Full
+                          // opacity keys off the enclosing <th>'s data-hovered
+                          // attribute (set imperatively on column hover).
                           className={[
                             "ml-auto inline-flex items-center justify-center rounded h-6 w-6",
                             "text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity",
-                            isHover ? "opacity-100" : "opacity-70",
+                            "opacity-70 in-data-[hovered]:opacity-100",
                           ].join(" ")}
                         >
                           ⋯
@@ -753,7 +826,7 @@ export function LiveGrid({
                 })}
               </tr>
             </thead>
-            <tbody onMouseLeave={() => setHoveredCol(null)}>
+            <tbody onMouseLeave={() => setHoverCol(null)}>
               {/* No AnimatePresence here: it caused a 200×N cell-mount cycle
                   on every preview keystroke. Plain <tr> with hover bg is
                   fast + visually clean. */}
@@ -766,16 +839,14 @@ export function LiveGrid({
                       const v = r[c.name];
                       const isAddedCell = added?.has(c.name);
                       const isRenamedCell = renamed?.has(c.name);
-                      // Hover-highlight the WHOLE column when the user is over
-                      // any cell in it (or the header). hoveredCol is set on
-                      // both <th> and <td> mouseenter — see handlers below.
+                      // Hover-highlight of the WHOLE column (from any cell in
+                      // it, or the header) is imperative — see setHoverCol.
                       const isExternalHoverCell = hovered === c.name;
-                      const isColHovered = hoveredCol === c.name;
                       // Meta-type validity check — duplicates for index
                       // columns, non-IANA strings for timezone columns.
                       const isCellInvalid = cellInvalidByCol[c.name](v);
                       const colLogicalType = logicalType(c.type);
-                      // NULL semantics — see internal/proposals/NULL_AND_NAN_DISPLAY.md.
+                      // NULL semantics.
                       // Plain NULL (◌, cool-grey-blue): "value never existed."
                       // NaN-origin NULL (⚠, light-orange): "the producing step
                       //   broke this value." Survives one step only — the
@@ -795,7 +866,8 @@ export function LiveGrid({
                       return (
                         <td
                           key={c.name}
-                          onMouseEnter={() => setHoveredCol(c.name)}
+                          data-col={c.name}
+                          onMouseEnter={() => setHoverCol(c.name)}
                           onClick={(e) => {
                             if ((e.metaKey || e.ctrlKey) && onCellQuickFilter) {
                               e.preventDefault();
@@ -842,12 +914,12 @@ export function LiveGrid({
                                       ? "bg-amber-50/40 dark:bg-amber-900/10"
                                       : isExternalHoverCell
                                         ? "bg-emerald-50/30 dark:bg-emerald-900/10"
-                                        : isColHovered
-                                          // Whole-column hover tint — sage-emerald,
-                                          // designed to feel like a soft spotlight
-                                          // without competing with the diff colors.
-                                          ? "bg-emerald-100/40 dark:bg-emerald-500/10"
-                                          : "",
+                                        // Whole-column hover tint — sage-emerald,
+                                        // designed to feel like a soft spotlight
+                                        // without competing with the diff colors.
+                                        // Driven by the data-hovered attribute
+                                        // (see setHoverCol), not React state.
+                                        : "data-[hovered]:bg-emerald-100/40 dark:data-[hovered]:bg-emerald-500/10",
                           ].join(" ")}
                         >
                           {isNullCell ? (

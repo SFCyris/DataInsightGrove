@@ -4,27 +4,46 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import polars as pl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 from ulid import ULID
 
 from dig.engine.profile import profile_dataframe
 from dig.engine.registry import connectors
 from dig.storage.db import get_session
-from pathlib import Path
-
-from dig.storage.files import cached_parquet_path, data_dir, upload_path
+from dig.storage.files import cached_parquet_path, upload_path
 from dig.storage.models import Dataset
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+def _write_parquet_atomic(df: pl.DataFrame, cached: Path) -> None:
+    """Materialise ``df`` to ``cached`` without ever truncating the live file.
+
+    The cached parquet is served concurrently (Range requests for
+    DuckDB-WASM, pl.scan_parquet for /rows) while ingest/refresh may be
+    rewriting it. Writing to a temp file in the same directory and
+    ``os.replace``-ing it over the target is atomic on POSIX: readers
+    holding the old file keep the old inode; new opens see the new bytes.
+    """
+    tmp = cached.with_suffix(f".parquet.tmp-{uuid4().hex}")
+    try:
+        df.write_parquet(tmp, compression="zstd")
+        os.replace(tmp, cached)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 class TypeCandidate(BaseModel):
@@ -139,7 +158,14 @@ def _to_out(d: Dataset) -> DatasetOut:
 
 @router.get("", response_model=list[DatasetOut])
 async def list_datasets(session: AsyncSession = Depends(get_session)) -> list[DatasetOut]:
-    res = await session.execute(select(Dataset).order_by(Dataset.created_at.desc()))
+    # The full profile JSON can run to hundreds of KB per dataset and the
+    # list DTO never reads it — defer it so the catalog query stays light.
+    # `columns` IS read (the DTO surfaces per-column info), so it stays.
+    res = await session.execute(
+        select(Dataset)
+        .options(defer(Dataset.profile))
+        .order_by(Dataset.created_at.desc())
+    )
     return [_to_out(d) for d in res.scalars().all()]
 
 
@@ -220,8 +246,10 @@ async def create_dataset_from_uri(
             raise RuntimeError(
                 f"ingested dataset is {size_mb:.0f} MB; exceeds DIG_MAX_DATASET_MB cap of {max_mb} MB",
             )
-        df.write_parquet(cached, compression="zstd")
-        profile = profile_dataframe(pl.scan_parquet(cached))
+        _write_parquet_atomic(df, cached)
+        # Profile the in-memory frame directly — re-scanning the parquet we
+        # just wrote would pay the decode cost a second time for nothing.
+        profile = profile_dataframe(df.lazy())
         return {
             "storage_uri": f"file://{cached}",
             "row_count": df.height,
@@ -401,20 +429,36 @@ async def upload_dataset(
             await session.commit()
             return _to_out(d)
 
-    # Ingest + profile. Errors recorded on the row.
-    try:
-        lf = connector.read(d.source_uri, opts)
+    # Ingest + profile. Errors recorded on the row. The read + collect +
+    # parquet write + profile chain blocks; push it off the event loop so
+    # concurrent API requests aren't starved.
+    import asyncio as _asyncio
+
+    source_uri = d.source_uri
+
+    def _upload_ingest_sync() -> dict[str, Any]:
+        lf = connector.read(source_uri, opts)
         # Materialize to parquet for fast subsequent reads.
         cached = cached_parquet_path(dataset_id)
         cached.parent.mkdir(parents=True, exist_ok=True)
         df = lf.collect()
-        df.write_parquet(cached, compression="zstd")
-        d.storage_uri = f"file://{cached}"
-        d.row_count = df.height
+        _write_parquet_atomic(df, cached)
+        # Profile the in-memory frame directly — re-scanning the parquet
+        # we just wrote would pay the decode cost a second time for nothing.
+        profile = profile_dataframe(df.lazy())
+        return {
+            "storage_uri": f"file://{cached}",
+            "row_count": df.height,
+            "columns": profile["columns"],
+            "profile": profile,
+        }
 
-        profile = profile_dataframe(pl.scan_parquet(cached))
-        d.columns = profile["columns"]
-        d.profile = profile
+    try:
+        result = await _asyncio.to_thread(_upload_ingest_sync)
+        d.storage_uri = result["storage_uri"]
+        d.row_count = result["row_count"]
+        d.columns = result["columns"]
+        d.profile = result["profile"]
         d.status = "ready"
     except Exception as e:
         log.exception("ingest failed for %s", dataset_id)
@@ -496,19 +540,39 @@ async def pick_sheet(
 
 async def _ingest_dataset(d: Dataset, connector: Any, session: AsyncSession) -> DatasetOut:
     """Run the canonical ingest+profile pipeline on an already-prepared
-    dataset row. Caller has already validated the connector + options."""
-    try:
-        lf = connector.read(d.source_uri, d.options)
-        cached = cached_parquet_path(d.id)
+    dataset row. Caller has already validated the connector + options.
+
+    The read + collect + parquet write + profile chain blocks; it runs in a
+    worker thread so concurrent API requests aren't starved.
+    """
+    import asyncio as _asyncio
+
+    dataset_id = d.id
+    source_uri = d.source_uri
+    options = d.options
+
+    def _sync() -> dict[str, Any]:
+        lf = connector.read(source_uri, options)
+        cached = cached_parquet_path(dataset_id)
         cached.parent.mkdir(parents=True, exist_ok=True)
         df = lf.collect()
-        df.write_parquet(cached, compression="zstd")
-        d.storage_uri = f"file://{cached}"
-        d.row_count = df.height
+        _write_parquet_atomic(df, cached)
+        # Profile the in-memory frame directly — re-scanning the parquet
+        # we just wrote would pay the decode cost a second time for nothing.
+        profile = profile_dataframe(df.lazy())
+        return {
+            "storage_uri": f"file://{cached}",
+            "row_count": df.height,
+            "columns": profile["columns"],
+            "profile": profile,
+        }
 
-        profile = profile_dataframe(pl.scan_parquet(cached))
-        d.columns = profile["columns"]
-        d.profile = profile
+    try:
+        result = await _asyncio.to_thread(_sync)
+        d.storage_uri = result["storage_uri"]
+        d.row_count = result["row_count"]
+        d.columns = result["columns"]
+        d.profile = result["profile"]
         d.status = "ready"
         d.error = None
     except Exception as e:
@@ -744,17 +808,35 @@ async def import_sample(
     session.add(d)
     await session.commit()
 
-    try:
-        lf = connector.read(d.source_uri, d.options)
+    # The read + collect + parquet write + profile chain blocks; push it
+    # off the event loop so concurrent API requests aren't starved.
+    import asyncio as _asyncio
+
+    source_uri = d.source_uri
+    options = d.options
+
+    def _sample_ingest_sync() -> dict[str, Any]:
+        lf = connector.read(source_uri, options)
         cached = cached_parquet_path(dataset_id)
         cached.parent.mkdir(parents=True, exist_ok=True)
         df = lf.collect()
-        df.write_parquet(cached, compression="zstd")
-        d.storage_uri = f"file://{cached}"
-        d.row_count = df.height
-        profile = profile_dataframe(pl.scan_parquet(cached))
-        d.columns = profile["columns"]
-        d.profile = profile
+        _write_parquet_atomic(df, cached)
+        # Profile the in-memory frame directly — re-scanning the parquet
+        # we just wrote would pay the decode cost a second time for nothing.
+        profile = profile_dataframe(df.lazy())
+        return {
+            "storage_uri": f"file://{cached}",
+            "row_count": df.height,
+            "columns": profile["columns"],
+            "profile": profile,
+        }
+
+    try:
+        result = await _asyncio.to_thread(_sample_ingest_sync)
+        d.storage_uri = result["storage_uri"]
+        d.row_count = result["row_count"]
+        d.columns = result["columns"]
+        d.profile = result["profile"]
         d.status = "ready"
     except Exception as e:
         log.exception("sample ingest failed")
@@ -839,13 +921,12 @@ async def refresh_dataset(
 ) -> DatasetOut:
     """Re-ingest a dataset from its current ``source_uri`` + ``options``.
 
-    Round-5 W3 finding: there was no way to refresh a dataset when its
-    underlying file (or REST URL) changed on disk. Users had to delete +
-    re-upload, which broke every downstream pipeline that pinned the
-    old dataset ID. This endpoint preserves the row + ID, re-runs the
-    connector, and re-materialises the parquet. The ``status`` flips to
-    ``ingesting`` while the work runs and back to ``ready`` (or
-    ``failed``) when done.
+    Refreshes a dataset in place when its underlying file (or REST URL)
+    changed on disk, without a delete + re-upload that would break every
+    downstream pipeline pinned to the old dataset ID. This endpoint
+    preserves the row + ID, re-runs the connector, and re-materialises the
+    parquet. The ``status`` flips to ``ingesting`` while the work runs and
+    back to ``ready`` (or ``failed``) when done.
     """
     d = await session.get(Dataset, dataset_id)
     if d is None:
@@ -856,17 +937,52 @@ async def refresh_dataset(
         connector = connectors().get(d.connector or "csv")
     except KeyError as e:
         raise HTTPException(400, str(e)) from e
-    d.status = "ingesting"
-    d.error = None
+    # Serialise refreshes with an atomic compare-and-set: flip to
+    # ``ingesting`` only from a non-``ingesting`` status in a single UPDATE,
+    # so two concurrent refreshes cannot both claim the row. rowcount == 0
+    # means another refresh already holds it. This is a UX guard; the
+    # integrity backstop against interleaved writers is the atomic parquet
+    # write in ``_refresh_sync``.
+    claim = await session.execute(
+        update(Dataset)
+        .where(Dataset.id == dataset_id, Dataset.status != "ingesting")
+        .values(status="ingesting", error=None)
+    )
+    if claim.rowcount == 0:
+        raise HTTPException(409, "refresh already in progress")
     await session.commit()
-    try:
-        df = connector.read(d.source_uri, d.options or {}).collect()
-        cached = cached_parquet_path(d.id)
+    # commit expired ``d``; reload so subsequent attribute writes/read-back
+    # operate on the freshly claimed row.
+    d = await session.get(Dataset, dataset_id)
+
+    # Same materialize-and-profile chain as the ingest paths: it blocks,
+    # so it runs in a worker thread to keep the event loop responsive.
+    import asyncio as _asyncio
+
+    source_uri = d.source_uri
+    options = d.options or {}
+
+    def _refresh_sync() -> dict[str, Any]:
+        df = connector.read(source_uri, options).collect()
+        cached = cached_parquet_path(dataset_id)
         cached.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(cached)
-        d.row_count = df.height
-        d.profile = profile_dataframe(df).model_dump()
-        d.storage_uri = f"file://{cached}"
+        _write_parquet_atomic(df, cached)
+        # Profile the in-memory frame directly — re-scanning the parquet
+        # we just wrote would pay the decode cost a second time for nothing.
+        profile = profile_dataframe(df.lazy())
+        return {
+            "storage_uri": f"file://{cached}",
+            "row_count": df.height,
+            "columns": profile["columns"],
+            "profile": profile,
+        }
+
+    try:
+        result = await _asyncio.to_thread(_refresh_sync)
+        d.storage_uri = result["storage_uri"]
+        d.row_count = result["row_count"]
+        d.columns = result["columns"]
+        d.profile = result["profile"]
         d.status = "ready"
     except Exception as e:  # noqa: BLE001
         d.status = "failed"

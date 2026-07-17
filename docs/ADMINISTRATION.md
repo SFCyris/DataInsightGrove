@@ -66,8 +66,8 @@ A complete config with every supported key:
 ```json
 {
   "version": 1,
-  "api":  { "host": "127.0.0.1", "port": 8090, "httpsPort": 8443 },
-  "web":  { "host": "127.0.0.1", "port": 3000, "httpsPort": 3443 },
+  "api":  { "host": "127.0.0.1", "port": 8190, "httpsPort": 8443 },
+  "web":  { "host": "127.0.0.1", "port": 3100, "httpsPort": 3443 },
   "dataDir": null,
   "logDir":  "/var/log/DIG",
   "log": {
@@ -89,10 +89,10 @@ A complete config with every supported key:
 |---|---|---|---|
 | `version` | integer | `1` | Schema version. Bumped on breaking changes (none yet). |
 | `api.host` | string | `"127.0.0.1"` | Bind address for the FastAPI process. `0.0.0.0` exposes to LAN; pair with `DIG_AUTH_TOKEN`. |
-| `api.port` | integer | `8090` | API **HTTP** port (always served). |
+| `api.port` | integer | `8190` | API **HTTP** port (always served). |
 | `api.httpsPort` | integer | `8443` | API **HTTPS** port. Served by the TLS-terminating proxy ([§5](#5-tls--https)), which forwards decrypted traffic to `api.port`. Same uvicorn process answers both. |
 | `web.host` | string | `"127.0.0.1"` | Bind address for the Next.js dev server. |
-| `web.port` | integer | `3000` | Web UI **HTTP** port (always served). |
+| `web.port` | integer | `3100` | Web UI **HTTP** port (always served). |
 | `web.httpsPort` | integer | `3443` | Web UI **HTTPS** port, via the same TLS proxy → forwards to `web.port`. |
 | `dataDir` | string \| null | _(repo)_/`data` | Root of all user data — see [§3.4](#34-runtime-data-dir). `null` means "use the default location." |
 | `logDir`  | string \| null | `/var/log/DIG` | Where rotated logs go. See [§4](#4-logs). `null` means "use the default" (the start script falls back to `~/Library/Logs/DIG/` on macOS or `~/.local/state/DIG/logs/` on Linux if it can't write to the default). |
@@ -258,7 +258,7 @@ What you get from `git clone`:
 │   ├── steps/               #   per-step folders
 │   └── packs/               #   per-pack folders (each containing its own steps/)
 │
-├── Step-Pack-internal/      # The internal "source-of-truth" for first-party packs.
+├── FunctionPacks/      # Public source library for first-party packs (build here,
 │                            # `dig-pack build` here, then copy data.zip + step files
 │                            # into plugins/packs/<id>/. Operators never touch this dir.
 │
@@ -280,7 +280,7 @@ A few things to know:
   is what every install gets out of the box. The second is for steps you
   add locally (or distribute as pack tarballs). The runtime treats them
   identically.
-- **`Step-Pack-internal/` is not consumed at runtime.** It's a build-time
+- **`FunctionPacks/` is not consumed at runtime.** It's a build-time
   staging area. Only `plugins/packs/<id>/` is read by the loader.
 
 ### 3.2 Plugin tree

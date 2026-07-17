@@ -1,0 +1,13 @@
+{
+  "id": "funnel_pack",
+  "version": "0.1.0",
+  "label": "🪜 Funnel Pack",
+  "description": "Sequential-step funnel analysis: who completed each step, time-to-convert, drop-off attribution between steps, and multi-path funnels (out-of-order completion).",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["step_funnel", "time_to_convert", "drop_off_attribution", "multi_path_funnel"],
+  "connectors": [],
+  "pythonRequirements": []
+}

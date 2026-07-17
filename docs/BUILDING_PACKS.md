@@ -9,7 +9,7 @@ no internet at runtime, no cloud registry.
 
 A pack is a folder containing one or more steps (and optionally
 connectors) that DIG loads as a unit. Packs live in `plugins/packs/`
-once installed; they're authored in `Step-Pack-internal/packs/` (or
+once installed; they're authored in `FunctionPacks/packs/` (or
 your own working tree).
 
 ```
@@ -34,7 +34,7 @@ my_pack/
 
 The schema lives at [`shared/schemas/pack-manifest.schema.json`](../shared/schemas/pack-manifest.schema.json).
 Required fields: `id`, `version`, `label`, `description`. See
-`Step-Pack-internal/packs/geospatial_pack/pack.json` for a worked
+`FunctionPacks/packs/geospatial_pack/pack.json` for a worked
 example with reference data.
 
 ## Reference data: when and how
@@ -139,7 +139,7 @@ and writes the result into `data/`. Run it locally any time you
 refresh the data:
 
 ```bash
-backend/.venv/bin/python Step-Pack-internal/packs/my_pack/_build/build.py
+backend/.venv/bin/python FunctionPacks/packs/my_pack/_build/build.py
 ```
 
 `build.py` is free to do whatever it needs — TopoJSON decoding, CSV
@@ -149,7 +149,7 @@ contract is that it writes valid files to `data/`.
 After `build.py` populates `data/`, the next step is packaging:
 
 ```bash
-backend/.venv/bin/dig-pack build Step-Pack-internal/packs/my_pack
+backend/.venv/bin/dig-pack build FunctionPacks/packs/my_pack
 ```
 
 This:
@@ -197,19 +197,19 @@ checklist:
 
 ```bash
 # 1. Refresh sources + rebuild data
-python Step-Pack-internal/packs/my_pack/_build/build.py
+python FunctionPacks/packs/my_pack/_build/build.py
 
 # 2. Repackage data.zip + update pack.json
-dig-pack build Step-Pack-internal/packs/my_pack
+dig-pack build FunctionPacks/packs/my_pack
 
 # 3. Verify in-tree consistency
-dig-pack verify Step-Pack-internal/packs/my_pack
+dig-pack verify FunctionPacks/packs/my_pack
 
 # 4. Inspect for sanity
-dig-pack info Step-Pack-internal/packs/my_pack
+dig-pack info FunctionPacks/packs/my_pack
 
 # 5. Commit pack.json, data.zip, _build/sources.lock.json
-git add Step-Pack-internal/packs/my_pack/{pack.json,data.zip,_build/sources.lock.json}
+git add FunctionPacks/packs/my_pack/{pack.json,data.zip,_build/sources.lock.json}
 ```
 
 `dig-pack build --check` in a pre-commit hook catches the common
@@ -230,7 +230,7 @@ manually or via `dig-pack uninstall` (reserved).
 
 ## Worked example: `geospatial_pack`
 
-See [`Step-Pack-internal/packs/geospatial_pack/`](../Step-Pack-internal/packs/geospatial_pack/)
+See [`FunctionPacks/packs/geospatial_pack/`](../FunctionPacks/packs/geospatial_pack/)
 for a complete pack that:
 
 - Bundles US state + world country boundaries (~290 KB compressed)

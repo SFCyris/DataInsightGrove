@@ -16,7 +16,7 @@ If something doesn't work the way the tutorial describes, please [open an issue]
 > - DIG installed and running ([`docs/getting_started.md`](getting_started.md))
 > - The sample datasets under [`samples/`](../samples/) — they ship with the repo
 >
-> Open <http://localhost:3000>. If the dev server isn't up yet, run `make start` or `./scripts/dig-start.sh`.
+> Open <http://localhost:3100>. If the dev server isn't up yet, run `make start` or `./scripts/dig-start.sh`.
 
 The pipeline editor you'll be working in looks like this:
 

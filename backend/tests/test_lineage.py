@@ -54,7 +54,7 @@ def test_lineage_flows_through_filter_sort(csv_path, monkeypatch, tmp_path):
                 step="sort_rows",
                 stepVersion="1.0.0",
                 inputs={"in": Reference(ref="n_filter")},
-                params={"sortBy": [{"column": "id", "descending": False}]},
+                params={"by": [{"column": "id", "direction": "desc"}]},
             ),
         ],
         outputs=[
@@ -72,8 +72,9 @@ def test_lineage_flows_through_filter_sort(csv_path, monkeypatch, tmp_path):
     lineage_cols = [c for c in out.columns if c.startswith(LINEAGE_COL_PREFIX)]
     assert lineage_cols, "lineage column missing — flag not honored"
 
-    # Both US rows from the source should survive the filter, sorted by id.
+    # Both US rows from the source should survive the filter, sorted by id
+    # descending.
     assert out.height == 2
-    assert out.get_column("id").to_list() == [1, 4]
-    # Source row indices are 1-based: Alice is row 1, Dan is row 4.
-    assert out.get_column(lineage_cols[0]).to_list() == [1, 4]
+    assert out.get_column("id").to_list() == [4, 1]
+    # Source row indices are 1-based: Dan is row 4, Alice is row 1.
+    assert out.get_column(lineage_cols[0]).to_list() == [4, 1]

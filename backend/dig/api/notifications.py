@@ -13,9 +13,12 @@ Three resources:
   - POST   /notifications/dismiss-all  Soft-dismiss all undismissed
   - DELETE /notifications/{id}         Hard-delete (removes from the audit log)
 
-Producers call `record_notification()` — a small async helper that opens
-its own session so it can be invoked from anywhere in the API process,
-including background workers that don't already have a session in scope.
+Producers call `record_notification()` — a small async helper and the
+single insert path for the store, so the level whitelist clamp lives in
+one place. By default it opens its own session so it can be invoked from
+anywhere in the API process, including background workers that don't
+already have a session in scope; callers that need the insert to share a
+transaction (the rule engine) pass their open session instead.
 """
 from __future__ import annotations
 
@@ -47,7 +50,7 @@ _KINDS: tuple[str, ...] = (
     "system",       # server lifecycle, generic backend errors
     "runtime",      # pipeline run lifecycle (queued, succeeded, failed)
     "freshness",    # SLA/freshness threshold breaches
-    "login",        # auth events (Phase B+ when auth lands)
+    "login",        # auth events (once auth is wired)
     "resources",    # disk space, OOM, rate limits
     "security",     # auth-token violations, suspicious requests
 )
@@ -104,13 +107,18 @@ async def record_notification(
     message: str | None = None,
     user_id: str | None = None,
     context: dict[str, Any] | None = None,
+    session: AsyncSession | None = None,
 ) -> str:
-    """Persist one notification.
+    """Persist one notification. The single insert path for the store, so
+    the kind-vocabulary check and the level whitelist clamp live here only.
 
-    Designed to be safe to call from anywhere — opens its own session,
-    swallows errors so a notification failure never breaks the
-    triggering operation. Returns the new ULID for any caller that
-    wants to follow up.
+    Designed to be safe to call from anywhere — by default opens its own
+    session and swallows errors so a notification failure never breaks the
+    triggering operation. Callers that need the insert to share a
+    transaction (the rule engine stamps rule fire-stats in the same commit)
+    pass their open ``session``; the row is then enqueued on it and the
+    caller owns the commit and error handling. Returns the new ULID for any
+    caller that wants to follow up.
     """
     if kind not in _KINDS:
         log.warning("notification kind %r not in vocabulary; allowing anyway", kind)
@@ -119,18 +127,25 @@ async def record_notification(
         level = "notification"
 
     nid = str(ULID())
+    row = Notification(
+        id=nid,
+        kind=str(kind),
+        level=str(level),
+        title=title,
+        message=message,
+        user_id=user_id,
+        context=context,
+    )
+    if session is not None:
+        # Caller-managed transaction: enqueue the row and let the caller
+        # commit + handle errors so the insert lands in the same commit as
+        # whatever else the caller is writing.
+        session.add(row)
+        return nid
     try:
-        async with SessionLocal() as session:
-            session.add(Notification(
-                id=nid,
-                kind=str(kind),
-                level=str(level),
-                title=title,
-                message=message,
-                user_id=user_id,
-                context=context,
-            ))
-            await session.commit()
+        async with SessionLocal() as own_session:
+            own_session.add(row)
+            await own_session.commit()
         log.debug("recorded notification %s [%s/%s] %r", nid, kind, level, title)
     except Exception:
         # Never let notification persistence break a real operation. If the

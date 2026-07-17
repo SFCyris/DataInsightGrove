@@ -1,0 +1,13 @@
+{
+  "id": "iot_sensor_pack",
+  "version": "0.1.0",
+  "label": "📡 IoT Sensor Pack",
+  "description": "Sensor-data primitives. Resample irregular sensor readings to a regular grid, detect drift in a streaming distribution, fuse multiple sensor channels, downsample with a CIC (cascaded-integrator-comb) decimation filter.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["sensor_resample_regular", "stream_drift_detect", "multi_sensor_fusion", "downsample_cic"],
+  "connectors": [],
+  "pythonRequirements": ["scipy>=1.11"]
+}

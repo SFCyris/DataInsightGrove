@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "id": "diagnostic_charts_demo",
+  "name": "\ud83d\udcca diagnostic_charts \u00b7 A vs B distribution dossier",
+  "description": "Two groups: A is tightly normal around 100, B has the same mean but heavy tails (extreme values at 68, 75, 140, 150). Q-Q on B will show fat tails departing the line; box / violin / ECDF make the shape difference obvious.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "two-group measurements"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_box",
+      "step": "box_plot",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "measurement",
+        "group": "group",
+        "title": "Box \u00b7 A vs B"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Box plot"
+      }
+    },
+    {
+      "id": "n_violin",
+      "step": "violin_plot",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "measurement",
+        "group": "group",
+        "title": "Violin \u00b7 A vs B"
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Violin plot"
+      }
+    },
+    {
+      "id": "n_qq_b",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "expression": "\"group\" = 'B'"
+      },
+      "ui": {
+        "x": 280,
+        "y": 260,
+        "label": "Group B only"
+      }
+    },
+    {
+      "id": "n_qq",
+      "step": "qq_plot",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_qq_b"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "measurement",
+        "title": "Q-Q \u00b7 group B vs normal"
+      },
+      "ui": {
+        "x": 540,
+        "y": 260,
+        "label": "Q-Q plot \u00b7 B"
+      }
+    },
+    {
+      "id": "n_ecdf",
+      "step": "ecdf_plot",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "measurement",
+        "group": "group",
+        "title": "ECDF \u00b7 A vs B"
+      },
+      "ui": {
+        "x": 280,
+        "y": 440,
+        "label": "ECDF \u00b7 split by group"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o",
+      "name": "diagnostics",
+      "from": {
+        "ref": "n_ecdf"
+      }
+    }
+  ]
+}

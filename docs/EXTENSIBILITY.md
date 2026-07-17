@@ -154,8 +154,7 @@ generic header.
 
 Identifiers (dataset ID, node ID, output ID) use
 `^[a-z0-9][a-z0-9_:-]*$`. Lowercase alphanumerics, underscore,
-hyphen, colon. The colon is reserved for **namespacing in enterprise
-deployments**:
+hyphen, colon. The colon is reserved for **namespacing**:
 
 ```jsonc
 {
@@ -181,7 +180,7 @@ is opt-in.
 | `step.engine.primary` value with no registered implementation | Step is unrunnable; error message names the missing engine. |
 | `webhook.on` value not in the known set | Webhook never fires (fail-safe). |
 | `step.category` value not in the known set | Step appears under a generic group in the library UI. |
-| New top-level field on a `pipeline.json` not yet known to the reader | Currently rejected because the schema is `additionalProperties: false`. Post-1.0, additive top-level fields ship via [`docs/API_STABILITY.md`](API_STABILITY.md) MINOR rules. For pre-1.0 use, attach to `pipeline.extensions.<your_ns>` instead. |
+| New top-level field on a `pipeline.json` not yet known to the reader | Currently rejected because the schema is `additionalProperties: false`. Attach to `pipeline.extensions.<your_ns>` instead. |
 
 ## Examples
 
@@ -255,14 +254,9 @@ via `step.manifest["extensions"]["acme"]`.
 
 ## See also
 
-- [`docs/API_STABILITY.md`](API_STABILITY.md) — what's allowed to
-  break across MAJOR / MINOR / PATCH
 - [`docs/PIPELINE_FORMAT.md`](PIPELINE_FORMAT.md) — the full
   pipeline JSON shape, including the slot inventory
 - [`docs/PLUGIN_AUTHORING.md`](PLUGIN_AUTHORING.md) — short reference
   for adding step / connector plugins
 - [`docs/AUTHORING_GUIDE.md`](AUTHORING_GUIDE.md) — deep guide for
   building production-grade extensions
-- [`internal/TIER_ARCHITECTURE.md`](../internal/TIER_ARCHITECTURE.md)
-  — internal-only blueprint for how the same schemas absorb the
-  Enterprise tier without a migration

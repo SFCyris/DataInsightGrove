@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_financial_volatility_demo",
+  "name": "\ud83d\udcb9 Financial \u00b7 20-day rolling volatility",
+  "description": "Compute 20-day rolling standard deviation of returns to surface volatility regimes. The mid-series earnings cluster shows up as a sharp spike.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "2 years of daily prices + returns with a high-volatility cluster"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_rolling",
+      "step": "rolling",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "date",
+        "windows": [
+          {
+            "column": "return_pct",
+            "fn": "std",
+            "window": 20,
+            "as": "return_pct_std_20"
+          }
+        ],
+        "min_periods": 5
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "Rolling std \u00b7 20d"
+      }
+    },
+    {
+      "id": "n_chart",
+      "step": "export_to_image",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_rolling"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "kind": "line",
+        "x": "date",
+        "y": "return_pct_std_20",
+        "title": "20-day rolling volatility (std of returns)",
+        "format": "png",
+        "width": 1400,
+        "height": 480,
+        "dpi": 96
+      },
+      "ui": {
+        "x": 580,
+        "y": 80,
+        "label": "Plot volatility"
+      }
+    }
+  ],
+  "outputs": []
+}

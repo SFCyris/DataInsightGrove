@@ -31,7 +31,7 @@ interface Props {
   /** Optional: existing per-column annotation + a save callback. */
   annotation?: string;
   onSaveAnnotation?: (column: string, text: string) => Promise<void> | void;
-  /** Phase-A-pro #4 — quick-filter callbacks. Click a top-N value to
+  /** Quick-filter callbacks. Click a top-N value to
    *  filter rows EQ that value; click a histogram bar to filter rows
    *  in that numeric range. Both are optional — when absent, the
    *  drawer renders the same content but as read-only display. */
@@ -40,8 +40,7 @@ interface Props {
   /** NaN-origin sidecar for this step (same shape as LiveGrid's prop).
    *  Used to render a secondary "of which X were conversion failures"
    *  line below the Nulls stat on the producing step's output. Empty
-   *  / undefined on every other step (the sidecar is one-step-only).
-   *  See internal/proposals/NULL_AND_NAN_DISPLAY.md. */
+   *  / undefined on every other step (the sidecar is one-step-only). */
   nanOrigins?: Array<{
     column: string;
     cause: "cast_failure" | "arithmetic_nan" | "arithmetic_inf";
@@ -147,9 +146,7 @@ export function ProfileDrawer({
     const distinct = counts.size;
     stats.distinct = distinct;
     stats.topValues = topValues;
-    // Phase-A-pro #4 — "suspicious" heuristics. These are NOT
-    // proprietary detection algorithms (Trifacta has patents around
-    // those); we surface only obvious-from-stats observations a user
+    // "suspicious" heuristics — obvious-from-stats observations a user
     // could read off the numbers themselves. Each heuristic has a
     // single fixed threshold, so it's a pure boolean derivation, not
     // a learned model.
@@ -218,7 +215,7 @@ export function ProfileDrawer({
             Plot.rectY(bins, {
               x1: "x0", x2: "x1", y: "n",
               fill: "currentColor", fillOpacity: 0.65,
-              // Phase-A-pro #4: clicking a histogram bar filters the
+              // Clicking a histogram bar filters the
               // grid to rows with values inside that bar's range.
               // Pointer-style cursor signals the affordance.
               ...(onRangeFilter ? {
@@ -370,7 +367,7 @@ export function ProfileDrawer({
                 </p>
               </section>
 
-              {/* Phase-A-pro #4 — suspicious-heuristic warnings.
+              {/* Suspicious-heuristic warnings.
                   Renders at the top of the drawer so the user lands
                   on the most actionable signal first. */}
               {profile.warnings.length > 0 && (
@@ -400,7 +397,6 @@ export function ProfileDrawer({
                   // Per-column conversion-failure count from the
                   // step's NaN-origin sidecar. Surfaces ONLY on the
                   // producing step (the sidecar is one-step-only).
-                  // See internal/proposals/NULL_AND_NAN_DISPLAY.md.
                   const entries = (nanOrigins ?? []).filter(
                     (o) => o.column === columnName,
                   );
@@ -473,7 +469,7 @@ export function ProfileDrawer({
               </section>
 
               {/* Top-K table — each row is clickable to filter the
-                  grid by that value (Phase-A-pro #4). When the parent
+                  grid by that value. When the parent
                   doesn't pass `onValueFilter` (e.g. the dataset
                   inspector), values stay read-only. */}
               {profile.topValues.length > 0 && (

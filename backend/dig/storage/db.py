@@ -70,10 +70,7 @@ async def init_db() -> None:
         ("runs",             "node_metrics",    "node_metrics JSON"),
         ("runs",             "nan_origins",     "nan_origins JSON"),
         ("pipeline_history", "run_id",          "run_id VARCHAR(26)"),
-        # Pre-1.0 enterprise-anticipatory columns — always NULL in OSS / single-user.
-        # Lockdown of the OSS<->Enterprise migration story; see
-        # internal/TIER_ARCHITECTURE.md § 4.2 and
-        # internal/PLG_AND_ENTERPRISE_STRATEGY.md.
+        # Identity columns — always NULL in single-user deployments.
         ("datasets",         "owner_id",        "owner_id VARCHAR(64)"),
         ("datasets",         "org_id",          "org_id VARCHAR(64)"),
         ("datasets",         "tenant_id",       "tenant_id VARCHAR(64)"),
@@ -122,6 +119,24 @@ async def init_db() -> None:
                     continue
                 _patch_log.exception(
                     "could not patch %s.%s — please reset data/ if errors persist", table, column,
+                )
+
+        # Indexes added in newer DIG versions. `create_all` only builds them
+        # for fresh databases; existing installs get them here. Names match
+        # SQLAlchemy's `index=True` default (ix_<table>_<column>) so fresh
+        # and patched databases converge on the same schema.
+        index_patches: list[tuple[str, str]] = [
+            # (index name, "<table> (<column>)")
+            ("ix_datasets_created_at",     "datasets (created_at)"),
+            ("ix_datasets_name",           "datasets (name)"),
+            ("ix_runs_pipeline_created",   "runs (pipeline_id, created_at DESC)"),
+        ]
+        for name, target in index_patches:
+            try:
+                await conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS {name} ON {target}")
+            except Exception:
+                _patch_log.exception(
+                    "could not create index %s — please reset data/ if errors persist", name,
                 )
 
 

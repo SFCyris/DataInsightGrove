@@ -59,4 +59,13 @@ Thumbs.db
 # ─── Internal working notes — not part of the public source tree ───────────
 internal/
 Internal/
-Step-Pack-internal/
+
+# ─── FunctionPacks — public pack library (sources + bundled reference data) ───
+!FunctionPacks/
+!FunctionPacks/**
+FunctionPacks/**/INTERNAL_NOTES.md
+FunctionPacks/dist/
+FunctionPacks/**/__pycache__/
+FunctionPacks/**/*.pyc
+FunctionPacks/**/*.egg-info/
+FunctionPacks/**/.DS_Store

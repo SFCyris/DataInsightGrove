@@ -38,11 +38,11 @@ DEFAULTS: dict[str, Any] = {
     # ``port`` is HTTP. ``httpsPort`` is the parallel HTTPS listener,
     # served by ``scripts/dig_tls_proxy.py`` which terminates TLS and
     # forwards plain HTTP to ``port``. Both URLs reach the same service.
-    # Defaults keep the historical 8090 / 3000 as plain HTTP (no client
+    # Defaults keep the 8190 / 3100 (was 8090 / 3000) as plain HTTP (no client
     # surprises) and use the canonical ``+ 353`` offset (8443, 3443) for
     # HTTPS — the standard "alt-https" port range.
-    "api": {"host": "127.0.0.1", "port": 8090, "httpsPort": 8443},
-    "web": {"host": "127.0.0.1", "port": 3000, "httpsPort": 3443},
+    "api": {"host": "127.0.0.1", "port": 8190, "httpsPort": 8443},
+    "web": {"host": "127.0.0.1", "port": 3100, "httpsPort": 3443},
     "dataDir": None,
     # Default to the canonical Unix system log path. The start script
     # bootstraps the dir with sudo on first run if it doesn't exist /

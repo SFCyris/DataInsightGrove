@@ -39,6 +39,7 @@ import re
 from html import escape as _escape
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import polars as pl
 
@@ -680,19 +681,16 @@ def _fetch_tile(provider: str, z: int, x: int, y: int) -> bytes | None:
         # → blank tile until the cache file was manually deleted.
         # Write to a temp sibling + os.replace (atomic on POSIX +
         # Windows) so the cache only ever contains a complete file.
-        tmp = cache_path.with_suffix(cache_path.suffix + f".tmp-{os.getpid()}")
+        tmp = cache_path.with_suffix(cache_path.suffix + f".tmp-{uuid4().hex}")
         try:
             tmp.write_bytes(data)
             os.replace(tmp, cache_path)
-        finally:
+        except BaseException:
             # Clean up tmp if replace didn't run (e.g. write_bytes
             # raised). os.replace is atomic so the absence of the
             # tmp file after a successful call is expected.
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
+            tmp.unlink(missing_ok=True)
+            raise
         return data
     except (urllib.error.URLError, OSError, TimeoutError):
         return None

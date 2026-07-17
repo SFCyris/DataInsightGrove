@@ -1,0 +1,13 @@
+{
+  "id": "text_nlp_pack",
+  "version": "0.1.0",
+  "label": "📝 Text NLP Pack",
+  "description": "Text-processing primitives: tokenize, TF-IDF, sentiment (VADER), NER (spaCy), LDA + BERTopic topic modelling, RAKE + YAKE keyword extraction, language detection. Heavy dependency footprint — see INTERNAL_NOTES.md when install fails.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/EE-DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["tokenize", "tfidf", "sentiment_vader", "ner_spacy", "lda_topics", "bertopic_topics", "keyword_rake_yake", "language_detect"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

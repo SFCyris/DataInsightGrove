@@ -29,7 +29,7 @@ a trivia note that disappears overnight.
 The toolbar's compact strip carries each control with the same icon
 used elsewhere in DIG, so the muscle memory transfers across pages.
 
-![Run history list — labelled saves stay anchored across many autosaves](images/phase-a-pro/11-runs-list.png)
+![Run history list — labelled saves stay anchored across many autosaves](images/workspace/11-runs-list.png)
 
 ### 💾 Save
 
@@ -142,7 +142,7 @@ A single run shows everything that came out of it — outputs, metrics,
 artifacts, and (when something failed) the exact node and the
 upstream snippet of error output:
 
-![Run detail — outputs, per-node metrics, artifacts](images/phase-a-pro/12-run-detail.png)
+![Run detail — outputs, per-node metrics, artifacts](images/workspace/12-run-detail.png)
 
 ## Edge cases worth knowing
 

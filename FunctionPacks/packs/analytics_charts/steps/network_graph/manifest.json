@@ -1,0 +1,30 @@
+{
+  "id": "network_graph",
+  "version": "1.0.0",
+  "label": "🕸 Network graph",
+  "description": "Force-directed network plot from a (source, target, value) edge list. Use for fraud rings, social-network analysis, supply-chain dependencies. Different from chord_diagram (which assumes source + target draw from the same set); network_graph supports arbitrary node sets and reveals communities via spring layout.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "sourceColumn": { "type": "column_ref", "label": "Source node column", "columnFrom": "in", "required": true },
+    "targetColumn": { "type": "column_ref", "label": "Target node column", "columnFrom": "in", "required": true },
+    "valueColumn":  { "type": "column_ref", "label": "Edge weight column (optional)", "columnFrom": "in",
+                       "help": "If set, edge widths are proportional to this value." },
+    "communityDetection": {
+      "type": "boolean", "label": "Color nodes by community", "default": true,
+      "help": "Run greedy modularity community detection and color each node by its assigned community."
+    },
+    "title": { "type": "string", "label": "Title", "default": "Network graph" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1400, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 1000, "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "network", "graph", "force-directed", "community"],
+  "aliases": ["force directed", "network plot", "graph viz", "social network"],
+  "requires": [{"kind": "any"}, {"kind": "any"}]
+}

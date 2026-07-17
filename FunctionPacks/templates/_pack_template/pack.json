@@ -1,0 +1,13 @@
+{
+  "id": "your_pack_id",
+  "version": "0.1.0",
+  "label": "📦 Your Pack Label",
+  "description": "Short, one-paragraph description of what this pack does.",
+  "author": "Your Name",
+  "license": "AGPL-3.0",
+  "homepage": "",
+  "minDigVersion": "0.6.0",
+  "steps": [],
+  "connectors": [],
+  "pythonRequirements": []
+}

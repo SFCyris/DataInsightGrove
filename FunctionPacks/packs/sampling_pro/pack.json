@@ -1,0 +1,13 @@
+{
+  "id": "sampling_pro",
+  "version": "0.1.0",
+  "label": "🎲 Sampling Pro",
+  "description": "Statistical sampling beyond head/tail/random. Stratified (preserves group proportions), weighted (probability per row), reservoir (one-pass for streaming), systematic (every Nth row after a random start), cluster (sample whole groups), SMOTE oversampling for minority class, undersampling for majority class.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["sample_stratified", "sample_weighted", "sample_reservoir", "sample_systematic", "sample_cluster", "smote_oversample", "undersample"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3", "imbalanced-learn>=0.11"]
+}

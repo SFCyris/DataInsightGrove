@@ -1,0 +1,31 @@
+{
+  "id": "llm_extract",
+  "version": "1.0.0",
+  "label": "✨ LLM extract fields",
+  "description": "Pull structured fields out of free text. You list the field names you want; the LLM returns one column per field. Each row = one LLM call. Pair with sample_rows for prototyping.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "text_column": {
+      "type": "column_ref", "label": "Text column",
+      "columnFrom": "in", "required": true
+    },
+    "fields": {
+      "type": "string", "label": "Fields to extract (comma-separated)",
+      "required": true,
+      "help": "e.g. customer_name, order_id, dollar_amount"
+    },
+    "context": {
+      "type": "string", "label": "Task context",
+      "default": "Extract the listed fields from the text. Use null when a field isn't present."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["ai", "llm"],
+  "aliases": ["extract", "structured extraction", "ner-lite"],
+  "requires": [{"kind": "string"}]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "calendar_heatmap",
+  "version": "1.0.0",
+  "label": "📅 Calendar heatmap",
+  "description": "GitHub-style year-view heatmap. Each cell is one day, rows are weekdays, columns are weeks. Color intensity = the value column. Reveals day-of-week / week-of-year patterns at a glance — engagement tracking, hospital admissions, sales, IoT readings.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "dateColumn": { "type": "column_ref", "label": "Date column", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true,
+      "help": "Numeric column. Multiple rows on the same date are summed." },
+    "year": { "type": "integer", "label": "Year (optional)", "min": 1970, "max": 2200,
+      "help": "Restrict to a single year. Leave blank to render every year present in the data, stacked." },
+    "color_scale": {
+      "type": "enum", "label": "Color scale",
+      "enumValues": ["viridis", "Greens", "Blues", "Reds", "OrRd", "YlGnBu"],
+      "default": "Greens"
+    },
+    "title": { "type": "string", "label": "Title", "default": "Calendar heatmap" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1600, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 500,  "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "calendar", "time-series", "heatmap", "github"],
+  "requires": [{"kind": "temporal"}, {"kind": "numeric"}],
+  "aliases": ["github heatmap", "year heatmap", "annual view", "punchcard"]
+}

@@ -19,7 +19,7 @@
 #
 # Port / host / dir overrides (persisted to ~/.config/dig/config.json,
 # honored by every dig script + the Mac .app afterwards):
-#   ./scripts/dig-install.sh --api-port 8090
+#   ./scripts/dig-install.sh --api-port 8190
 #   ./scripts/dig-install.sh --web-port 4000
 #   ./scripts/dig-install.sh --api-host 0.0.0.0
 #   ./scripts/dig-install.sh --data-dir /var/dig

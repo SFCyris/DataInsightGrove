@@ -130,7 +130,7 @@ def _sans() -> tuple[list[str], list[str]]:
         if hn not in dns_sans:
             dns_sans.append(hn)
         # macOS frequently exposes ``<hostname>.local`` via mDNS — add it
-        # so visiting `https://<machine>.local:3000` from another Mac on
+        # so visiting `https://<machine>.local:3100` from another Mac on
         # the LAN doesn't show a host-mismatch warning.
         local_form = hn if hn.endswith(".local") else f"{hn}.local"
         if local_form not in dns_sans:

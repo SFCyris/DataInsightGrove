@@ -1,0 +1,20 @@
+{
+  "id": "impute_mice",
+  "version": "1.0.0",
+  "label": "🔁 MICE imputation (chained equations)",
+  "description": "Multiple Imputation by Chained Equations — fits a regression for each column on the others, fills nulls with predictions, repeats until convergence. The most rigorous standard imputation strategy in research / clinical analytics.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "columns": { "type": "column_refs", "label": "Numeric columns", "columnFrom": "in", "required": true },
+    "maxIter": { "type": "integer", "label": "Max iterations", "default": 10, "min": 1, "max": 50 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["imputation", "mice", "iterative", "missing", "clean"],
+  "aliases": ["multiple imputation", "iterative imputer"],
+  "requires": []
+}

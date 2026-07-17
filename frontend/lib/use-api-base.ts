@@ -10,11 +10,11 @@
  *
  * This hook returns:
  *   - On first render (and during SSR):    SSR_SAFE_API_BASE
- *     (env var or `http://127.0.0.1:8090` fallback). Server and client
+ *     (env var or `http://127.0.0.1:8190` fallback). Server and client
  *     agree → no hydration error.
  *   - After mount on the client:           the real `API_BASE` (which
  *     factors in `window.location.hostname`), so the link works for
- *     LAN visitors who loaded the page via `http://10.0.0.5:3000`.
+ *     LAN visitors who loaded the page via `http://10.0.0.5:3100`.
  *
  * Pair it with `<a suppressHydrationWarning>` if the consumer wants
  * the post-mount swap to be silent.

@@ -18,7 +18,7 @@ import {
   type StepManifest,
 } from "@/lib/api/client";
 import { subscribe } from "@/lib/api/ws";
-import { previewPipeline, type PreviewResult } from "@/lib/engine/dispatcher";
+import { previewPipeline, warmDuckDb, type PreviewResult } from "@/lib/engine/dispatcher";
 import { humanizeSqlError } from "@/lib/humanize-sql-error";
 import { SuggestFix } from "@/components/canvas/suggest-fix";
 import { StepImageOrFallback } from "@/components/canvas/step-image-preview";
@@ -60,7 +60,6 @@ import { LabelPromptDialog } from "@/components/canvas/label-prompt-dialog";
 import { PublishAsStepDialog, type PublishedAsStepConfig } from "@/components/canvas/publish-as-step-dialog";
 import { SubPipelinePinBadge } from "@/components/canvas/sub-pipeline-pin-badge";
 import { PipelineTags } from "@/components/pipeline-tags";
-import { PositiveLoader } from "@/components/positive-loader";
 import {
   PipelineDoctorDialog,
   filterDismissed,
@@ -570,6 +569,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   const pipeline = useQuery({
     queryKey: ["pipeline", pipelineId],
     queryFn: () => api.getPipeline(pipelineId),
+    // The list page's hover-prefetch seeds this cache, and the global
+    // 30s staleTime would then serve that snapshot as-is on open — a
+    // stale etag whose first autosave 409s. "always" keeps the instant
+    // prefetch paint but revalidates in the background on mount.
+    refetchOnMount: "always",
   });
   useDocumentTitle(
     pipeline.data?.document?.name
@@ -611,6 +615,29 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // Pre-warm the in-browser engine while the tab is idle so the first
+  // live preview doesn't pay the WASM instantiation cost. Scheduled via
+  // requestIdleCallback (short setTimeout fallback) so it never competes
+  // with the initial paint. Best-effort — failures surface later through
+  // the normal preview path.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let idleId: number | undefined;
+    let timerId: number | undefined;
+    const kick = () => {
+      Promise.resolve(warmDuckDb()).catch(() => { /* best-effort warm-up */ });
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(kick);
+    } else {
+      timerId = window.setTimeout(kick, 200);
+    }
+    return () => {
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
   }, []);
 
   // Round-5 W5: multi-tab claim heartbeat. Broadcasts on every editor
@@ -717,7 +744,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   // the Add-dataset dropdown.
   const [editorTourOpen, setEditorTourOpen] = useState(false);
   const [lineagePanel, setLineagePanel] = useState<{ nodeId: string; column: string } | null>(null);
-  // Phase A Layer 7 — Column DNA full-screen view.
+  // Column DNA full-screen view.
   const [columnDNA, setColumnDNA] = useState<{ nodeId: string; column: string } | null>(null);
   const [sqlViewOpen, setSqlViewOpen] = useState(false);
   const expertise = useExpertise();
@@ -1148,6 +1175,17 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   // that used to appear during column actions where a brief invalid
   // intermediate state would blank the grid → show ⚠️ → snap back.
   const previewedFocusRef = useRef<string | null>(null);
+  // In-memory preview cache. Keyed by focused node (+ join view mode) and
+  // scoped to the current document *identity*: `doc` is immutable state, so
+  // every edit yields a new reference that drops the whole cache, while a
+  // pure re-focus (clicking between nodes without editing) keeps it. A hit
+  // is served synchronously below — no debounce, no WASM/backend round-trip,
+  // no recompute — which is what makes re-focusing a backend-routed step
+  // (e.g. a Polars/geospatial node) instant after its first visit.
+  const previewCache = useRef<{
+    doc: PipelineDocument | null;
+    entries: Map<string, PreviewResult>;
+  }>({ doc: null, entries: new Map() });
   useEffect(() => {
     if (!doc || isFocusedDataset || !focusedId) {
       setPreview(null);
@@ -1159,6 +1197,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       return;
     }
     if (doc.nodes.length === 0) return;
+    // Drop the cache when the document changes; serve an unchanged re-focus
+    // instantly from memory.
+    if (previewCache.current.doc !== doc) {
+      previewCache.current = { doc, entries: new Map() };
+    }
+    const cacheKey = `${focusedId}|${joinViewMode ?? ""}`;
+    const cachedPreview = previewCache.current.entries.get(cacheKey);
+    if (cachedPreview) {
+      previewAbort.current?.abort();
+      if (errorTimer.current) {
+        clearTimeout(errorTimer.current);
+        errorTimer.current = null;
+      }
+      setPreview(cachedPreview);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      previewedFocusRef.current = focusedId;
+      return;
+    }
     previewAbort.current?.abort();
     // A new attempt cancels any pending error surface from the previous one
     // — if we're trying again, we shouldn't surface yesterday's failure.
@@ -1225,6 +1282,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             focusedNode?.step === "join" ? joinViewMode : undefined,
         });
         if (!ac.signal.aborted) {
+          // Cache under the same doc identity so re-focusing this node is
+          // instant until the document is edited.
+          if (previewCache.current.doc === doc) {
+            previewCache.current.entries.set(cacheKey, res);
+          }
           setPreview(res);
           setPreviewError(null);
           if (errorTimer.current) {
@@ -1497,7 +1559,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     return Object.keys(schemas[focusedId] ?? {});
   }, [doc, focusedId, schemas]);
 
-  // Phase-A-pro #5 — edit-time impact map. For the focused node, count
+  // Edit-time impact map. For the focused node, count
   // how many downstream nodes consume its output (via `inputs` refs).
   // We surface the same count for every column in the live grid: it's
   // a node-level upper bound on impact ("this column is read by N
@@ -1543,7 +1605,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         setColumnDNA({ nodeId: focusedId, column: a.column });
         return;
       }
-      // Phase-A-pro #4 — range filter from a histogram bar click in
+      // Range filter from a histogram bar click in
       // the profile drawer. Insert a `filter_rows` step downstream
       // with the BETWEEN predicate.
       if (a.kind === "range_filter") {
@@ -2042,7 +2104,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     return out;
   }, [focusedId, preview, focusedDatasetReal]);
 
-  // ---- Phase A Layer 1: latest run's per-node metrics ----
+  // ---- Latest run's per-node metrics ----
   // Drives the canvas run-state strip + clock chip + freshness halo.
   // Fetches the latest run on mount and after each re-run; gracefully
   // degrades to no overlay when there's no run history yet.
@@ -2078,7 +2140,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     ? run
     : latestRun;
 
-  // ---- Phase A Layer 3: column trace ----
+  // ---- Column trace ----
   // Hover any column header in the live grid → fetch lineage → dim every
   // canvas node NOT in the resulting subgraph. Cancellation is via a
   // generation counter so a slow request doesn't overwrite a newer one.
@@ -2108,7 +2170,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     setTracedNodeIds(null);
   }, []);
 
-  // ---- Phase A Layer 6: Sankey volume view toggle ----
+  // ---- Sankey volume view toggle ----
   // Parallel view to the structural xyflow canvas. The user can toggle
   // between "Structure" (today's editor) and "Volume" (Sankey, read-only)
   // via the floating button in the canvas's top-right corner.
@@ -2116,7 +2178,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     "structure",
   );
 
-  // ---- Phase A Layer 4: group selection + editing ----
+  // ---- Group selection + editing ----
   // xyflow multi-selection mirror; the floating action bar uses this.
   const [selectedStepIds, setSelectedStepIds] = useState<string[]>([]);
   // The group currently being edited (clicked title chip → opens popover).
@@ -2272,7 +2334,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     [],
   );
 
-  // ---- Phase A Layer 2: per-node + per-group freshness halos ----
+  // ---- Per-node + per-group freshness halos ----
   // Fetched server-side; the backend combines the freshness policies
   // declared in the pipeline document with the latest succeeded run's
   // finishedAt to compute a state per node + per group.
@@ -2331,10 +2393,9 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   }, [effectiveRun]);
 
   if (!doc) {
-    // Differentiate "still loading" from "API said 404" — the previous
-    // version showed PositiveLoader for both, so a wrong / stale URL
-    // hung forever on "Loading pipeline… NNs elapsed". The 404 (or any
-    // hard fetch error) needs an actionable not-found state with a
+    // Differentiate "still loading" from "API said 404" — a wrong /
+    // stale URL must not hang forever on a loading state. The 404 (or
+    // any hard fetch error) needs an actionable not-found state with a
     // path back to the list.
     if (pipeline.error) {
       const msg = (pipeline.error as Error).message || "Pipeline could not be loaded.";
@@ -2362,8 +2423,41 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       );
     }
     return (
-      <main id="main" className="flex flex-1 items-center justify-center">
-        <PositiveLoader variant="rendering" primary="Loading pipeline…" />
+      // Static chrome skeleton mirroring the editor frame (header bar,
+      // grid area, bottom strip) so the layout paints instantly and the
+      // real editor lands with zero layout shift. The pulse is a pure-CSS
+      // opacity animation (same style as the list-page skeletons), which
+      // is gentle enough under prefers-reduced-motion.
+      <main id="main" className="flex flex-col h-screen overflow-hidden" aria-busy="true">
+        <span className="sr-only">Loading pipeline…</span>
+        {/* Top bar strip */}
+        <header className="border-b border-border px-4 py-2 flex items-center gap-3 shrink-0" aria-hidden>
+          <div className="h-8 w-8 rounded-md bg-muted/40 animate-pulse" />
+          <div className="h-5 w-44 rounded-md bg-muted/40 animate-pulse" />
+          <div className="ml-auto flex items-center gap-2">
+            <div className="h-8 w-20 rounded-md bg-muted/40 animate-pulse" />
+            <div className="h-8 w-20 rounded-md bg-muted/40 animate-pulse" />
+            {/* Mirrors the segmented run-button group — the header's
+                tallest child (42px), which sets the real header height. */}
+            <div className="h-[42px] w-24 rounded-md bg-muted/40 animate-pulse" />
+          </div>
+        </header>
+        {/* Grid area block */}
+        <div className="flex-1 min-h-0 p-3" aria-hidden>
+          <div className="h-full w-full rounded-xl bg-muted/40 animate-pulse" />
+        </div>
+        {/* Bottom band — sized from the same persisted view state the
+            loaded editor reads (usePersistedState hydrates it client-side
+            after mount): strip mode is the deterministic 58px pill row,
+            graph mode is the user's resized height plus the 4px drag
+            handle. */}
+        <div
+          className="shrink-0 border-t border-border p-2"
+          style={{ height: canvasView === "graph" ? `${graphHeight + 4}px` : "58px" }}
+          aria-hidden
+        >
+          <div className="h-full w-full rounded-xl bg-muted/40 animate-pulse" />
+        </div>
       </main>
     );
   }
@@ -2780,9 +2874,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                 // recent backend run. Only surfaces in the grid when the
                 // displayed rows come from a backend run path (the row
                 // indices align with the persisted parquet). Empty / no
-                // chip when the user is in the WASM live-preview path
-                // — see internal/proposals/NULL_AND_NAN_DISPLAY.md
-                // "Where the implementation will differ" #2.
+                // chip when the user is in the WASM live-preview path.
                 // openapi-typescript widens the per-entry type to
                 // {[k:string]: unknown}[] because the backend Pydantic
                 // model uses `list[dict[str, Any]]`. The runtime shape
@@ -3178,7 +3270,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                   onAddToGroup={handleAddToGroup}
                   onClearSelection={() => setSelectedStepIds([])}
                 />
-                {/* Phase A Layer 6 — toggle to Volume / Sankey view.
+                {/* Toggle to Volume / Sankey view.
                     Top-right of the canvas; same place dbt Cloud and
                     Dagster put their view-mode controls. */}
                 <button
@@ -3829,7 +3921,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         terminal={focusedId}
       />
 
-      {/* Phase A Layer 4 — group edit popover. Position-fixed so it
+      {/* Group edit popover. Position-fixed so it
           renders correctly regardless of where the page is scrolled. */}
       {editingGroup && (
         (() => {

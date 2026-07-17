@@ -18,7 +18,7 @@ Or, if you only want the backend and want it in foreground for hot-reload during
 
 ```bash
 make backend-setup   # creates .venv and installs the dev extras
-make backend-dev     # runs uvicorn with reload at http://127.0.0.1:8090
+make backend-dev     # runs uvicorn with reload at http://127.0.0.1:8190
 ```
 
 Or fully manually:

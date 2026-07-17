@@ -1,0 +1,38 @@
+{
+  "id": "outliers_isolation_forest",
+  "version": "1.0.0",
+  "label": "🛡 Outliers (Isolation Forest)",
+  "description": "Multivariate outlier detection using sklearn's Isolation Forest. Flags rows that look anomalous given the JOINT distribution of multiple numeric columns (catches things univariate IQR misses — e.g. high salary AND short tenure, where each value alone is plausible).",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "columns": {
+      "type": "column_refs", "label": "Numeric columns",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "contamination": {
+      "type": "number", "label": "Expected outlier fraction",
+      "default": 0.05, "min": 0.001, "max": 0.5,
+      "help": "Best guess at the proportion of outliers in the data."
+    },
+    "n_estimators": {
+      "type": "integer", "label": "Number of trees",
+      "default": 100, "min": 10, "max": 1000
+    },
+    "seed": {
+      "type": "integer", "label": "Random seed", "default": 42
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "default": "is_outlier"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["dq", "outliers", "ml"],
+  "aliases": ["isolation forest", "anomaly detection", "iforest"],
+  "requires": [{"kind": "numeric", "min": 2}]
+}

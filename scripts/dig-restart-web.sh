@@ -49,9 +49,9 @@ done
 EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export 2>/dev/null || true)"
 [[ -n "$EXPORT" ]] && eval "$EXPORT"
 API_HOST="${DIG_API_HOST:-127.0.0.1}"
-API_PORT="${DIG_API_PORT:-8090}"
+API_PORT="${DIG_API_PORT:-8190}"
 WEB_HOST="${DIG_WEB_HOST:-127.0.0.1}"
-WEB_PORT="${DIG_WEB_PORT:-3000}"
+WEB_PORT="${DIG_WEB_PORT:-3100}"
 
 # Logs go where dig-start put them.
 LOG_DIR="${DIG_LOG_DIR:-${TMPDIR:-/tmp}}"

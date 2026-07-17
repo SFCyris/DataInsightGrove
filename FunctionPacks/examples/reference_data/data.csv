@@ -1,0 +1,16 @@
+user_id,country_input,currency_input,timezone_input
+1,US,USD,America/New_York
+2,GB,GBP,Europe/London
+3,DEU,EUR,Europe/Berlin
+4,392,JPY,Asia/Tokyo
+5,Brazil,BRL,America/Sao_Paulo
+6,France,978,Europe/Paris
+7,IN,INR,Asia/Kolkata
+8,ZA,ZAR,Africa/Johannesburg
+9,AUS,AUD,Australia/Sydney
+10,CAN,CAD,America/Toronto
+11,XX,XXX,America/Notarealzone
+12,Mexico,MXN,America/Mexico_City
+13,KOR,KRW,Asia/Seoul
+14,IT,EUR,Europe/Rome
+15,Singapore,SGD,Asia/Singapore

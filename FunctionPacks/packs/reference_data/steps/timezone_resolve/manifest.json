@@ -1,0 +1,22 @@
+{
+  "id": "timezone_resolve",
+  "version": "1.0.0",
+  "label": "🌐 Timezone resolve",
+  "description": "Validate IANA timezone names. Adds `timezone_valid`, `timezone_canonical` (normalized name), and `timezone_offset_minutes` (current UTC offset). Catches typos like `America/New York` (no underscore).",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "timezone_column": {
+      "type": "column_ref", "label": "Timezone column",
+      "columnFrom": "in", "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["reference", "timezone"],
+  "aliases": ["iana", "tz", "tzdata"],
+  "requires": []
+}

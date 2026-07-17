@@ -1,0 +1,38 @@
+{
+  "id": "replace_outliers",
+  "version": "1.0.0",
+  "label": "⏳ Replace outliers",
+  "description": "Replace values flagged in an `is_anomaly` (or boolean) column with a rolling-median estimate. Use this AFTER `anomaly_zscore` to clean a series before forecasting — otherwise outliers leak into the seasonal/trend decomposition and skew the forecast intervals.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column to clean",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "flag": {
+      "type": "column_ref", "label": "Outlier flag column (boolean)",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["boolean"],
+      "help": "Typically the `is_anomaly` column from the anomaly_zscore step."
+    },
+    "window": {
+      "type": "integer", "label": "Median window (rows)",
+      "default": 7, "min": 3, "max": 1000,
+      "help": "Number of nearby rows used to compute the replacement median. Smaller = more local; larger = smoother."
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name",
+      "default": "value_clean",
+      "help": "Name for the cleaned column. Original value column is preserved."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["time-series", "outlier", "clean"],
+  "aliases": ["smooth", "impute outliers"]
+}

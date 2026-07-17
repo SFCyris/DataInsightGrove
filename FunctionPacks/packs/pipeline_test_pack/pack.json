@@ -1,0 +1,13 @@
+{
+  "id": "pipeline_test_pack",
+  "version": "0.1.0",
+  "label": "🧪 Pipeline Test Pack",
+  "description": "Assertion steps for pipeline regression tests. Snapshot the data shape + content hash, gate the schema (column names + types), assert specific golden rows still match. Use these in scheduled runs to detect silent breakage as upstream data evolves.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["pipeline_snapshot_test", "schema_gate", "golden_row_assert"],
+  "connectors": [],
+  "pythonRequirements": []
+}

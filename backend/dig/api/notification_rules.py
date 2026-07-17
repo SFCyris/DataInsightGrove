@@ -6,23 +6,24 @@ Architecture:
        │
        ▼
   apply_rules_for_event(kind, context)
-       │  loads enabled rules where event_kind matches
+       │  loads enabled rules where event_kind matches (short-TTL cache)
        │  evaluates filters (pipeline_id, group_id, node_id, …)
        │  checks cooldown
        │  renders title/message templates
        ▼
-  record_notification()  →  Notifications table
+  Notifications table (insert + rule fire stats in one transaction)
 """
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 import re as _re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
@@ -216,6 +217,55 @@ def _record_cooldown(rule: NotificationRule, ctx: dict[str, Any], now: datetime)
     _COOLDOWNS[(rule.id, _cooldown_target_key(ctx))] = now
 
 
+# ---- Enabled-rules cache -------------------------------------------------
+
+
+# apply_rules_for_event() runs for EVERY emitted event, and a hot burst
+# (e.g. one check_data violation per column) used to re-query SQLite for
+# the enabled rules each time. Rules change rarely, so cache the enabled
+# set for a short TTL and invalidate explicitly whenever a mutation
+# endpoint below (create / update / toggle / delete) touches the table.
+# The TTL is a safety net against out-of-band writes; the invalidation
+# calls are what keep the cache fresh in normal operation.
+_RULES_CACHE_TTL_SECONDS = 30.0
+# ``generation`` guards against a lost invalidation: a loader snapshots it
+# before querying and only stores its result if no invalidation bumped it
+# mid-flight — otherwise a stale set could survive a full TTL window.
+_RULES_CACHE: dict[str, Any] = {"rules": None, "loaded_at": 0.0, "generation": 0}
+
+
+def _invalidate_rules_cache() -> None:
+    _RULES_CACHE["generation"] += 1
+    _RULES_CACHE["rules"] = None
+    _RULES_CACHE["loaded_at"] = 0.0
+
+
+async def _load_enabled_rules() -> list[NotificationRule] | None:
+    """Return the enabled rules, from cache when fresh. Returns None when
+    the DB read fails (callers drop the event, matching the pre-cache
+    error semantics)."""
+    cached = _RULES_CACHE["rules"]
+    if cached is not None and (time.monotonic() - _RULES_CACHE["loaded_at"]) < _RULES_CACHE_TTL_SECONDS:
+        return cached
+    generation = _RULES_CACHE["generation"]
+    try:
+        async with SessionLocal() as session:
+            res = await session.execute(
+                select(NotificationRule).where(NotificationRule.enabled.is_(True))
+            )
+            rules = list(res.scalars().all())
+    except Exception:
+        log.exception("could not load notification rules")
+        return None
+    if _RULES_CACHE["generation"] == generation:
+        # No invalidation landed while we were querying — safe to cache.
+        # (If one did, this result may predate the write; the caller still
+        # gets it for THIS event, but the next event triggers a re-load.)
+        _RULES_CACHE["rules"] = rules
+        _RULES_CACHE["loaded_at"] = time.monotonic()
+    return rules
+
+
 # ---- Main entrypoint ---------------------------------------------------
 
 
@@ -258,14 +308,9 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
     """Internal entrypoint called by emit_event(). Loads matching rules,
     evaluates them, fires notifications. Never raises (errors are
     logged + swallowed)."""
-    try:
-        async with SessionLocal() as session:
-            res = await session.execute(
-                select(NotificationRule).where(NotificationRule.enabled.is_(True))
-            )
-            rules = list(res.scalars().all())
-    except Exception:
-        log.exception("could not load notification rules; event %r dropped", event_kind)
+    rules = await _load_enabled_rules()
+    if rules is None:
+        log.error("could not load notification rules; event %r dropped", event_kind)
         return
 
     now = datetime.now(timezone.utc)
@@ -280,7 +325,7 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
             continue
 
         # Round-9 fix: record the cooldown IMMEDIATELY after passing
-        # the guard, BEFORE awaiting record_notification. The old order
+        # the guard, BEFORE the awaited persistence below. The old order
         # let a burst of identical events all pass `_cooldown_blocks`
         # before any of them stamped the cooldown, defeating the rate
         # limit. The in-process cooldown bookkeeping is sync, so we can
@@ -298,24 +343,30 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
             if message_t else None
         )
 
-        await record_notification(
-            kind=_kind_for_notification(event_kind),
-            level=level,
-            title=rendered_title,
-            message=rendered_message,
-            user_id=context.get("user_id"),
-            context={**context, "rule_id": rule.id, "rule_name": rule.name, "event_kind": event_kind},
-        )
-
-        # Stamp last_fired_at + bump fire_count atomically. Previous
-        # read-modify-write lost increments under concurrent events
-        # for the same rule (QA#1 #8). Use a single UPDATE with
-        # ``fire_count = fire_count + 1``.
+        # Persist the notification AND stamp last_fired_at + fire_count
+        # in ONE transaction — the previous two separate commits doubled
+        # the per-fire write load under event bursts. The insert goes
+        # through record_notification() (the single insert path, which
+        # applies the kind-vocabulary check + level whitelist clamp) with
+        # our session passed in so it lands in the same commit. The UPDATE
+        # keeps ``fire_count = fire_count + 1`` server-side so concurrent
+        # events for the same rule never lose increments (QA#1 #8).
+        # Same never-raise contract as before: a persistence failure is
+        # logged and swallowed so it can't break the triggering caller.
+        n_kind = _kind_for_notification(event_kind)
         try:
-            from sqlalchemy import update as _sa_update
             async with SessionLocal() as session:
+                nid = await record_notification(
+                    kind=n_kind,
+                    level=level,
+                    title=rendered_title,
+                    message=rendered_message,
+                    user_id=context.get("user_id"),
+                    context={**context, "rule_id": rule.id, "rule_name": rule.name, "event_kind": event_kind},
+                    session=session,
+                )
                 await session.execute(
-                    _sa_update(NotificationRule)
+                    update(NotificationRule)
                     .where(NotificationRule.id == rule.id)
                     .values(
                         last_fired_at=now,
@@ -323,8 +374,9 @@ async def apply_rules_for_event(event_kind: str, context: dict[str, Any]) -> Non
                     )
                 )
                 await session.commit()
+            log.debug("recorded notification %s [%s/%s] %r", nid, n_kind, level, rendered_title)
         except Exception:
-            log.exception("failed to bump fire_count for rule %s", rule.id)
+            log.exception("failed to fire rule %s for event %s", rule.id, event_kind)
 
 
 # ---- Default rules (seeded on startup) ---------------------------------
@@ -436,6 +488,7 @@ async def seed_default_rules() -> None:
                     is_builtin=True,
                 ))
             await session.commit()
+        _invalidate_rules_cache()
     except Exception:
         log.exception("could not seed default notification rules")
 
@@ -548,6 +601,7 @@ async def create_rule(
     session.add(row)
     await session.commit()
     await session.refresh(row)
+    _invalidate_rules_cache()
     return _to_out(row)
 
 
@@ -567,6 +621,7 @@ async def update_rule(
     row.cooldown_seconds = body.cooldown_seconds
     await session.commit()
     await session.refresh(row)
+    _invalidate_rules_cache()
     return _to_out(row)
 
 
@@ -580,6 +635,7 @@ async def toggle_rule(
     row.enabled = not row.enabled
     await session.commit()
     await session.refresh(row)
+    _invalidate_rules_cache()
     return _to_out(row)
 
 
@@ -601,3 +657,4 @@ async def delete_rule(
         )
     await session.delete(row)
     await session.commit()
+    _invalidate_rules_cache()

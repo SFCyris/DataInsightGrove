@@ -1,0 +1,13 @@
+{
+  "id": "audit_pack",
+  "version": "0.1.0",
+  "label": "📜 Audit Pack",
+  "description": "Compliance + reproducibility primitives. Emit a column-lineage report (per-column source trace), a provenance certificate (run-time identity hash + content fingerprint), and a tamper-evident log entry that downstream consumers can verify.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["column_lineage_report", "provenance_certificate", "tamper_evident_log"],
+  "connectors": [],
+  "pythonRequirements": []
+}

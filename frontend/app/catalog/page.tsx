@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase A Layer 5 — Cross-pipeline catalog.
+ * Cross-pipeline catalog.
  *
  * Workspace-wide meta-graph: each pipeline is a node, edges are inferred
  * from output-sink → dataset-input matches. Same xyflow component used
@@ -159,7 +159,7 @@ function autoLayout(
 export default function CatalogPage() {
   useDocumentTitle('Catalog');
   const [selected, setSelected] = useState<CatalogNodeOut | null>(null);
-  // Phase-A-pro #3 — tag filter. Selected tags are intersected: a
+  // Tag filter. Selected tags are intersected: a
   // pipeline must carry every selected tag to remain visible.
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 

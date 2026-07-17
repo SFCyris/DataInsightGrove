@@ -32,7 +32,7 @@ const DEFAULT_EDGE_OPTIONS = {
   markerEnd: { type: MarkerType.ArrowClosed, color: "var(--color-emerald-500)", width: 16, height: 16 },
 } as const;
 
-// Per-node metrics from the latest run — drives Layer 1 strip + chip.
+// Per-node metrics from the latest run — drives the run-state strip + chip.
 export interface NodeRunMetrics {
   status: RunState;
   rows_out?: number | null;
@@ -40,7 +40,7 @@ export interface NodeRunMetrics {
   finished_at_ms?: number | null;
 }
 
-// Per-node freshness state — drives Layer 2 halo. Computed server-side
+// Per-node freshness state — drives the freshness halo. Computed server-side
 // from the freshness policy + last-run timestamp.
 export type NodeFreshness = Freshness;
 
@@ -49,18 +49,18 @@ interface Props {
   manifests: Record<string, StepManifest>;
   selectedId: string | null;
   rowCounts: Record<string, number | null>;
-  // Phase A Layer 1 — per-node run metrics from the latest pipeline run.
+  // Per-node run metrics from the latest pipeline run.
   // When absent or empty, no run-state strip / clock chip renders.
   nodeMetrics?: Record<string, NodeRunMetrics>;
-  // Phase A Layer 2 — per-node freshness state. When absent, no halo.
+  // Per-node freshness state. When absent, no halo.
   nodeFreshness?: Record<string, NodeFreshness>;
-  // Phase A Layer 2 — per-group freshness state (when a group declares
+  // Per-group freshness state (when a group declares
   // its own SLA). Overrides the worst-case-from-children halo color.
   groupFreshness?: Record<string, NodeFreshness>;
-  // Phase A Layer 3 — column trace. When set, every node NOT in the set
+  // Column trace. When set, every node NOT in the set
   // dims to ~25% opacity. Null = no tracing active (full opacity).
   tracedNodeIds?: Set<string> | null;
-  // Phase A Layer 4 — multi-selection awareness. The page mirrors xyflow's
+  // Multi-selection awareness. The page mirrors xyflow's
   // selection state so the floating action bar knows what to group.
   onSelectionChange?: (selectedStepNodeIds: string[]) => void;
   // Click on a group's title chip → edit popover. The page handles state
@@ -140,7 +140,7 @@ export function GraphCanvas({
         // Find node or dataset and patch its ui.
         const inNodes = doc.nodes.find((n) => n.id === id);
         if (inNodes) {
-          // Phase A Layer 4 — drag-end group membership, nesting-aware.
+          // Drag-end group membership, nesting-aware.
           // Each node lives as a DIRECT member of at most one group
           // (the deepest one whose bbox encloses it). Transitive
           // membership through ancestors is implicit — we don't list
@@ -531,7 +531,7 @@ function buildGraph(
   rfEdges: Edge[];
   groupBboxes: Record<string, { x: number; y: number; w: number; h: number }>;
 } {
-  // Phase A Layer 3 — node-dim helper. When tracing is active, any node
+  // Node-dim helper. When tracing is active, any node
   // not in the traced set fades dramatically + greyscales. The previous
   // 22% opacity was too subtle — easy to miss the highlight unless you
   // were looking for it. Now off-path nodes drop to 12% AND lose their
@@ -550,7 +550,7 @@ function buildGraph(
   const nodes: RFNode[] = [];
   const edges: Edge[] = [];
 
-  // Phase A Layer 4 — node groups (with nesting support). Each group can
+  // Node groups (with nesting support). Each group can
   // declare a parent_group_id; outer group's bbox auto-expands to
   // include child group bboxes so the user can group sub-clusters
   // inside a larger logical region.
@@ -610,7 +610,7 @@ function buildGraph(
     stepPositions[n.id] = { x: pos.x, y: pos.y, w: 220, h: 80 };
   }
 
-  // Phase A Layer 4 — emit group nodes BEFORE their members so the
+  // Emit group nodes BEFORE their members so the
   // Bbox computation is RECURSIVE. Order of operations:
   //   1. Topo-sort groups by depth (leaves first — groups with no
   //      child groups, then groups whose only sub-groups are already

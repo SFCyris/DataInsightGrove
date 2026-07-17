@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase-A-pro #3 — pipeline tag editor.
+ * Pipeline tag editor.
  *
  * Compact chip-strip in the pipeline editor toolbar. Shows current
  * tags + lets the user add / remove. Persists via the
@@ -13,11 +13,7 @@
  * / redo / Add dataset / Run" buttons), which broke the header's
  * vertical alignment and pushed everything below the fold. Now we
  * cap visible chips at ``MAX_VISIBLE`` and roll the rest into a
- * "+N" pill that expands on click — same pattern as Linear / Notion
- * / GitHub Issues.
- *
- * Patent posture: tag chips with autocomplete are foundational UX —
- * no risk.
+ * "+N" pill that expands on click.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";

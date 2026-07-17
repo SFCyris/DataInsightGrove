@@ -4,24 +4,24 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 1.0.0-rc3](https://img.shields.io/badge/version-1.0.0--rc3-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 [![Download](https://img.shields.io/github/v/release/SFCyris/DataInsightGrove?include_prereleases&sort=semver&label=download&color=2ea44f)](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
 > **⬇ [Download the latest release](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip)** — unzip, then run `./install.sh`. No git clone required. &nbsp;·&nbsp; [Release notes](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
-> 🧪 **Release candidate (v1.0.0-rc3).** The architecture, schemas, protocols, and IP posture are locked. This release-candidate cycle is for final polish, soak-testing, and community feedback before the 1.0.0 tag — the API contract that goes live then is described in [`docs/API_STABILITY.md`](docs/API_STABILITY.md). **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🎉 **1.0.0.** The architecture, schemas, and protocols are stable. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
-Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), original implementation, yours.
+Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), yours.
 
-![DIG home — DataInsightGrove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0-rc3 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
+![DIG home — DataInsightGrove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
 
 
 <table>
   <tr>
-    <td width="50%" align="center"><img src="docs/images/phase-a-pro/02-sankey-zoom-pan.png" width="100%" alt="Sankey view of a pipeline — column-by-column flow with per-band tooltip" /></td>
+    <td width="50%" align="center"><img src="docs/images/workspace/02-sankey-zoom-pan.png" width="100%" alt="Sankey view of a pipeline — column-by-column flow with per-band tooltip" /></td>
     <td width="50%" align="center"><img src="docs/images/joins/tc1-01-overview.png" width="100%" alt="Join step — inputs, cardinality strip, join type, keys, and per-column result grid" /></td>
   </tr>
   <tr>
@@ -29,8 +29,8 @@ Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Pr
     <td><b>🔗 Join workbench</b> — sample row counts, join type, key pairs with match-quality bars, and a per-column result grid in one panel.</td>
   </tr>
   <tr>
-    <td width="50%" align="center"><img src="docs/images/phase-a-pro/03-dna-zoom-pan.png" width="100%" alt="Column DNA — bipartite layout, per-column lineage walk" /></td>
-    <td width="50%" align="center"><img src="docs/images/phase-a-pro/07-check-step.png" width="100%" alt="Data-quality check step — rule list and per-rule outcome" /></td>
+    <td width="50%" align="center"><img src="docs/images/workspace/03-dna-zoom-pan.png" width="100%" alt="Column DNA — bipartite layout, per-column lineage walk" /></td>
+    <td width="50%" align="center"><img src="docs/images/workspace/07-check-step.png" width="100%" alt="Data-quality check step — rule list and per-rule outcome" /></td>
   </tr>
   <tr>
     <td><b>🧬 Column DNA</b> — bipartite walk showing exactly which upstream values shaped a single output column.</td>
@@ -80,21 +80,23 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
 
 ## Quickstart
 
-Get DIG either way — [**download the latest release**](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip) and unzip it, or `git clone` the repo. Then from the project root:
+[**Download the latest release**](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip) and unzip it (or `git clone` the repo). Then, from the project root, it's three commands:
 
 ```bash
-./install.sh
+./install.sh     # 1. one-time setup
+./start.sh       # 2. start the server (backend + web)
+./stop.sh        # 3. stop it when you're done
 ```
 
-That's it. The guided installer detects what's already on your machine (Homebrew, Python, pnpm, optional JDBC tooling, project deps), prints what it's about to do, asks once before changing anything, then finishes with DIG running. Re-run any time to verify or repair the environment — already-installed tools are reported as ✓ and skipped.
+With the server running, open **[http://localhost:3100](http://localhost:3100)** and click **🌱 Try with sample data**.
+
+> `./install.sh` finishes with DIG already running, so on a fresh install you can open the page straight away — `./start.sh` and `./stop.sh` are how you bring it back up and shut it down afterwards. The installer is guided and idempotent: it detects what's already on your machine, asks once before changing anything, and can be re-run any time to verify or repair.
 
 **Supported platforms.** macOS (Apple Silicon + Intel via Homebrew). Linux:
 Debian 12+, Ubuntu 22.04+ (the bootstrap auto-enables the deadsnakes PPA on
 22.04 since the default `python3` is 3.10), Fedora 39+, RHEL / Rocky / Alma
 9+, RHEL/CentOS 7 (yum), Arch / Manjaro (pacman), openSUSE (zypper).
 Windows users should run the installer inside WSL2 with Ubuntu 24.04+.
-
-Open [http://localhost:3000](http://localhost:3000) and click **🌱 Try with sample data**.
 
 <details>
 <summary><strong>Other entry points</strong> (power users / CI / day-to-day)</summary>
@@ -174,7 +176,6 @@ docs/                    Architecture, getting started, lifecycle, plugin author
 - ⬆️ [Upgrading](docs/UPGRADING.md) — `./upgrade.sh` flow + auto-migration on boot
 - 🧩 [Extensibility](docs/EXTENSIBILITY.md) — `metadata` + `extensions` slots for vendor / fork / enterprise fields
 - 🔒 [Security policy](SECURITY.md) — threat model + disclosure process + supported versions
-- 📋 [API stability](docs/API_STABILITY.md) — pre-1.0 contract + post-1.0 SemVer + deprecation policy
 - ⚙️ [Configuration reference](docs/CONFIG.md) — every `DIG_*` env var, what it does, what's safe to leave default
 - 🛠 [Administration](docs/ADMINISTRATION.md) — config-file schema, product tree, on-disk folder layout, log rotation, backup boundaries (start here if you're operating an install)
 - ⚠️ [Error codes](docs/ERROR_CODES.md) — the `DIG_E_NNNN` taxonomy that surfaces in logs + API errors (auto-generated)
@@ -196,13 +197,13 @@ DataInsightGrove™ source code is licensed under the **GNU Affero General Publi
 
 If you run a modified version over a network (e.g., as a hosted service), AGPL §13 obligates you to make the **complete corresponding source** of your modified version available to its users.
 
-For a per-dependency license breakdown, see [`THIRD_PARTY.md`](THIRD_PARTY.md). AGPL was picked because it leaves the source open for forks and Linux distros while still requiring network operators of modified versions to release their changes — see the LICENSE file for the full text.
+For a per-dependency license breakdown, see [`THIRD_PARTY.md`](THIRD_PARTY.md). See the LICENSE file for the full text.
 
-DIG additionally publishes a **[Patent Non-Aggression Pledge](docs/PATENT_PLEDGE.md)** that supplements the AGPL with an explicit patent grant and a defensive-only commitment from the maintainer. It is modeled on the Apache 2.0 patent clause + Tesla / Twitter IPA / OIN frameworks. For the public mapping of every DIG feature to publicly-available prior art, see [`docs/PRIOR_ART_MAP.md`](docs/PRIOR_ART_MAP.md).
+DIG additionally publishes a **[Patent Non-Aggression Pledge](docs/PATENT_PLEDGE.md)** that supplements the AGPL with an explicit patent grant and a defensive-only commitment from the maintainer.
 
 ## Contributing
 
-**Issues, feature requests, and discussions are very welcome** — this is the most useful way to shape DIG right now. **External code contributions (pull requests) aren't being accepted yet** during the 1.0-rc cycle while CLA / DCO + contribution-review process is finalised. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full picture (bug-report template, security disclosure, fork guidance) — that policy will be revisited at the 1.0.0 GA tag.
+**Issues, feature requests, and discussions are very welcome** — this is the most useful way to shape DIG right now. **External code contributions (pull requests) aren't being accepted yet** during the 1.0-rc cycle while CLA / DCO + contribution-review process is finalised. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full picture (bug-report template, security disclosure, fork guidance).
 
 ## Trademarks
 

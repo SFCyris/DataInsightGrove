@@ -1,0 +1,32 @@
+{
+  "id": "physical_constant",
+  "version": "1.0.0",
+  "label": "🔧 Physical constant",
+  "description": "Add a constant column with the value of a named physical constant (e.g. speed_of_light, planck_constant, avogadro_number). Pint's constant registry covers the standard set; the constant is added in its base SI unit.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "constant": {
+      "type": "enum", "label": "Constant",
+      "enumValues": [
+        "speed_of_light", "planck_constant", "boltzmann_constant",
+        "avogadro_number", "elementary_charge", "gravitational_constant",
+        "electron_mass", "proton_mass", "neutron_mass",
+        "vacuum_permittivity", "vacuum_permeability", "stefan_boltzmann_constant",
+        "gas_constant", "atomic_mass_constant", "fine_structure_constant"
+      ],
+      "default": "speed_of_light", "required": true
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["units", "physics"],
+  "aliases": ["constant", "physics constant", "speed of light", "planck"],
+  "requires": []
+}

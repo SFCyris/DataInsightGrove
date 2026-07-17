@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { aiApi, ApiError } from "@/lib/api/client";
+import { aiApi, ApiError, API_BASE, API_TOKEN } from "@/lib/api/client";
 import { PositiveLoader } from "@/components/positive-loader";
 
 /**
@@ -26,27 +26,125 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
   // createPortal during SSR (document doesn't exist there).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const reduce = useReducedMotion();
+  // Monotonic request id — a re-click mid-stream abandons the previous
+  // stream's state updates instead of interleaving two generations.
+  const reqRef = useRef(0);
+  // Controller for the in-flight SSE fetch — aborting it drops the
+  // connection, which the backend detects and cancels generation.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    // Abort any in-flight stream on unmount — invalidate the request id
+    // first so the aborted fetch doesn't kick off the fallback path.
+    return () => {
+      reqRef.current++;
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const close = () => {
+    // Invalidate the active request first so the abort's rejection
+    // doesn't trigger the non-streaming fallback, then drop the stream.
+    reqRef.current++;
+    abortRef.current?.abort();
+    setOpen(false);
+  };
+
+  /**
+   * Consume the SSE stream from /ai/explain-pipeline/{id}/stream,
+   * appending deltas into `text` as they arrive so the narrative renders
+   * progressively. Throws if the stream fails before the first delta —
+   * the caller then falls back to the one-shot endpoint.
+   */
+  const streamExplanation = async (req: number, signal: AbortSignal) => {
+    const headers: Record<string, string> = { Accept: "text/event-stream" };
+    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const res = await fetch(
+      `${API_BASE}/ai/explain-pipeline/${pipelineId}/stream`,
+      { method: "POST", headers, signal },
+    );
+    if (!res.ok || !res.body) throw new Error(`stream unavailable (${res.status})`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let received = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (req !== reqRef.current) {
+        // A newer request took over — stop pulling and drop the stream.
+        reader.cancel().catch(() => {});
+        return;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      // SSE events are blank-line separated; each event here is a
+      // single `data: ...` line.
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+      for (const event of events) {
+        const line = event.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const data = line.slice("data:".length).trim();
+        if (data === "[DONE]") continue;
+        let payload: { model?: string; delta?: string; error?: string };
+        try {
+          payload = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        if (payload.model) setModel(payload.model);
+        if (payload.error) {
+          // Provider failed mid-generation. Nothing received yet →
+          // throw so the caller retries non-streaming; otherwise keep
+          // the partial text and surface the error alongside it.
+          if (!received) throw new Error(payload.error);
+          setError(payload.error);
+          return;
+        }
+        if (payload.delta) {
+          received += payload.delta;
+          setLoading(false); // first token — swap the loader for live text
+          setText(received);
+        }
+      }
+    }
+    if (!received) throw new Error("stream produced no text");
+  };
 
   const onClick = async () => {
+    const req = ++reqRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setOpen(true);
     setLoading(true);
     setText(null);
     setError(null);
     setModel(null);
     try {
-      const out = await aiApi.explainPipeline(pipelineId);
-      setText(out.markdown);
-      setModel(out.model);
-    } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? typeof e.detail === "object" && e.detail && "detail" in e.detail
-            ? String((e.detail as { detail: unknown }).detail)
-            : e.message
-          : (e as Error).message;
-      setError(msg);
+      await streamExplanation(req, controller.signal);
+    } catch {
+      // Streaming failed before any text arrived (backend without the
+      // stream route, buffering proxy, provider error) — fall back to
+      // the one-shot endpoint.
+      if (req !== reqRef.current) return;
+      try {
+        const out = await aiApi.explainPipeline(pipelineId);
+        if (req !== reqRef.current) return;
+        setText(out.markdown);
+        setModel(out.model);
+      } catch (e) {
+        if (req !== reqRef.current) return;
+        const msg =
+          e instanceof ApiError
+            ? typeof e.detail === "object" && e.detail && "detail" in e.detail
+              ? String((e.detail as { detail: unknown }).detail)
+              : e.message
+            : (e as Error).message;
+        setError(msg);
+      }
     } finally {
-      setLoading(false);
+      if (req === reqRef.current) setLoading(false);
     }
   };
 
@@ -85,14 +183,14 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setOpen(false)}
+              onClick={close}
               className="fixed inset-0 z-40 bg-black/30"
             />
             <motion.aside
               key="explain-drawer"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
+              initial={reduce ? { opacity: 0 } : { x: "100%" }}
+              animate={reduce ? { opacity: 1 } : { x: 0 }}
+              exit={reduce ? { opacity: 0 } : { x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 36 }}
               className="fixed top-0 right-0 bottom-0 z-50 w-[460px] bg-card border-l border-border shadow-2xl flex flex-col"
             >
@@ -111,7 +209,7 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
                 )}
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={close}
                   aria-label="Close"
                   className="text-muted-foreground hover:text-foreground"
                 >

@@ -28,7 +28,7 @@ GROUP_LABELS = {
     "2": "Storage / persistence",
     "3": "Connectors / IO",
     "4": "Packs / plugin loader",
-    "5": "Auth / multi-user (mostly Enterprise tier)",
+    "5": "Auth / multi-user",
     "6": "Runtime / lifecycle",
     "9": "Internal / unexpected",
 }
@@ -155,7 +155,6 @@ def main() -> None:
         "- [`backend/dig/observability/error_codes.py`](../backend/dig/observability/error_codes.py) "
         "— the `ErrorCode` enum (source of truth)",
         "- [`SECURITY.md`](../SECURITY.md) — what failure modes have stable codes vs free-text",
-        "- [`docs/API_STABILITY.md`](API_STABILITY.md) — code-stability commitment across MAJOR / MINOR / PATCH",
         "",
     ])
 

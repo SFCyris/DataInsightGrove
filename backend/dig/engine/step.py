@@ -3,7 +3,7 @@
 Each step is a folder under `backend/steps/<id>/` containing:
   - manifest.json — validated against shared/schemas/step-manifest.schema.json
   - step.py      — defines a Step subclass and exports `step = MyStep(manifest)`
-  - sql.py       — (optional, Phase 3) JS-runnable SQL fragments for browser parity
+  - sql.py       — (optional) JS-runnable SQL fragments for browser parity
   - tests.py     — pytest cases with golden parquet fixtures
 
 The to_sql contract: given input port name -> CTE alias, return the *body* of a
@@ -80,7 +80,7 @@ class NanOrigin:
     Surfaces in the grid as the orange-⚠ NULL variant on the step that
     produced the failure. The next step sees plain NULL — the executor
     coerces NaN→None on the producing step's output after capturing this
-    record. See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    record.
 
     Attributes:
         column: column name in the step's output frame.
@@ -248,8 +248,6 @@ class Step(ABC):
         Returns None to skip — most steps don't change types and don't
         need this. Polars-engine steps don't need it either (the
         executor's post-step scanner catches NaN/±Inf directly).
-
-        See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
         """
         return None
 
@@ -298,8 +296,8 @@ def quote_str(value: str) -> str:
 # DuckDB-specific pragmas + filesystem/HTTP IO functions, comment markers.
 #
 # Without this, a single POST to /pipelines/.../runs is RCE-equivalent because
-# DuckDB exposes ATTACH, COPY, read_csv_auto('s3://…'), …. Documented as P0 in
-# docs/REVIEW_FINDINGS.md.
+# DuckDB exposes ATTACH, COPY, read_csv_auto('s3://…'), … — any of which turns
+# a column-expression field into arbitrary filesystem/network access.
 
 import re as _re
 

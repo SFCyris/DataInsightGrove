@@ -1,0 +1,23 @@
+{
+  "id": "repeat_purchase_rate",
+  "version": "1.0.0",
+  "label": "🔁 Repeat purchase rate",
+  "description": "Compute the share of customers that purchased more than N times within the analysis window. The classic engagement KPI: \"what fraction of our customers come back?\".",
+  "category": "aggregate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "customerColumn": { "type": "column_ref", "label": "Customer ID column", "columnFrom": "in", "required": true },
+    "dateColumn":     { "type": "column_ref", "label": "Transaction date column", "columnFrom": "in", "required": true },
+    "minPurchases":   { "type": "integer", "label": "Min purchases to count as 'repeat'", "default": 2, "min": 2, "max": 100 },
+    "groupColumn":    { "type": "column_ref", "label": "Optional group column", "columnFrom": "in",
+                         "help": "Compute the rate per group (e.g. by acquisition channel)." }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["rfm", "marketing", "engagement", "repeat"],
+  "aliases": ["repeat rate", "returning customer rate"],
+  "requires": [{"kind": "any"}, {"kind": "temporal"}]
+}

@@ -8,6 +8,6 @@ Exec=__DIG_LAUNCHER__ %u
 Icon=__DIG_ICON__
 Terminal=false
 Categories=Science;DataVisualization;Database;
-Keywords=data;preparation;wrangling;ETL;CSV;parquet;analysis;
+Keywords=data;preparation;ETL;CSV;parquet;analysis;
 StartupNotify=true
 StartupWMClass=DataInsightGrove

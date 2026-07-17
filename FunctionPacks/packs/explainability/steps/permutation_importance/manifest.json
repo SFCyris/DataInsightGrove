@@ -1,0 +1,38 @@
+{
+  "id": "permutation_importance",
+  "version": "1.0.0",
+  "label": "🔍 Permutation importance",
+  "description": "Rank features by how much shuffling each one degrades a quick gradient-boosted model. Internally trains the model on the supplied features + target. Output: one row per feature with mean importance, std, and rank.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "target": {
+      "type": "column_ref", "label": "Target column",
+      "columnFrom": "in", "required": true
+    },
+    "features": {
+      "type": "column_refs", "label": "Feature columns",
+      "columnFrom": "in", "required": true
+    },
+    "task": {
+      "type": "enum", "label": "Task",
+      "enumValues": ["auto", "regression", "classification"],
+      "default": "auto"
+    },
+    "n_repeats": {
+      "type": "integer", "label": "Repeats per feature",
+      "default": 10, "min": 3, "max": 100
+    },
+    "seed": {
+      "type": "integer", "label": "Random seed", "default": 42
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["explainability", "ml"],
+  "aliases": ["feature importance", "permutation", "feature ranking"],
+  "requires": [{"kind": "numeric", "min": 1}]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "rfm_pack",
+  "version": "0.1.0",
+  "label": "🎯 RFM Pack",
+  "description": "Recency / Frequency / Monetary scoring + lite churn signals + repeat-purchase rate. The customer-segmentation primitives that turn raw transaction logs into actionable cohorts.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["rfm_score", "churn_lite", "repeat_purchase_rate"],
+  "connectors": [],
+  "pythonRequirements": []
+}

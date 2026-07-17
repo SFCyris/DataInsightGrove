@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "id": "stats_pro_demo",
+  "name": "\ud83d\udcd0 stats_pro \u00b7 A/B/C button-color test",
+  "description": "Three checkout-button colors tested for conversion + revenue impact. ANOVA tells us if any color produces a different mean revenue overall; Mann-Whitney compares red vs. blue without assuming normality; effect_size answers 'how big is the difference between green and blue?'.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "A/B/C test results"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_anova",
+      "step": "anova",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "revenue",
+        "group": "checkout_button_color"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "ANOVA \u00b7 revenue ~ color"
+      }
+    },
+    {
+      "id": "n_redblue",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "expression": "checkout_button_color = 'red' OR checkout_button_color = 'blue'"
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "Filter \u00b7 red + blue"
+      }
+    },
+    {
+      "id": "n_mw",
+      "step": "mann_whitney",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_redblue"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "revenue",
+        "group": "checkout_button_color",
+        "alternative": "two-sided"
+      },
+      "ui": {
+        "x": 540,
+        "y": 240,
+        "label": "Mann-Whitney \u00b7 red vs blue"
+      }
+    },
+    {
+      "id": "n_greenblue",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "expression": "checkout_button_color = 'green' OR checkout_button_color = 'blue'"
+      },
+      "ui": {
+        "x": 280,
+        "y": 400,
+        "label": "Filter \u00b7 green + blue"
+      }
+    },
+    {
+      "id": "n_eff",
+      "step": "effect_size",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_greenblue"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "revenue",
+        "group": "checkout_button_color"
+      },
+      "ui": {
+        "x": 540,
+        "y": 400,
+        "label": "Effect size \u00b7 green vs blue"
+      }
+    },
+    {
+      "id": "n_boot",
+      "step": "bootstrap_ci",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "revenue",
+        "statistic": "mean",
+        "confidence": 0.95,
+        "n_iter": 5000,
+        "seed": 42
+      },
+      "ui": {
+        "x": 280,
+        "y": 560,
+        "label": "Bootstrap CI \u00b7 overall mean revenue"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_anova",
+      "name": "anova",
+      "from": {
+        "ref": "n_anova"
+      }
+    },
+    {
+      "id": "o_mw",
+      "name": "mw_test",
+      "from": {
+        "ref": "n_mw"
+      }
+    },
+    {
+      "id": "o_eff",
+      "name": "effect",
+      "from": {
+        "ref": "n_eff"
+      }
+    },
+    {
+      "id": "o_boot",
+      "name": "ci",
+      "from": {
+        "ref": "n_boot"
+      }
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "name": "📊 Demo · Classifier evaluation (analytics_charts)",
+  "tags": ["demo", "analytics_charts", "classification"],
+  "datasets": [
+    {
+      "id": "ds_train",
+      "connector": "csv",
+      "uri": "samples/healthcare-encounters-demo.csv",
+      "label": "demo · healthcare encounters (replace with your training data)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_source",
+      "step": "passthrough",
+      "inputs": {"in": {"port": "out", "ref": "ds_train"}},
+      "params": {},
+      "ui": {"x": 80, "y": 200, "label": "📥 Training rows"}
+    },
+    {
+      "id": "n_target",
+      "step": "derive_column",
+      "inputs": {"in": {"port": "out", "ref": "n_source"}},
+      "params": {
+        "resultName": "is_emergency",
+        "expression": "CASE WHEN encounter_type = 'emergency' THEN 1 ELSE 0 END"
+      },
+      "ui": {"x": 320, "y": 200, "label": "🎯 Make binary target"}
+    },
+    {
+      "id": "n_features",
+      "step": "derive_column",
+      "inputs": {"in": {"port": "out", "ref": "n_target"}},
+      "params": {
+        "resultName": "duration_hours",
+        "expression": "duration_minutes / 60.0"
+      },
+      "ui": {"x": 560, "y": 200, "label": "🛠 Feature: hours"}
+    },
+    {
+      "id": "n_model",
+      "step": "logistic_regression",
+      "inputs": {"in": {"port": "out", "ref": "n_features"}},
+      "params": {
+        "targetColumn": "is_emergency",
+        "featureColumns": ["duration_hours", "cost"],
+        "regularization": "l2",
+        "c": 1.0,
+        "predictedClassColumn": "predicted_class",
+        "predictedProbaColumn": "predicted_proba"
+      },
+      "ui": {"x": 800, "y": 200, "label": "📊 Logistic regression"}
+    },
+    {
+      "id": "n_roc",
+      "step": "roc_curve",
+      "inputs": {"in": {"port": "out", "ref": "n_model"}},
+      "params": {
+        "actualColumn": "is_emergency",
+        "probaColumn": "predicted_proba",
+        "title": "ROC — predicting emergency encounters"
+      },
+      "ui": {"x": 1080, "y": 60, "label": "📈 ROC + AUC"}
+    },
+    {
+      "id": "n_pr",
+      "step": "pr_curve",
+      "inputs": {"in": {"port": "out", "ref": "n_model"}},
+      "params": {
+        "actualColumn": "is_emergency",
+        "probaColumn": "predicted_proba",
+        "title": "Precision-Recall — emergency encounters"
+      },
+      "ui": {"x": 1080, "y": 220, "label": "📉 PR curve"}
+    },
+    {
+      "id": "n_confusion",
+      "step": "confusion_matrix",
+      "inputs": {"in": {"port": "out", "ref": "n_model"}},
+      "params": {
+        "actualColumn": "is_emergency",
+        "predictedColumn": "predicted_class",
+        "normalize": "row_percent",
+        "title": "Confusion matrix (recall view)"
+      },
+      "ui": {"x": 1080, "y": 380, "label": "🟦 Confusion matrix"}
+    }
+  ],
+  "outputs": [
+    {"id": "o_roc", "name": "roc_curve", "from": {"port": "out", "ref": "n_roc"}},
+    {"id": "o_pr", "name": "pr_curve", "from": {"port": "out", "ref": "n_pr"}},
+    {"id": "o_confusion", "name": "confusion_matrix", "from": {"port": "out", "ref": "n_confusion"}}
+  ]
+}

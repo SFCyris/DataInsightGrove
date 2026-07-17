@@ -36,8 +36,8 @@ done
 # Resolve effective config to know which ports to scan as a fallback.
 EXPORT="$("$PY" "$SCRIPT_DIR/dig_config.py" export 2>/dev/null || true)"
 [[ -n "$EXPORT" ]] && eval "$EXPORT"
-API_PORT="${DIG_API_PORT:-8090}"
-WEB_PORT="${DIG_WEB_PORT:-3000}"
+API_PORT="${DIG_API_PORT:-8190}"
+WEB_PORT="${DIG_WEB_PORT:-3100}"
 
 # Read recorded PIDs from the PID file (if present).
 RECORDED_PIDS=""
@@ -95,8 +95,8 @@ fi
 # Fallback: kill anything still listening on the configured ports.
 #
 # IMPORTANT: -sTCP:LISTEN restricts to LISTEN-state sockets only. Without it,
-# `lsof -ti tcp:3000` also returns ESTABLISHED connections — which means any
-# browser tab open to http://localhost:3000 (or any other client connected to
+# `lsof -ti tcp:3100` also returns ESTABLISHED connections — which means any
+# browser tab open to http://localhost:3100 (or any other client connected to
 # the API) gets its owning process killed too. We want to stop the server,
 # not the user's browser.
 if command -v lsof >/dev/null 2>&1; then

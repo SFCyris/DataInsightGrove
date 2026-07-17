@@ -18,7 +18,7 @@ Design notes:
 
   - We do NOT persist events themselves yet. Rules consume the events
     in-process; only the resulting notifications are stored. A
-    persisted event log (for replay / debugging / audit) is a Phase B
+    persisted event log (for replay / debugging / audit) is a future
     concern when the freshness scheduler lands.
 """
 from __future__ import annotations
@@ -58,7 +58,7 @@ class EventKinds:
     SYSTEM_SHUTDOWN : Final = "system.shutdown"
     SYSTEM_ERROR    : Final = "system.error"
 
-    # Auth (Phase B+ once auth is wired)
+    # Auth (once auth is wired)
     LOGIN_SUCCESS : Final = "auth.login_success"
     LOGIN_FAILED  : Final = "auth.login_failed"
 
@@ -66,7 +66,7 @@ class EventKinds:
     DISK_LOW    : Final = "resources.disk_low"
     MEMORY_HIGH : Final = "resources.memory_high"
 
-    # Data quality (Phase-A-pro #7) — emitted by the check_data step
+    # Data quality — emitted by the check_data step
     # when its assertion finds violating rows. Severity carried in the
     # event context determines whether downstream rules fire as a
     # warning or an error.
@@ -78,7 +78,7 @@ class EventKinds:
     # tuple when a step produces NaN / ±Inf / cast-failure NULLs. Context:
     # run_id, pipeline_id, node_id, step_id, column, cause
     # ("cast_failure"|"arithmetic_nan"|"arithmetic_inf"), source_column,
-    # count. See `internal/proposals/NULL_AND_NAN_DISPLAY.md`.
+    # count.
     DATA_NAN_PRODUCED      : Final = "data.nan.produced"
 
 

@@ -1,0 +1,23 @@
+{
+  "id": "impute_interpolation",
+  "version": "1.0.0",
+  "label": "📈 Interpolate nulls",
+  "description": "Linear or spline interpolation between known values. Numeric columns only. Most useful for time series where missing readings should follow the trend established by surrounding observations.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "columns": { "type": "column_refs", "label": "Numeric columns to interpolate", "columnFrom": "in", "required": true },
+    "method":  { "type": "enum", "label": "Method", "enumValues": ["linear", "nearest"], "default": "linear",
+                  "help": "linear: connect known endpoints with a straight line. nearest: copy the nearer neighbour." },
+    "sortColumn":  { "type": "column_ref", "label": "Sort column", "columnFrom": "in",
+                      "help": "Sort by this column before interpolating (e.g. timestamp)." }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["imputation", "interpolation", "time-series", "clean"],
+  "aliases": ["interpolate", "linear interpolation"],
+  "requires": []
+}

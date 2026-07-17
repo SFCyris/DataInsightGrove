@@ -101,7 +101,7 @@ The reverse-ETL Sheets / Snowflake / BigQuery connectors all exist but each requ
 
    Now every morning at 6am the pipeline runs, refreshes the outliers tab, and (if you wired the webhook) pings the team if it fails.
 
-   *(Per-tutorial screenshot pending. The Schedules page UI is under [`/schedules`](http://localhost:3000/schedules) on a running DIG.)*
+   *(Per-tutorial screenshot pending. The Schedules page UI is under [`/schedules`](http://localhost:3100/schedules) on a running DIG.)*
 
 ---
 

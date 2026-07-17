@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "id": "dq_pack_demo",
+  "name": "\ud83d\udee1 dq_pack \u00b7 drift + outliers + null-pattern audit",
+  "description": "Production-style data-quality dashboard: detect distribution drift between two snapshots (baseline vs current), flag univariate + multivariate outliers, and audit how nulls cluster across columns.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "user-engagement snapshots"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_psi_session",
+      "step": "psi_drift",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "session_minutes",
+        "partition": "partition",
+        "n_bins": 5
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "PSI \u00b7 session_minutes baseline \u2192 current"
+      }
+    },
+    {
+      "id": "n_psi_pages",
+      "step": "psi_drift",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "pages_per_session",
+        "partition": "partition",
+        "n_bins": 5
+      },
+      "ui": {
+        "x": 280,
+        "y": 240,
+        "label": "PSI \u00b7 pages_per_session"
+      }
+    },
+    {
+      "id": "n_iqr",
+      "step": "outliers_iqr",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "session_minutes",
+        "k": 1.5,
+        "output_column": "session_outlier"
+      },
+      "ui": {
+        "x": 280,
+        "y": 400,
+        "label": "Tukey fences \u00b7 session"
+      }
+    },
+    {
+      "id": "n_iso",
+      "step": "outliers_isolation_forest",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "columns": [
+          "session_minutes",
+          "pages_per_session"
+        ],
+        "contamination": 0.05,
+        "n_estimators": 100,
+        "seed": 42,
+        "output_column": "iso_outlier"
+      },
+      "ui": {
+        "x": 540,
+        "y": 400,
+        "label": "Isolation forest \u00b7 2-col joint"
+      }
+    },
+    {
+      "id": "n_nulls",
+      "step": "null_pattern_audit",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "top_n": 5
+      },
+      "ui": {
+        "x": 280,
+        "y": 560,
+        "label": "Null co-occurrence patterns"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_psi_s",
+      "name": "psi_session",
+      "from": {
+        "ref": "n_psi_session"
+      }
+    },
+    {
+      "id": "o_psi_p",
+      "name": "psi_pages",
+      "from": {
+        "ref": "n_psi_pages"
+      }
+    },
+    {
+      "id": "o_iqr",
+      "name": "iqr",
+      "from": {
+        "ref": "n_iqr"
+      }
+    },
+    {
+      "id": "o_iso",
+      "name": "iso",
+      "from": {
+        "ref": "n_iso"
+      }
+    },
+    {
+      "id": "o_nulls",
+      "name": "null_audit",
+      "from": {
+        "ref": "n_nulls"
+      }
+    }
+  ]
+}

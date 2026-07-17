@@ -1,0 +1,13 @@
+{
+  "id": "embedding_search",
+  "version": "0.1.0",
+  "label": "🧭 Embedding search",
+  "description": "k-NN search and semantic clustering on top of embedding columns. Pairs with the built-in embed_text + vector_similarity steps. Skips a heavy ANN dep (faiss); uses scikit-learn's BallTree which scales to a few million vectors comfortably.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["nearest_neighbors", "semantic_cluster"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3"]
+}

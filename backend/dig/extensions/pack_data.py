@@ -181,7 +181,7 @@ def _find_pack(pack_id: str) -> tuple[Path, dict[str, Any]]:
     """Locate the pack folder + parsed manifest for ``pack_id``.
 
     Searches the same roots the loader walks:
-      - Step-Pack-internal/packs/<id>/
+      - FunctionPacks/packs/<id>/
       - plugins/packs/<id>/
     """
     # Walk up from this file to the repo root so the search works
@@ -190,7 +190,7 @@ def _find_pack(pack_id: str) -> tuple[Path, dict[str, Any]]:
     # backend/dig/extensions/pack_data.py → repo is parents[3]
     repo_root = here.parents[3]
     candidates = [
-        repo_root / "Step-Pack-internal" / "packs" / pack_id,
+        repo_root / "FunctionPacks" / "packs" / pack_id,
         repo_root / "plugins" / "packs" / pack_id,
     ]
     for cand in candidates:

@@ -1,0 +1,22 @@
+{
+  "id": "null_pattern_audit",
+  "version": "1.0.0",
+  "label": "🛡 Null pattern audit",
+  "description": "Per-column null counts plus the most common null-pattern combinations across the row. Reveals MCAR/MAR/MNAR structure: when nulls cluster (column A is null whenever column B is null), they're NOT random and warrant investigation. Output is one row per distinct null-pattern (e.g. 'A null + C null') with frequency.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "top_n": {
+      "type": "integer", "label": "Top N patterns to report",
+      "default": 10, "min": 1, "max": 100
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["dq", "missing"],
+  "aliases": ["missing pattern", "missingness", "null co-occurrence"],
+  "requires": []
+}

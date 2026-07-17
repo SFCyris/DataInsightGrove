@@ -1,0 +1,13 @@
+{
+  "id": "units_pro",
+  "version": "0.1.0",
+  "label": "🔧 Units Pro",
+  "description": "Unit conversion engine powered by Pint — converts between any compatible SI / imperial / customary units (length, mass, time, energy, pressure, etc.). Plus a physical-constants lookup for science / engineering work.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["convert_units_pro", "physical_constant"],
+  "connectors": [],
+  "pythonRequirements": ["Pint>=0.24"]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "statspack",
+  "version": "0.1.0",
+  "label": "📐 Statistics Pack",
+  "description": "Hypothesis tests and effect-size primitives. Adds two-sample t-test and two-sample Kolmogorov-Smirnov as first-class steps so analysts can compare groups without leaving the pipeline editor.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["t_test", "ks_test"],
+  "connectors": [],
+  "pythonRequirements": ["scipy>=1.11"]
+}

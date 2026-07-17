@@ -84,7 +84,7 @@ What keeps the two engines in lock step:
 
 The capabilities DIG provides — every one is exercised by the [end-to-end validation harness](E2E_VALIDATION.md) and the bundled [tutorials](tutorials.md):
 
-![Editor canvas — step strip + minimap + diff overlay](images/phase-a-pro/01-canvas-minimap.png)
+![Editor canvas — step strip + minimap + diff overlay](images/workspace/01-canvas-minimap.png)
 
 - **A complete pipeline engine.** DAG validator, schema inference, an executor that compiles your whole pipeline into one DuckDB SQL statement (with a Polars escape hatch for the few steps that genuinely need Python).
 - **A step catalog of 45+ transforms** — see [`docs/STEPS.md`](STEPS.md) for the auto-generated, always-current list. New ones appear by dropping a folder under `backend/steps/<id>/` (or `plugins/steps/<id>/` for your own).
@@ -94,7 +94,7 @@ The capabilities DIG provides — every one is exercised by the [end-to-end vali
 - **Per-column lineage.** As your pipeline runs, DIG tracks which upstream column each downstream column came from. The lineage panel lights up the path when you click a column. The Sankey, Column DNA, and workspace-wide Catalog views are documented in [`LINEAGE_AND_CATALOG.md`](LINEAGE_AND_CATALOG.md).
 - **A workspace command palette.** ⌘K (or Ctrl+K) opens a single search across pipelines, datasets, columns, tags, steps, and quick actions.
 
-  ![Workspace command palette — single search across the whole DIG workspace](images/phase-a-pro/09-workspace-cmdk.png)
+  ![Workspace command palette — single search across the whole DIG workspace](images/workspace/09-workspace-cmdk.png)
 
 - **A real settings UI.** Paths, JDBC drivers, global webhooks, performance knobs, theme — all in Settings → ⚙️ instead of buried in config files.
 - **Outbound integrations.** Webhooks fire on run completion (succeeded / failed / always), or only when explicitly invoked from inside a pipeline via the 🔔 Trigger webhook step.

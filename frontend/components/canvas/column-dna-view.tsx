@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Phase A Layer 7 — Column DNA computation graph.
+ * Column DNA computation graph.
  *
  * Bipartite renderer for one target column's full lineage:
  *   - rectangles = data nodes (source columns / derived columns)
@@ -13,10 +13,8 @@
  * BreadcrumbCards panel below shows the focused node's formula and
  * inputs in plain prose so users get gestalt + detail in one screen.
  *
- * Design ported as-is from the live mockup at
- * `/internal/lineage-mockups` (Layer 7). Inspired by TensorBoard +
- * academic provenance literature; combines an expression tree's
- * structural clarity with a Sankey's left-to-right flow.
+ * Combines an expression tree's structural clarity with a Sankey's
+ * left-to-right flow.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -89,8 +87,7 @@ function symbolFor(transform: string): string {
 
 // ---- auto-layout --------------------------------------------------------
 
-/** Layout constants — chosen to match the demo at
- *  `/internal/lineage-mockups` so the live view is visually identical.
+/** Layout constants.
  *  COL_STRIDE has to leave room for an OP chip + gap on both sides
  *  (gap, op, gap, col, …) — too tight and ops collide with their
  *  neighbouring columns. */
@@ -735,7 +732,7 @@ export function ColumnDNAView({ pipelineId, nodeId, column, onClose }: Props) {
     target_column: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Phase-A-pro #2 — URL-encoded state under `?dna=`. The user can
+  // URL-encoded state under `?dna=`. The user can
   // refresh / share / bookmark a specific lineage view (clicked
   // ancestor + walk direction).
   type DNAURLState = { active: string | null; walk: WalkMode };

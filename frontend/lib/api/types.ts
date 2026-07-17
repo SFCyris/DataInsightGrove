@@ -857,8 +857,8 @@ export interface paths {
          *
          *     Pure read — combines the pipeline document's freshness declarations
          *     with the most recent succeeded run's `finished_at` to decide each
-         *     node's halo color. The scheduler that *acts on* staleness lives in
-         *     Phase B; this endpoint is read-only.
+         *     node's halo color. The scheduler that *acts on* staleness lives
+         *     elsewhere; this endpoint is read-only.
          */
         get: operations["get_pipeline_freshness_pipelines__pipeline_id__freshness_get"];
         put?: never;

@@ -1,0 +1,13 @@
+{
+  "id": "marketing_attribution",
+  "version": "0.1.0",
+  "label": "📣 Marketing Attribution",
+  "description": "Six attribution models: first-touch, last-touch, linear, time-decay, position-based (U-shaped), and Markov chain. Distribute conversion credit across the touch points in each user journey.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["attribution_first_touch", "attribution_last_touch", "attribution_linear", "attribution_time_decay", "attribution_position_based", "attribution_markov"],
+  "connectors": [],
+  "pythonRequirements": []
+}

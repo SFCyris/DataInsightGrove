@@ -143,9 +143,8 @@ export default function Home() {
   // "🌱 Try with sample data" — the dominant first-run path. We deliberately
   // chain ingest → auto-pipeline → editor so a brand-new user lands on a
   // *rendered chart* within seconds, not on a column grid that looks like
-  // any other table viewer. The PLG-loss risk for a self-hosted data tool
-  // is steepest at the moment between "I installed it" and "I made
-  // something" — collapse that to one click.
+  // any other table viewer — collapse the gap between "I installed it"
+  // and "I made something" to one click.
   //
   // The button now seeds four demo pipelines side-by-side via the
   // backend's /pipelines/seed-demo endpoint:

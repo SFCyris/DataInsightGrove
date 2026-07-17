@@ -1,0 +1,25 @@
+{
+  "id": "calibration_curve",
+  "version": "1.0.0",
+  "label": "🎯 Calibration curve",
+  "description": "How well-calibrated are the model's probabilities? Bins predictions by predicted_proba, then plots the actual fraction of positives in each bin against the mean predicted probability. A perfectly calibrated classifier sits on the diagonal — predicted probability of 0.7 means 70% of those samples are actually positive.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "actualColumn": { "type": "column_ref", "label": "Actual (true class) column", "columnFrom": "in", "required": true },
+    "probaColumn":  { "type": "column_ref", "label": "Predicted probability column", "columnFrom": "in", "required": true },
+    "bins":         { "type": "integer", "label": "Number of probability bins", "default": 10, "min": 3, "max": 50 },
+    "strategy":     { "type": "enum", "label": "Bin strategy", "enumValues": ["uniform", "quantile"], "default": "uniform",
+                       "help": "uniform: equal-width bins on [0,1]. quantile: equal-count bins (more robust when predictions cluster)." },
+    "title": { "type": "string", "label": "Title", "default": "Calibration curve" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "ml", "evaluation", "calibration", "reliability"],
+  "aliases": ["reliability diagram", "probability calibration"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}]
+}

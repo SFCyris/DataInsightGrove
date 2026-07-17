@@ -1,0 +1,25 @@
+{
+  "id": "horizon_chart",
+  "version": "1.0.0",
+  "label": "🪞 Horizon chart",
+  "description": "Compact small-multiples view for many time series. Each series is rendered as a colored band wrapped at fixed thresholds — three bands of progressively darker color above the median, mirrored below. Lets you eyeball ~50+ series in the vertical space a single line chart would need.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "dateColumn":  { "type": "column_ref", "label": "Date column", "columnFrom": "in", "required": true },
+    "groupColumn": { "type": "column_ref", "label": "Series (group) column", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value column", "columnFrom": "in", "required": true,
+                      "columnTypes": ["integer", "double"] },
+    "bands":       { "type": "integer", "label": "Number of bands", "default": 3, "min": 2, "max": 5 },
+    "title": { "type": "string", "label": "Title", "default": "Horizon chart" },
+    "output_path": { "type": "string", "label": "Output path", "help": "Defaults to data/outputs/<run>/<step>.png" }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "time-series", "horizon", "small-multiples"],
+  "aliases": ["horizon graph", "compact ts"],
+  "requires": [{"kind": "temporal"}, {"kind": "any"}, {"kind": "numeric"}]
+}

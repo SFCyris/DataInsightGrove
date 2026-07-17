@@ -284,7 +284,7 @@ For each trap, exactly one fix is correct. Use it.
 // ❌ Broken
 const port = typeof window !== "undefined" ? window.location.port : "?";
 return <span>:{port}</span>;
-// Server renders ":?"; client renders ":3000". Mismatch on hydrate.
+// Server renders ":?"; client renders ":3100". Mismatch on hydrate.
 
 // ✅ Correct
 const [port, setPort] = useState<string>("…");   // server-safe placeholder
@@ -293,7 +293,7 @@ useEffect(() => {
 }, []);
 return <span>:{port}</span>;
 // Server: ":…". First client render: ":…" (same as server, hydration agrees).
-// One tick later: useEffect runs, span becomes ":3000".
+// One tick later: useEffect runs, span becomes ":3100".
 ```
 
 #### Trap 2 — time / randomness in render
@@ -362,7 +362,7 @@ When a wrapper script (the Mac `.app`'s WKUserScript injects `data-dig-mac="true
 
 ```bash
 ./start.sh
-# Open http://localhost:3000 in a regular browser. Open DevTools console.
+# Open http://localhost:3100 in a regular browser. Open DevTools console.
 # Hydration mismatches show as a "Hydration failed" error with a diff
 # of the server vs client output. CI also runs the full SSR pass; PRs
 # that introduce a mismatch will be flagged.

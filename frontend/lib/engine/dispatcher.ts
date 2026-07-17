@@ -1,10 +1,13 @@
 "use client";
 
-import * as duckdb from "@duckdb/duckdb-wasm";
-import { tableFromIPC, type Table } from "apache-arrow";
+import type { Table } from "apache-arrow";
 import { API_BASE, API_TOKEN, api } from "@/lib/api/client";
 import { wrapWithSampling, type SamplingConfig } from "@/lib/sampling";
-import { getDb } from "./duckdb";
+
+// @duckdb/duckdb-wasm and ./duckdb are loaded via dynamic import() inside
+// the functions that need them, so the editor route's initial chunk doesn't
+// carry the multi-MB wasm engine. Type-only imports above stay static —
+// they're erased at compile time and cost nothing.
 
 export interface PreviewResult {
   columns: Array<{ name: string; type: string }>;
@@ -34,6 +37,17 @@ const _SPATIAL_TOKENS = [
 export function requiresSpatialExtension(sql: string): boolean {
   const upper = sql.toUpperCase();
   return _SPATIAL_TOKENS.some((tok) => upper.includes(tok));
+}
+
+/** Kick off the DuckDB-WASM bootstrap in the background so the first
+ *  preview doesn't pay the worker/wasm boot cost. Fire-and-forget and
+ *  idempotent — getDb() caches its promise, so concurrent/repeat calls
+ *  are no-ops. Errors are swallowed here; getDb() clears its singleton
+ *  on rejection, so the next real preview retries the boot itself. */
+export function warmDuckDb(): void {
+  void import("./duckdb")
+    .then(({ getDb }) => getDb())
+    .catch(() => {});
 }
 
 /** Compile a pipeline server-side, fetch the required parquet/csv files, register them
@@ -121,6 +135,10 @@ export async function previewPipeline(
     return previewOnBackend(pipelineId, opts);
   }
 
+  const [{ getDb }, { DuckDBDataProtocol }] = await Promise.all([
+    import("./duckdb"),
+    import("@duckdb/duckdb-wasm"),
+  ]);
   const db = await getDb();
   const conn = await db.connect();
 
@@ -140,7 +158,7 @@ export async function previewPipeline(
         url = `${url}${sep}token=${encodeURIComponent(API_TOKEN)}`;
       }
       // Always (re)register — DuckDB-WASM dedupes by name.
-      await db.registerFileURL(f.name, url, duckdb.DuckDBDataProtocol.HTTP, false);
+      await db.registerFileURL(f.name, url, DuckDBDataProtocol.HTTP, false);
     }
 
     // Wrap the compiled SQL with the user-chosen sampling method for
@@ -152,6 +170,10 @@ export async function previewPipeline(
     const sampledInner = opts.sampling
       ? wrapWithSampling(compile.sql, opts.sampling)
       : compile.sql;
+    // Two passes on the same connection: the preview page first (LIMIT n),
+    // then a bare count(*) over the sampled pipeline. DuckDB
+    // projection-prunes the inner SELECT for the count, so the second
+    // pass stays cheap even for wide pipelines.
     const previewSql = `SELECT * FROM (${sampledInner}) AS __preview LIMIT ${previewLimit}`;
     const arrow = await conn.query(previewSql);
     const table = arrow as unknown as Table;
@@ -176,10 +198,11 @@ export async function previewPipeline(
     if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");
 
     // Total row count for the sampled pipeline (within the sample).
-    const countSql = `SELECT count(*) AS c FROM (${sampledInner}) AS __pipeline`;
-    const countArrow = await conn.query(countSql);
+    const countArrow = await conn.query(
+      `SELECT count(*) AS n FROM (${sampledInner}) AS __count`,
+    );
     const countTable = countArrow as unknown as Table;
-    const rowCount = Number(countTable.getChild("c")?.get(0) ?? 0);
+    const rowCount = Number(countTable.getChild("n")?.get(0) ?? 0);
     const elapsedMs = Math.round(performance.now() - t0);
     return {
       columns,
@@ -203,7 +226,10 @@ async function previewStepOnBackend(
   pipelineId: string,
   opts: { sampleRows?: number; previewLimit?: number; terminal?: string; signal?: AbortSignal },
 ): Promise<PreviewResult> {
-  const sampleRows = opts.sampleRows ?? 20000;
+  // `?? ` alone would let 0/negative through (0 is not nullish); treat
+  // non-positive values as "use the default".
+  const sampleRows =
+    opts.sampleRows != null && opts.sampleRows > 0 ? opts.sampleRows : 20000;
   const previewLimit = opts.previewLimit ?? 500;
   const t0 = performance.now();
   const res = await api.previewStepRows(pipelineId, {
@@ -229,7 +255,10 @@ async function previewOnBackend(
   pipelineId: string,
   opts: { sampleRows?: number; previewLimit?: number; terminal?: string; signal?: AbortSignal },
 ): Promise<PreviewResult> {
-  const sampleRows = opts.sampleRows ?? 100_000;
+  // `?? ` alone would let 0/negative through (0 is not nullish); treat
+  // non-positive values as "use the default".
+  const sampleRows =
+    opts.sampleRows != null && opts.sampleRows > 0 ? opts.sampleRows : 100_000;
   const res = await api.previewOnBackend(pipelineId, {
     sampleRows,
     previewLimit: opts.previewLimit ?? 500,

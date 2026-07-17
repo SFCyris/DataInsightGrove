@@ -1,0 +1,24 @@
+{
+  "id": "impute_forward_backward",
+  "version": "1.0.0",
+  "label": "↔️ Forward / backward fill",
+  "description": "Fill nulls by carrying the previous (forward fill) or next (backward fill) value. Most useful for time-series where missing readings should inherit from the prior reading. Optional sort + group preserves per-entity locality.",
+  "category": "clean",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "columns": { "type": "column_refs", "label": "Columns to fill", "columnFrom": "in", "required": true },
+    "direction": { "type": "enum", "label": "Direction", "enumValues": ["forward", "backward", "both"], "default": "forward" },
+    "sortColumn":  { "type": "column_ref", "label": "Sort column (optional)", "columnFrom": "in",
+                      "help": "Sort rows by this column (e.g. date) before filling so 'forward' = chronological." },
+    "groupColumn": { "type": "column_ref", "label": "Group column (optional)", "columnFrom": "in",
+                      "help": "Fill within each group separately (e.g. per device, per customer)." }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["imputation", "ffill", "bfill", "time-series", "clean"],
+  "aliases": ["ffill", "bfill", "forward fill", "backward fill"],
+  "requires": []
+}

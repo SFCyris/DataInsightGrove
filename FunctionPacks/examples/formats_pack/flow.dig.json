@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "id": "formats_pack_demo",
+  "name": "\ud83d\udcde formats_pack \u00b7 customer-hygiene flow",
+  "description": "Validate + normalise a CRM contact list. Phones go to E.164, emails get RFC-checked, IBANs get checksum-validated. Each step adds a `<x>_valid` column so you can filter the bad rows downstream.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "messy customer contacts"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_phone",
+      "step": "normalize_phone",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "phone_column": "phone",
+        "default_country": "US",
+        "output_column": "phone_e164"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Phone \u2192 E.164 (US default)"
+      }
+    },
+    {
+      "id": "n_email",
+      "step": "validate_email",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_phone"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "email_column": "email",
+        "check_dns": false,
+        "output_column": "email"
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Email validate (no DNS)"
+      }
+    },
+    {
+      "id": "n_iban",
+      "step": "validate_iban",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_email"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "iban_column": "iban"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "IBAN validate + parts"
+      }
+    },
+    {
+      "id": "n_bad",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_iban"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "expression": "phone_e164_valid = false OR email_valid = false OR iban_valid = false"
+      },
+      "ui": {
+        "x": 1060,
+        "y": 80,
+        "label": "Bad rows only"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_clean",
+      "name": "all_with_flags",
+      "from": {
+        "ref": "n_iban"
+      }
+    },
+    {
+      "id": "o_bad",
+      "name": "needs_attention",
+      "from": {
+        "ref": "n_bad"
+      }
+    }
+  ]
+}

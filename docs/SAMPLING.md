@@ -189,39 +189,6 @@ FROM __picks JOIN __indexed ON __indexed.__rn = __picks.__pick
 The reservoir-sampling shape (random) is uniform without replacement
 and runs in one pass — the standard textbook algorithm.
 
-## Distribution-aware methods — IP grounding
-
-The math underlying every distribution-aware method here is **textbook
-prior art** — none of these are proprietary inventions:
-
-- **Stratified** — Neyman 1934, "On the Two Different Aspects of the
-  Representative Method." Implemented openly in pandas (`groupby().apply(sample)`),
-  scikit-learn (`train_test_split(stratify=)`), AWS DataBrew, and dbt-utils.
-- **Per-group / cluster cap** — Cochran 1977 textbook foundation;
-  trivial `ROW_NUMBER() <= N` SQL.
-- **Time-bucket** — generic stratification with `DATE_TRUNC` as the
-  partitioning key. No novel UX.
-- **Weighted** — Efraimidis-Spirakis 2006, the standard one-pass
-  algorithm taught in every survey-sampling course.
-- **Bootstrap** — Efron 1979.
-
-Where IP risk concentrates in the data-preparation space is in
-**specific UI patterns** that combine these methods with bespoke
-interactions (e.g., live distribution previews that update as the
-user sets a stratum column). DIG's implementation is deliberately
-plain: user picks a method, picks a column, types a size, clicks
-Apply. No live distribution viz, no auto-suggest of strata,
-no AI-pick. That keeps DIG cleanly on textbook
-ground while delivering the same statistical correctness.
-
-What we explicitly **don't** ship:
-
-- "AI sample" / "smart sample" — heuristic, commercially claimed.
-- Anomaly-aware / diversity-driven sampling — UX-claimed in the
-  proprietary tools. If users want to over-sample outliers, they
-  should run `anomaly_zscore` then sample after.
-- Live distribution-preview interactions tied to the picker.
-
 ## Document format
 
 ```jsonc

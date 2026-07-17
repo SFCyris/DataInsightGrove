@@ -1,0 +1,13 @@
+{
+  "id": "reference_data",
+  "version": "0.1.0",
+  "label": "📚 Reference data",
+  "description": "Authoritative lookups against ISO standards: country codes, currency codes, timezones. Avoids the everyone-builds-their-own-CSV problem.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.6.0",
+  "steps": ["country_lookup", "currency_lookup", "timezone_resolve"],
+  "connectors": [],
+  "pythonRequirements": ["pycountry>=23.12"]
+}

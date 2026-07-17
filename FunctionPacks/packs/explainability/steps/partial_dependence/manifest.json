@@ -1,0 +1,42 @@
+{
+  "id": "partial_dependence",
+  "version": "1.0.0",
+  "label": "🔍 Partial dependence",
+  "description": "Average predicted target as a single feature varies, holding other features at their actual distribution. Output: long-form (feature_value, predicted) DataFrame ready to plot. Internally fits a quick gradient-boosted model on the supplied features + target.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": false },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "target": {
+      "type": "column_ref", "label": "Target column",
+      "columnFrom": "in", "required": true
+    },
+    "features": {
+      "type": "column_refs", "label": "Feature columns",
+      "columnFrom": "in", "required": true
+    },
+    "explain_feature": {
+      "type": "column_ref", "label": "Feature to explain",
+      "columnFrom": "in", "required": true,
+      "help": "Must be one of the features. The output PDP varies this feature while marginalising the rest."
+    },
+    "task": {
+      "type": "enum", "label": "Task",
+      "enumValues": ["auto", "regression", "classification"], "default": "auto"
+    },
+    "grid_resolution": {
+      "type": "integer", "label": "Grid resolution",
+      "default": 30, "min": 5, "max": 200
+    },
+    "seed": {
+      "type": "integer", "label": "Random seed", "default": 42
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["explainability", "ml"],
+  "aliases": ["pdp", "partial dependence plot"],
+  "requires": [{"kind": "numeric", "min": 1}]
+}

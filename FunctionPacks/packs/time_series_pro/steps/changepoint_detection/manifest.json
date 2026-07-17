@@ -1,0 +1,28 @@
+{
+  "id": "changepoint_detection",
+  "version": "1.0.0",
+  "label": "⏳ Changepoint detection",
+  "description": "Find rows where the time series shifts in mean. Uses a rolling-window CUSUM approach — distribution-free, no scipy required. Returns a `is_changepoint` boolean column flagging the rows where the change occurred plus a `cusum` column for the test statistic so you can plot it.",
+  "category": "analyze",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Time-series value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "threshold": {
+      "type": "number", "label": "Detection threshold",
+      "default": 5.0, "min": 0.5, "max": 50.0,
+      "help": "CUSUM threshold (in σ). Higher = fewer detected changes. Default 5σ flags only large shifts."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["time-series", "anomaly"],
+  "aliases": ["cusum", "changepoint", "regime change", "structural break"],
+  "requires": [{"kind": "numeric"}]
+}

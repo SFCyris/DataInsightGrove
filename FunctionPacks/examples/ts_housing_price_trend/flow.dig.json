@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_housing_price_trend_demo",
+  "name": "\ud83c\udfe0 Housing \u00b7 monthly price trend forecast",
+  "description": "Forecast 12 months ahead per city. Austin's price grew fast then plateaued \u2014 the forecast captures that bend; Boston's slow-and-steady growth extrapolates linearly.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "5 years of monthly median home prices for Austin + Boston"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_filter",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "predicate": "city = 'Austin'"
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "Austin only"
+      }
+    },
+    {
+      "id": "n_forecast",
+      "step": "forecast",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_filter"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "month",
+        "value_column": "median_price_kusd",
+        "horizon": 12,
+        "method": "holt_winters",
+        "seasonal_period": 12,
+        "render": true,
+        "title": "Austin median home price \u00b7 12-month forecast"
+      },
+      "ui": {
+        "x": 580,
+        "y": 80,
+        "label": "Forecast \u00b7 12m ahead"
+      }
+    }
+  ],
+  "outputs": []
+}

@@ -32,9 +32,9 @@ from typing import Any
 # Built-in defaults — the floor. Mirrored in scripts/dig_config.py:DEFAULT.
 DEFAULTS: dict[str, Any] = {
     "api_host": "127.0.0.1",
-    "api_port": 8090,
+    "api_port": 8190,
     "web_host": "127.0.0.1",
-    "web_port": 3000,
+    "web_port": 3100,
     "data_dir": None,    # None → backend.dig.storage.files picks <repo>/data
     "log_dir": None,     # None → $TMPDIR
 }

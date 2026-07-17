@@ -1,0 +1,34 @@
+{
+  "id": "semantic_cluster",
+  "version": "1.0.0",
+  "label": "🧭 Semantic cluster",
+  "description": "Group rows by semantic similarity of their embeddings. Adds a `cluster` column with a small integer id 0..N-1. Uses agglomerative clustering with cosine distance — well-suited to sentence-transformer embeddings.",
+  "category": "model",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "embedding_column": {
+      "type": "column_ref", "label": "Embedding column",
+      "columnFrom": "in", "required": true
+    },
+    "n_clusters": {
+      "type": "integer", "label": "Number of clusters",
+      "default": 8, "min": 2, "max": 200
+    },
+    "linkage": {
+      "type": "enum", "label": "Linkage",
+      "enumValues": ["average", "complete", "single", "ward"],
+      "default": "average"
+    },
+    "output_column": {
+      "type": "string", "label": "Output column", "default": "cluster"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["ai", "clustering", "embedding"],
+  "aliases": ["agglomerative", "hierarchical clustering", "semantic group"],
+  "requires": [{"kind": ["vector", "array", "string"]}]
+}

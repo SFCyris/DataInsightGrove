@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-05-13T17:47:37Z",
+  "sources": [
+    {
+      "id": "us_states_10m",
+      "type": "url",
+      "url": "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json",
+      "sha256": "d76b391ccfa8bff601d51e3e3da5d43a89fa46cd5caca72ce731b383be5596d0",
+      "sizeBytes": 114554,
+      "fetchedAt": "2026-05-13T08:39:18Z",
+      "description": "US Census TIGER state boundaries at 1:10,000,000 scale, packaged as TopoJSON by topojson/us-atlas. Public domain."
+    },
+    {
+      "id": "world_countries_10m",
+      "type": "url",
+      "url": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-10m.json",
+      "sha256": "3bc6f1d367a9bcec479841bae0e76092f512838411d0cef124e92eec4db45f79",
+      "sizeBytes": 3661071,
+      "fetchedAt": "2026-05-13T10:13:26Z",
+      "description": "Natural Earth country boundaries at 1:10,000,000 scale. ~254 entities including microstates (Malta, Liechtenstein, Monaco, San Marino, Andorra). Used for country/region-scale renders."
+    },
+    {
+      "id": "world_countries_110m",
+      "type": "url",
+      "url": "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json",
+      "sha256": "2516c915867c7baf18ddec727aec46c315541a07cfb3d79a6559b05d5e94eee8",
+      "sizeBytes": 107761,
+      "fetchedAt": "2026-05-13T10:38:57Z",
+      "description": "Natural Earth country boundaries at 1:110,000,000 scale. ~177 entities, microstates omitted. Used for world-scale renders where fast load matters more than detail."
+    },
+    {
+      "id": "us_zcta_gazetteer_2023",
+      "type": "url",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_zcta_national.zip",
+      "sha256": "dd7e3573594f3898e503482a7538f1b9682be31ad095abe9bdcb427453a036eb",
+      "sizeBytes": 6792182,
+      "fetchedAt": "2026-05-13T10:00:04Z",
+      "description": "Census Bureau 2023 ZCTA gazetteer \u2014 centroid + area for every ZIP Code Tabulation Area. Public domain (US Census)."
+    },
+    {
+      "id": "us_places_gazetteer_2023",
+      "type": "url",
+      "url": "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2023_Gazetteer/2023_Gaz_place_national.zip",
+      "sha256": "ac101507007c207bda757db7ea2aff36007b133f449ba1c97cdc4380828dbe25",
+      "sizeBytes": 6498405,
+      "fetchedAt": "2026-05-13T10:00:04Z",
+      "description": "Census Bureau 2023 Places gazetteer \u2014 centroid + area for every incorporated place + CDP. Public domain (US Census)."
+    }
+  ]
+}

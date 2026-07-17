@@ -1,0 +1,22 @@
+{
+  "id": "currency_lookup",
+  "version": "1.0.0",
+  "label": "💱 Currency lookup",
+  "description": "Resolve a currency column (ISO 4217 alpha-3 / numeric / name) into its canonical record. Adds `currency_code`, `currency_name`, `currency_numeric` columns.",
+  "category": "derive",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "currency_column": {
+      "type": "column_ref", "label": "Currency column",
+      "columnFrom": "in", "required": true
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["reference", "iso", "finance"],
+  "aliases": ["iso 4217", "currency code", "currency name"],
+  "requires": []
+}

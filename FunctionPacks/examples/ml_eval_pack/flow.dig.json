@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "id": "ml_eval_pack_demo",
+  "name": "\ud83e\uddea ml_eval_pack \u00b7 churn-model evaluation",
+  "description": "Off-line evaluation of a binary churn classifier. We have actual labels, predicted labels, and the model's probability score for the positive class. The pack computes accuracy/F1/AUC, the confusion matrix, and the ROC curve.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "Churn predictions"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_split",
+      "step": "train_test_split",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "test_size": 0.3,
+        "stratify_by": "actual_churn",
+        "seed": 42,
+        "output_column": "split"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "70/30 split (stratified)"
+      }
+    },
+    {
+      "id": "n_test_only",
+      "step": "filter_rows",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_split"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "expression": "split = 'test'"
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Test set only"
+      }
+    },
+    {
+      "id": "n_metrics",
+      "step": "model_metrics",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_test_only"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "actual": "actual_churn",
+        "predicted": "predicted_churn",
+        "task": "classification",
+        "probability_column": "churn_probability"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "Metrics (accuracy/F1/AUC/log-loss)"
+      }
+    },
+    {
+      "id": "n_cm",
+      "step": "confusion_matrix",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_test_only"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "actual": "actual_churn",
+        "predicted": "predicted_churn"
+      },
+      "ui": {
+        "x": 800,
+        "y": 240,
+        "label": "Confusion matrix"
+      }
+    },
+    {
+      "id": "n_roc",
+      "step": "roc_curve",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_test_only"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "actual": "actual_churn",
+        "probability": "churn_probability",
+        "positive_label": "1"
+      },
+      "ui": {
+        "x": 800,
+        "y": 400,
+        "label": "ROC curve points"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o_metrics",
+      "name": "metrics",
+      "from": {
+        "ref": "n_metrics"
+      }
+    },
+    {
+      "id": "o_cm",
+      "name": "cm",
+      "from": {
+        "ref": "n_cm"
+      }
+    },
+    {
+      "id": "o_roc",
+      "name": "roc",
+      "from": {
+        "ref": "n_roc"
+      }
+    }
+  ]
+}

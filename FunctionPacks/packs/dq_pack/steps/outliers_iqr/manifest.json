@@ -1,0 +1,30 @@
+{
+  "id": "outliers_iqr",
+  "version": "1.0.0",
+  "label": "🛡 Outliers (IQR fences)",
+  "description": "Tag rows whose value is outside Tukey's fences: [Q1 − k·IQR, Q3 + k·IQR]. Distribution-free, makes no assumption about normality. Default k=1.5 (the standard); use k=3 for `extreme` outliers only.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "k": {
+      "type": "number", "label": "IQR multiplier",
+      "default": 1.5, "min": 0.5, "max": 5.0
+    },
+    "output_column": {
+      "type": "string", "label": "Output column name", "default": "is_outlier"
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "modifies" },
+  "tags": ["dq", "outliers"],
+  "aliases": ["tukey fences", "iqr fences", "outlier flag"],
+  "requires": [{"kind": "numeric"}]
+}

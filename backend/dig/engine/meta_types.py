@@ -651,7 +651,7 @@ TYPES: list[TypeDescriptor] = [
                    detector=_detect_percentage),
     TypeDescriptor("currency",    "💵 Currency",            "double",  "DECIMAL(18,4)",  "Monetary value with exact decimal arithmetic — DECIMAL(18,4) gives ±99 trillion at 4-decimal precision (covers any realistic money math without floating-point drift).",
                    detector=_detect_currency),
-    TypeDescriptor("scientific",  "🔬 Scientific (IEEE)",   "double",  "DOUBLE",         "IEEE 754 double formatted in scientific notation (1.234e+10). For physics, astronomy, very small probabilities. Phase 1.2 promotes out-of-range values to VARCHAR storage.",
+    TypeDescriptor("scientific",  "🔬 Scientific (IEEE)",   "double",  "DOUBLE",         "IEEE 754 double formatted in scientific notation (1.234e+10). For physics, astronomy, very small probabilities. Out-of-range values are promoted to VARCHAR storage.",
                    detector=_detect_scientific),
     TypeDescriptor("bignum",      "🧮 Big number",          "integer", "HUGEINT",        "128-bit signed integer (±1.7e38). Use when values exceed BIGINT range — e.g. SHA-256 fragments, genomic position counts, financial micro-units.",
                    detector=_detect_bignum),

@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "id": "units_pro_demo",
+  "name": "\ud83d\udd27 units_pro \u00b7 sensor unit normalisation",
+  "description": "Sensor readings in mixed units. Convert temperature to fahrenheit, distance to kilometres, pressure to bar, energy to joules \u2014 and tag each row with a physical constant for downstream calculations.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "sensor readings (mixed units)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_temp_f",
+      "step": "convert_units_pro",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "temperature_celsius",
+        "from_unit": "celsius",
+        "to_unit": "fahrenheit",
+        "output_column": "temperature_fahrenheit"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "\u00b0C \u2192 \u00b0F"
+      }
+    },
+    {
+      "id": "n_distance_km",
+      "step": "convert_units_pro",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_temp_f"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "distance_miles",
+        "from_unit": "mile",
+        "to_unit": "kilometer",
+        "output_column": "distance_km"
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "miles \u2192 km"
+      }
+    },
+    {
+      "id": "n_pressure_bar",
+      "step": "convert_units_pro",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_distance_km"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "pressure_psi",
+        "from_unit": "psi",
+        "to_unit": "bar",
+        "output_column": "pressure_bar"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "psi \u2192 bar"
+      }
+    },
+    {
+      "id": "n_energy_j",
+      "step": "convert_units_pro",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_pressure_bar"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "value": "energy_kwh",
+        "from_unit": "kilowatt_hour",
+        "to_unit": "joule",
+        "output_column": "energy_joules"
+      },
+      "ui": {
+        "x": 1060,
+        "y": 80,
+        "label": "kWh \u2192 joules"
+      }
+    },
+    {
+      "id": "n_const",
+      "step": "physical_constant",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_energy_j"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "constant": "speed_of_light",
+        "output_column": "c_m_per_s"
+      },
+      "ui": {
+        "x": 1320,
+        "y": 80,
+        "label": "Speed of light constant"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o",
+      "name": "sensors_normalised",
+      "from": {
+        "ref": "n_const"
+      }
+    }
+  ]
+}

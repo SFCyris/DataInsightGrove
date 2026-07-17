@@ -1,0 +1,30 @@
+{
+  "id": "confusion_matrix",
+  "version": "1.0.0",
+  "label": "🟦 Confusion matrix",
+  "description": "Render a confusion matrix heatmap with per-cell counts and percentages. Use to set the operational classification threshold (how many false positives are tolerable?).",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "actualColumn": { "type": "column_ref", "label": "Actual class column", "columnFrom": "in", "required": true },
+    "predictedColumn": { "type": "column_ref", "label": "Predicted class column", "columnFrom": "in", "required": true },
+    "normalize": {
+      "type": "enum", "label": "Normalize",
+      "enumValues": ["counts", "row_percent", "column_percent", "all_percent"],
+      "default": "counts",
+      "help": "counts: raw cell counts. row_percent: each actual-class row sums to 100% (recall view). column_percent: each predicted-class column sums to 100% (precision view). all_percent: cells sum to 100%."
+    },
+    "title": { "type": "string", "label": "Title", "default": "Confusion Matrix" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 900, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 800, "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "classification", "ml", "confusion", "evaluation"],
+  "requires": [{"kind": "any"}, {"kind": "any"}],
+  "aliases": ["error matrix", "classification matrix"]
+}

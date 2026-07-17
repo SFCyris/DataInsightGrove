@@ -1,0 +1,31 @@
+{
+  "id": "golden_row_assert",
+  "version": "1.0.0",
+  "label": "🥇 Golden row assert",
+  "description": "Assert that specific rows (matched by an ID column) still have the expected values in named target columns. Use to lock in the computed value of a small handful of canonical rows that exercise edge cases.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "idColumn": { "type": "column_ref", "label": "ID column", "columnFrom": "in", "required": true },
+    "expectations": {
+      "type": "string",
+      "label": "Expected rows JSON",
+      "required": true,
+      "help": "JSON array of objects: [{\"id\": 42, \"revenue\": 1200, \"is_premium\": true}, …]. Each object MUST contain the ID column value plus the columns to assert."
+    },
+    "tolerance": {
+      "type": "number",
+      "label": "Numeric tolerance (absolute)",
+      "default": 0.0,
+      "help": "Allowed absolute difference for float comparisons. 0 = exact match."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["test", "golden", "regression", "assert"],
+  "aliases": ["row assertion", "expected rows", "fixture test"],
+  "requires": []
+}

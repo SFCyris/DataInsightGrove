@@ -1,0 +1,31 @@
+{
+  "id": "kpi_card",
+  "version": "1.0.0",
+  "label": "🔢 KPI card",
+  "description": "Render one or more big-number cards with a label, the headline value, and optional comparison-vs-baseline percent. Each row in the input is one card. Use as the top-row of an executive dashboard or a campaign-results report.",
+  "category": "visualize",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "labelColumn": { "type": "column_ref", "label": "Label column", "columnFrom": "in", "required": true },
+    "valueColumn": { "type": "column_ref", "label": "Value column",  "columnFrom": "in", "required": true },
+    "baselineColumn": { "type": "column_ref", "label": "Baseline column (optional)", "columnFrom": "in",
+      "help": "Compute and display percent change vs this baseline. Green up arrow when current > baseline, red down arrow when below." },
+    "format_value": {
+      "type": "enum", "label": "Value formatting",
+      "enumValues": ["raw", "thousands", "millions", "percent", "currency_usd", "currency_eur"],
+      "default": "raw"
+    },
+    "title": { "type": "string", "label": "Title" },
+    "format": { "type": "enum", "label": "Format", "enumValues": ["png", "svg"], "default": "png", "required": true },
+    "width":  { "type": "integer", "label": "Width (px)",  "default": 1600, "min": 200, "max": 4000 },
+    "height": { "type": "integer", "label": "Height (px)", "default": 400,  "min": 200, "max": 4000 }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["chart", "kpi", "card", "dashboard", "scorecard"],
+  "requires": [{"kind": "any"}, {"kind": "numeric"}],
+  "aliases": ["scorecard", "metric card", "headline number", "stat block"]
+}

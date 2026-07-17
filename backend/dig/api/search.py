@@ -1,4 +1,4 @@
-"""Phase-A-pro #3 — Workspace-wide search.
+"""Workspace-wide search.
 
 Single endpoint that searches across pipelines, datasets, and columns.
 Used by the global cmdk "Search workspace" shortcut so a user can find
@@ -9,19 +9,14 @@ ranking. For free-tier workspaces (single-digit to low-hundreds of
 pipelines), this is fast enough and predictable. We can move to a real
 search index (whoosh / sqlite FTS / tantivy) when workspace size grows
 past ~500 entities.
-
-Patent posture: substring search has prior art back to Unix `grep`
-(1974). Cross-entity unified search is the basic UX of every IDE
-(Sublime, Atom, VS Code). No risk.
 """
 from __future__ import annotations
-
-from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from dig.storage.db import get_session
 from dig.storage.models import Dataset
@@ -109,8 +104,20 @@ async def search(
                 ))
 
     # --- Datasets (name, tags) ---
-    ds_res = await session.execute(select(Dataset))
-    for d in ds_res.scalars().all():
+    # Loaded once and reused by the column pass below. load_only skips
+    # the heavy `profile` JSON blob — search never reads it.
+    ds_res = await session.execute(
+        select(Dataset).options(load_only(
+            Dataset.id,
+            Dataset.name,
+            Dataset.connector,
+            Dataset.options,
+            Dataset.columns,
+            Dataset.row_count,
+        )),
+    )
+    datasets = list(ds_res.scalars().all())
+    for d in datasets:
         opts = d.options or {}
         ds_tags: list[str] = []
         for t in opts.get("tags") or []:
@@ -138,10 +145,9 @@ async def search(
                 ))
 
     # --- Columns (across all dataset profiles) ---
-    # Datasets already loaded above — reuse the same iteration. Match
-    # on column name. Each match emits its own hit.
-    ds_res2 = await session.execute(select(Dataset))
-    for d in ds_res2.scalars().all():
+    # Reuses the dataset rows loaded above. Match on column name. Each
+    # match emits its own hit.
+    for d in datasets:
         for col in d.columns or []:
             if not isinstance(col, dict):
                 continue
@@ -199,7 +205,11 @@ async def list_all_tags(
         for t in (p.document or {}).get("tags") or []:
             if isinstance(t, str) and t.strip():
                 seen.add(t.strip())
-    ds_res = await session.execute(select(Dataset))
+    # load_only skips the heavy `profile` JSON blob — same pattern as the
+    # main search endpoint; this pass only reads `options`.
+    ds_res = await session.execute(
+        select(Dataset).options(load_only(Dataset.id, Dataset.options)),
+    )
     for d in ds_res.scalars().all():
         for t in (d.options or {}).get("tags") or []:
             if isinstance(t, str) and t.strip():

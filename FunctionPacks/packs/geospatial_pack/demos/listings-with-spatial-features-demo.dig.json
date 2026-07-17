@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "name": "🌍 Demo · Housing listings with spatial features (geo_pro)",
+  "tags": ["demo", "geo_pro", "spatial"],
+  "datasets": [
+    {
+      "id": "ds_listings",
+      "connector": "csv",
+      "uri": "samples/housing-listings-demo.csv",
+      "label": "demo · housing listings"
+    },
+    {
+      "id": "ds_schools",
+      "connector": "csv",
+      "uri": "samples/housing-schools-demo.csv",
+      "label": "demo · housing schools"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_listings",
+      "step": "passthrough",
+      "inputs": {"in": {"port": "out", "ref": "ds_listings"}},
+      "params": {},
+      "ui": {"x": 80, "y": 100, "label": "🏠 Listings"}
+    },
+    {
+      "id": "n_schools",
+      "step": "passthrough",
+      "inputs": {"in": {"port": "out", "ref": "ds_schools"}},
+      "params": {},
+      "ui": {"x": 80, "y": 320, "label": "🏫 Schools"}
+    },
+    {
+      "id": "n_h3",
+      "step": "geohash_cell",
+      "inputs": {"in": {"port": "out", "ref": "n_listings"}},
+      "params": {
+        "latColumn": "latitude",
+        "lonColumn": "longitude",
+        "system": "h3",
+        "precision": 7,
+        "outputColumn": "h3_cell"
+      },
+      "ui": {"x": 320, "y": 100, "label": "🌐 H3 cell"}
+    },
+    {
+      "id": "n_h3_agg",
+      "step": "group_aggregate",
+      "inputs": {"in": {"port": "out", "ref": "n_h3"}},
+      "params": {
+        "groupBy": ["h3_cell"],
+        "aggregations": [
+          {"column": "price", "op": "median", "alias": "median_price"},
+          {"column": "listing_id", "op": "count", "alias": "n_listings"}
+        ]
+      },
+      "ui": {"x": 560, "y": 100, "label": "💰 Median price per cell"}
+    },
+    {
+      "id": "n_distance",
+      "step": "vincenty_distance",
+      "inputs": {"in": {"port": "out", "ref": "n_listings"}},
+      "params": {
+        "lat1Column": "latitude",
+        "lon1Column": "longitude",
+        "lat2Column": "school_lat",
+        "lon2Column": "school_lon",
+        "outputColumn": "school_distance_m",
+        "outputBearing": false
+      },
+      "ui": {"x": 320, "y": 280, "label": "🌍 Distance to school"}
+    },
+    {
+      "id": "n_heatmap",
+      "step": "export_to_map",
+      "inputs": {"in": {"port": "out", "ref": "n_listings"}},
+      "params": {
+        "mode": "heat",
+        "format": "separate_columns",
+        "lat_col": "latitude",
+        "lon_col": "longitude",
+        "color_scale": "OrRd",
+        "title": "Listing density heatmap",
+        "format_out": "html"
+      },
+      "ui": {"x": 880, "y": 100, "label": "🗺 Heat overlay"}
+    },
+    {
+      "id": "n_arc",
+      "step": "export_to_map",
+      "inputs": {"in": {"port": "out", "ref": "n_distance"}},
+      "params": {
+        "mode": "arc",
+        "format": "separate_columns",
+        "origin_lat_col": "latitude",
+        "origin_lon_col": "longitude",
+        "dest_lat_col": "school_lat",
+        "dest_lon_col": "school_lon",
+        "marker_color": "#10b981",
+        "title": "Listing → nearest school arcs",
+        "format_out": "html"
+      },
+      "ui": {"x": 880, "y": 280, "label": "🗺 Arc map"}
+    }
+  ],
+  "outputs": [
+    {"id": "o_h3", "name": "h3_density", "from": {"port": "out", "ref": "n_h3_agg"}},
+    {"id": "o_heat", "name": "heatmap", "from": {"port": "out", "ref": "n_heatmap"}},
+    {"id": "o_arc", "name": "arcs", "from": {"port": "out", "ref": "n_arc"}}
+  ]
+}

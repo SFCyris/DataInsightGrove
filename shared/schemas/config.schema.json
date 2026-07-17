@@ -15,7 +15,7 @@
       "additionalProperties": false,
       "properties": {
         "host":      { "type": "string",  "default": "127.0.0.1" },
-        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8090 },
+        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8190 },
         "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 8443 }
       }
     },
@@ -26,7 +26,7 @@
       "additionalProperties": false,
       "properties": {
         "host":      { "type": "string",  "default": "127.0.0.1" },
-        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3000 },
+        "port":      { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3100 },
         "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 3443 }
       }
     },

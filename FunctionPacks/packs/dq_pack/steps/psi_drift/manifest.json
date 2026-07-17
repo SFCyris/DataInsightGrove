@@ -1,0 +1,31 @@
+{
+  "id": "psi_drift",
+  "version": "1.0.0",
+  "label": "🛡 PSI drift score",
+  "description": "Population Stability Index — measures how much a column's distribution has drifted between two reference partitions (e.g. baseline vs. current). PSI < 0.1 = stable; 0.1-0.25 = some drift; > 0.25 = significant drift requiring investigation. Splits the column into bins of the BASELINE partition then compares actual rates.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "value": {
+      "type": "column_ref", "label": "Value column",
+      "columnFrom": "in", "required": true,
+      "columnTypes": ["integer", "double"]
+    },
+    "partition": {
+      "type": "column_ref", "label": "Partition column", "columnFrom": "in", "required": true,
+      "help": "Categorical column with exactly 2 distinct values (e.g. baseline/current)."
+    },
+    "n_bins": {
+      "type": "integer", "label": "Number of bins",
+      "default": 10, "min": 2, "max": 50
+    }
+  },
+  "preview": { "rowImpact": "may_reduce", "schemaImpact": "rebuilds" },
+  "tags": ["dq", "drift", "monitoring"],
+  "aliases": ["population stability", "drift", "psi"],
+  "requires": [{"kind": "numeric"}, {"kind": "any"}]
+}

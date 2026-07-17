@@ -38,7 +38,7 @@ describe("RunOut shape — contract with backend", () => {
   });
 
   it("nanOrigins entries match the documented shape", () => {
-    // Per internal/proposals/NULL_AND_NAN_DISPLAY.md:
+    // The documented nanOrigins entry shape is:
     //   { column, cause, count, row_indices, truncated, source_column? }
     const run: RunOut = {
       id: "r",

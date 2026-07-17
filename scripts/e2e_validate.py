@@ -8,7 +8,7 @@ What this does:
   3. Records pass/fail per step + a one-line reason on failure.
   4. Cleans up.
 
-Run while the DIG backend is up (default :8090):
+Run while the DIG backend is up (default :8190):
     python3 scripts/e2e_validate.py
 
 Exit code 0 if all steps pass, 1 otherwise. Prints a final summary table.
@@ -40,7 +40,7 @@ def _resolve_api_url() -> str:
         cfg = resolve()
         return f"http://{cfg['api']['host']}:{cfg['api']['port']}"
     except Exception:
-        return "http://127.0.0.1:8090"
+        return "http://127.0.0.1:8190"
 
 
 API = _resolve_api_url()

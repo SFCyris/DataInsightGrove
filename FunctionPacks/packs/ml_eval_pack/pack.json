@@ -1,0 +1,13 @@
+{
+  "id": "ml_eval_pack",
+  "version": "0.2.0",
+  "label": "🧪 ML evaluation",
+  "description": "Train/test/cross-validation splits, metrics, and diagnostic plots for classification and regression. Includes ROC, confusion matrix, gain + lift charts for marketing-uplift / churn-targeting deliverables, and calibration curve for probability quality.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["train_test_split", "kfold_split", "model_metrics", "confusion_matrix", "roc_curve", "gain_chart", "lift_chart", "calibration_curve"],
+  "connectors": [],
+  "pythonRequirements": ["scikit-learn>=1.3", "matplotlib>=3.8"]
+}

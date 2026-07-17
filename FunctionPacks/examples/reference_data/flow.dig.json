@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "id": "reference_data_demo",
+  "name": "\ud83d\udcda reference_data \u00b7 canonicalise locale columns",
+  "description": "User table with country / currency / timezone in mixed input forms (alpha-2, alpha-3, numeric, name). Each lookup adds canonical fields and a validity flag for the bad rows.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "user locales (mixed forms)"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_country",
+      "step": "country_lookup",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "country_column": "country_input"
+      },
+      "ui": {
+        "x": 280,
+        "y": 80,
+        "label": "Country lookup"
+      }
+    },
+    {
+      "id": "n_currency",
+      "step": "currency_lookup",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_country"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "currency_column": "currency_input"
+      },
+      "ui": {
+        "x": 540,
+        "y": 80,
+        "label": "Currency lookup"
+      }
+    },
+    {
+      "id": "n_tz",
+      "step": "timezone_resolve",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "n_currency"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "timezone_column": "timezone_input"
+      },
+      "ui": {
+        "x": 800,
+        "y": 80,
+        "label": "Timezone resolve"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o",
+      "name": "users_canonical",
+      "from": {
+        "ref": "n_tz"
+      }
+    }
+  ]
+}

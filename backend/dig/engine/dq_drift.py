@@ -1,7 +1,6 @@
 """Profile drift + row-count anomaly detectors.
 
-Phase-A-pro #7 follow-up: now that the `check_data` step ships,
-DIG also detects two implicit data-quality signals automatically
+Now that the `check_data` step ships, DIG also detects two implicit data-quality signals automatically
 (no user configuration required):
 
 1. **Profile drift** — when a pipeline node's output schema changes
@@ -16,15 +15,6 @@ Both detectors run inside `JobManager._emit_drift_events` after a run
 succeeds, alongside the existing `_emit_check_violations` call. Same
 delivery path: events go through the rule engine and surface as in-app
 notifications.
-
-Patent posture (see `docs/PRIOR_ART_MAP.md` § 11):
-  - We use ONLY classical statistics — z-score against historical
-    mean / stddev. No ML. Z-scores are textbook content (1900s-era).
-  - Schema-diff is a simple set comparison, prior art back to GNU
-    `diff` (1974).
-  - The free-tier individual scope explicitly avoids replicating
-    Monte Carlo / Datadog / Bigeye / Anomalo proprietary mechanisms
-    (autothreshold ML, statistical-band fitting, root-cause inference).
 """
 from __future__ import annotations
 

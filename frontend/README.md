@@ -1,6 +1,6 @@
 # DIG frontend
 
-The browser half of [DataInsightGrove](../README.md) — the editor, grid, canvas, settings UI, and everything else you see when you open `http://localhost:3000`.
+The browser half of [DataInsightGrove](../README.md) — the editor, grid, canvas, settings UI, and everything else you see when you open `http://localhost:3100`.
 
 This README is for contributors and curious developers. **End users don't need to read it** — `./install.sh` and `./start.sh` from the repo root take care of everything below.
 
@@ -20,11 +20,11 @@ restarting the API):
 
 ```bash
 cd frontend
-pnpm dev --port 3000 --hostname 127.0.0.1
+pnpm dev --port 3100 --hostname 127.0.0.1
 ```
 
 The dev server expects an API at `NEXT_PUBLIC_DIG_API` (default
-`http://127.0.0.1:8090`).
+`http://127.0.0.1:8190`).
 
 ## Layout
 

@@ -60,8 +60,8 @@ After install, "DataInsightGrove" appears in your GNOME / KDE / XFCE application
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--api-port N` | `8090` | Backend port. Falls back to `DIG_API_PORT` env then config. |
-| `--web-port N` | `3000` | Frontend port. |
+| `--api-port N` | `8190` | Backend port. Falls back to `DIG_API_PORT` env then config. |
+| `--web-port N` | `3100` | Frontend port. |
 | `--api-host H` | `127.0.0.1` | Bind address for the API (use `0.0.0.0` to expose on LAN). |
 | `--web-host H` | `127.0.0.1` | Bind address for the web. |
 | `--data-dir PATH` | `<repo>/data` | Where uploads / cached parquet / runs go. |
@@ -83,8 +83,8 @@ Schema: [`shared/schemas/config.schema.json`](../shared/schemas/config.schema.js
 ```json
 {
   "version": 1,
-  "api":  { "host": "127.0.0.1", "port": 8090 },
-  "web":  { "host": "127.0.0.1", "port": 3000 },
+  "api":  { "host": "127.0.0.1", "port": 8190 },
+  "web":  { "host": "127.0.0.1", "port": 3100 },
   "dataDir": null,
   "logDir": null,
   "browserPreviewSampleRows": 100000
@@ -159,14 +159,14 @@ The script:
 Double-click the bundle (or `cp -R` it to `/Applications/`):
 
 - Splash window: "🌳 Starting DataInsightGrove…" while the same `dig-start.sh` runs.
-- Browser window: WKWebView pointing at whatever the resolved config says (default `http://127.0.0.1:3000`).
+- Browser window: WKWebView pointing at whatever the resolved config says (default `http://127.0.0.1:3100`).
 - Cmd-Q: runs `dig-stop.sh`. **Exception:** if the app detected DIG was *already* running before launch (start exited with code 2 = port busy), it doesn't stop anything on quit — assumes you want to keep your standalone session.
 
-The Mac app **only** wraps the same shell scripts. No Mac-specific config, no Mac-specific data layout, no Mac-only features beyond the AppKit window itself. Linux users use the scripts directly and open `http://localhost:3000` in any browser.
+The Mac app **only** wraps the same shell scripts. No Mac-specific config, no Mac-specific data layout, no Mac-only features beyond the AppKit window itself. Linux users use the scripts directly and open `http://localhost:3100` in any browser.
 
 ## 🔐 Authentication + threat model
 
-DIG defaults to a **single-user, loopback-only** posture: `127.0.0.1:8090` for the API and `127.0.0.1:3000` for the web UI. In that mode no authentication is required because nothing reaches DIG except your own browser.
+DIG defaults to a **single-user, loopback-only** posture: `127.0.0.1:8190` for the API and `127.0.0.1:3100` for the web UI. In that mode no authentication is required because nothing reaches DIG except your own browser.
 
 If you want to expose DIG beyond loopback — running it on a remote dev box, a LAN-shared workstation, a VPN — you **must** set a bearer token first:
 
@@ -194,7 +194,7 @@ WebSocket upgrades carry the token via `?token=...` because browsers can't relia
 ### What this defends against
 
 - Anyone on the LAN browsing your IP and finding a wide-open data preparation tool
-- Cross-origin scripts: CORS is locked to the configured `DIG_CORS_ORIGINS` (default `http://localhost:3000,http://127.0.0.1:3000`)
+- Cross-origin scripts: CORS is locked to the configured `DIG_CORS_ORIGINS` (default `http://localhost:3100,http://127.0.0.1:3100`)
 - SQL-injection via predicate/expression params: `assert_safe_expr()` in [`backend/dig/engine/step.py`](../backend/dig/engine/step.py) denies `ATTACH`, `COPY`, file IO, and statement separators inside user-authored SQL fragments
 - Path traversal via dataset URI: both `/runs/{id}/lineage` and `/runs/{id}/artifact` confine the resolved path under `data_dir()`
 

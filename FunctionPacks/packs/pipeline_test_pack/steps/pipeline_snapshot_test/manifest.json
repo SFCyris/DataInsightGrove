@@ -1,0 +1,30 @@
+{
+  "id": "pipeline_snapshot_test",
+  "version": "1.0.0",
+  "label": "📸 Pipeline snapshot test",
+  "description": "Compute a content hash + row/column count snapshot for the input frame. Compare against an expected snapshot (provided as a JSON string in params). Pass-through when matched; raises an error with the diff when not. Use as a pipeline regression guard.",
+  "category": "validate",
+  "engine": { "primary": "polars", "browser": "none", "deterministic": true },
+  "io": {
+    "inputs": { "min": 1, "max": 1, "ports": ["in"] },
+    "outputs": { "min": 1, "max": 1, "ports": ["out"] }
+  },
+  "params": {
+    "expectedSnapshot": {
+      "type": "string",
+      "label": "Expected snapshot JSON",
+      "help": "JSON object {\"rows\": N, \"cols\": M, \"hash\": \"...\"} produced by a previous run. Leave blank on first run; the artifact emits the snapshot to copy back into this param."
+    },
+    "tolerance": {
+      "type": "number",
+      "label": "Row count tolerance (%)",
+      "default": 0.0,
+      "min": 0.0, "max": 50.0,
+      "help": "0 = exact match. 5 = allow ±5% row count drift before failing."
+    }
+  },
+  "preview": { "rowImpact": "preserves", "schemaImpact": "preserves" },
+  "tags": ["test", "regression", "snapshot", "validate"],
+  "aliases": ["regression test", "snapshot assertion", "data contract test"],
+  "requires": []
+}

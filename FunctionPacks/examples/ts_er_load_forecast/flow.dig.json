@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "ts_er_load_forecast_demo",
+  "name": "\ud83d\ude91 Healthcare \u00b7 ER load forecast (next 7 days)",
+  "description": "Forecast hourly admissions for the next 168 hours (1 week) using Holt-Winters with a 24-hour seasonal period. Surfaces the night-shift peak and the weekend bump.",
+  "datasets": [
+    {
+      "id": "{{DATASET_ID}}",
+      "connector": "parquet",
+      "uri": "{{DATASET_URI}}",
+      "label": "28 days of hourly ER admissions with daily + weekly seasonality"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "n_decomp",
+      "step": "seasonal_decompose",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "ts",
+        "value_column": "patients_admitted",
+        "model": "additive",
+        "period": 24,
+        "render": true,
+        "title": "ER hourly admissions \u00b7 decomposition"
+      },
+      "ui": {
+        "x": 300,
+        "y": 80,
+        "label": "Decompose \u00b7 daily 24h"
+      }
+    },
+    {
+      "id": "n_forecast",
+      "step": "forecast",
+      "stepVersion": "1.0.0",
+      "inputs": {
+        "in": {
+          "ref": "{{DATASET_ID}}"
+        }
+      },
+      "outputs": [
+        "out"
+      ],
+      "params": {
+        "time_column": "ts",
+        "value_column": "patients_admitted",
+        "horizon": 168,
+        "method": "holt_winters",
+        "seasonal_period": 24,
+        "render": true,
+        "title": "ER load forecast \u00b7 next 7 days"
+      },
+      "ui": {
+        "x": 300,
+        "y": 240,
+        "label": "Forecast \u00b7 168h ahead"
+      }
+    }
+  ],
+  "outputs": []
+}

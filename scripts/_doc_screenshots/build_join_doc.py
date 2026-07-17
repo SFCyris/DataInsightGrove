@@ -14,8 +14,8 @@ Then Playwright drives the editor and captures + VALIDATES screenshots.
 Each capture asserts expected DOM strings before saving the PNG so a
 silently broken state can't make it into the docs.
 
-Run with the backend up on http://127.0.0.1:8090 and the frontend on
-http://localhost:3000:
+Run with the backend up on http://127.0.0.1:8190 and the frontend on
+http://localhost:3100:
 
     backend/.venv/bin/python scripts/_doc_screenshots/build_join_doc.py
 """
@@ -31,8 +31,8 @@ from urllib.error import HTTPError
 from playwright.async_api import Page, async_playwright
 
 
-_API = "http://127.0.0.1:8090"
-_FE = "http://localhost:3000"
+_API = "http://127.0.0.1:8190"
+_FE = "http://localhost:3100"
 _OUT = Path("docs/images/joins")
 _VIEWPORT = {"width": 1600, "height": 1000}
 

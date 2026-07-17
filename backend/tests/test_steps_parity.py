@@ -1,4 +1,4 @@
-"""Parity tests for the 6 Phase-2 steps.
+"""Parity tests for the 6 core steps.
 
 For each step, we compile a small SQL using the step's `to_sql()` and execute
 it against an in-memory DuckDB. The expected output is golden — defined inline.

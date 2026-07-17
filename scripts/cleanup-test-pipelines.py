@@ -46,7 +46,7 @@ def _default_api_url() -> str:
         # Belt-and-suspenders fallback if dig_config can't be imported (e.g.
         # script invoked from outside the repo). Matches DEFAULTS in both
         # backend/dig/_settings.py and scripts/dig_config.py.
-        return "http://127.0.0.1:8090"
+        return "http://127.0.0.1:8190"
 
 
 API_DEFAULT = _default_api_url()

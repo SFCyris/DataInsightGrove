@@ -1,0 +1,13 @@
+{
+  "id": "causal_inference",
+  "version": "0.1.0",
+  "label": "🔬 Causal Inference",
+  "description": "Causal-inference toolkit: propensity score matching, difference-in-differences, regression discontinuity, instrumental variables, synthetic control. The standard quasi-experimental designs.",
+  "author": "DataInsightGrove",
+  "license": "AGPL-3.0",
+  "homepage": "https://github.com/SFCyris/EE-DataInsightGrove",
+  "minDigVersion": "0.10.0",
+  "steps": ["propensity_score_matching", "diff_in_diff", "regression_discontinuity", "instrumental_variables", "synthetic_control"],
+  "connectors": [],
+  "pythonRequirements": ["statsmodels>=0.14", "scikit-learn>=1.3", "scipy>=1.11"]
+}
