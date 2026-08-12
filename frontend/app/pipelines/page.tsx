@@ -217,13 +217,18 @@ export default function PipelinesPage() {
               or seed the workspace with four demo pipelines you can
               poke at.
             </p>
-            <a
-              href="/?tour=replay"
+            {/* Was `/?tour=replay` — nothing in the app ever read that param
+                (the tour is gated purely on localStorage), so the only CTA in
+                the highest-stakes empty state did nothing but navigate home.
+                Point at Home explicitly, where both the demo-seed button and
+                the tour actually live, and label it for what it does. */}
+            <Link
+              href="/"
               className="inline-block text-xs px-3 py-1.5 rounded-md border border-border hover:bg-muted"
-              title="Replay the welcome tour from the home page"
+              title="Home has the demo-seed button and the welcome tour"
             >
-              🧭 Replay welcome tour
-            </a>
+              🌱 Seed demo pipelines from Home
+            </Link>
           </div>
         )}
         {list.data && list.data.length > 0 && visiblePipelines.length === 0 && (

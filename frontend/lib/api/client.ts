@@ -474,11 +474,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
+    // Read the body ONCE as text, then try to parse it. `res.json()` marks
+    // the body consumed before it parses, so a `catch { res.text() }`
+    // fallback throws `TypeError: Body is unusable` *from inside the catch*
+    // — uncaught, and it replaces the real error for every non-JSON
+    // response (proxy 502 HTML, empty 500, backend down). Those are exactly
+    // the cases where the user most needs a truthful message.
+    const raw = await res.text().catch(() => "");
     let detail: unknown;
     try {
-      detail = await res.json();
+      detail = raw ? JSON.parse(raw) : null;
     } catch {
-      detail = await res.text();
+      detail = raw;
     }
     // Surface the backend's actual error in `Error.message` rather than just
     // "400 Bad Request". FastAPI puts the message in `detail` (string for
@@ -804,6 +811,12 @@ export const api = {
     terminal?: string,
     signal?: AbortSignal,
     terminalViewMode?: "matched" | "unmatched_left" | "unmatched_right",
+    /** The document currently on screen. Sent so the preview reflects the
+     *  user's in-flight edits instead of the last autosaved version — the
+     *  preview debounce (350ms) fires before the save debounce (500ms), so
+     *  compiling from storage renders the previous edit. Omit to compile the
+     *  stored document. */
+    document?: unknown,
   ) => {
     const q = new URLSearchParams({
       sample_rows: String(sampleRows ?? 100000),
@@ -821,7 +834,16 @@ export const api = {
       files: Array<{ name: string; url: string; format: string }>;
       terminal: string | null;
       sampleRows: number | null;
-    }>(`/pipelines/${id}/compile?${q}`, { method: "POST", signal });
+    }>(`/pipelines/${id}/compile?${q}`, {
+      method: "POST",
+      signal,
+      ...(document !== undefined
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ document }),
+          }
+        : {}),
+    });
   },
   /** Run a pipeline preview on the backend DuckDB and return rows directly.
    *  Used as a transparent fallback when the WASM build can't run the SQL —

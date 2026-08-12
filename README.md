@@ -4,19 +4,19 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 1.0.0](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 [![Download](https://img.shields.io/github/v/release/SFCyris/DataInsightGrove?include_prereleases&sort=semver&label=download&color=2ea44f)](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
 > **⬇ [Download the latest release](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip)** — unzip, then run `./install.sh`. No git clone required. &nbsp;·&nbsp; [Release notes](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
-> 🎉 **1.0.0.** The architecture, schemas, and protocols are stable. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🎉 **1.0.1.** The architecture, schemas, and protocols are stable. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 
 Drop in a CSV — or a `.h5`, `.fits`, `.mat`, `.parquet`. Shape it visually. Press play. Plugin-first ("drop a folder, get a step"), yours.
 
-![DIG home — DataInsightGrove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the v1.0.0 build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
+![DIG home — DataInsightGrove · Data preparation for the rest of us. Three-card start path (Ingest / Shape / Run), with the build chip in the header and the backend / web port footer.](docs/images/01-mac-app-hero.png)
 
 
 <table>
@@ -63,7 +63,7 @@ Spreadsheet-grade direct manipulation, with a real pipeline behind every move. T
   - *Network + database*: https · rest_api (auth + JSONPath + pagination) · sqlite · postgres · mysql · jdbc.
   - *Warehouse + reverse-ETL* (export targets — write-only sinks for `export_to_db`): snowflake · bigquery · sheets (Google Sheets). Plus **dbt** for running models and reading their materialised output. To *read* from Snowflake / BigQuery use the JDBC connector or a warehouse query.
 - **AI assistant** (optional, bring-your-own provider — local Ollama, OpenAI-compatible, or Anthropic): **Explain** the pipeline · **Suggest the next step** from a plain-English goal · **Suggest multi-step transform routes** for a focused dataset · **Suggest visualizations** with pre-populated params · **Explain a dataset** (domain inference + per-column meanings) · **Fix** SQL expressions in filter / derive · **Generate** a connector or step from a description (with static-lint safety check before install). **Optional keep-alive ping** keeps local Ollama from unloading idle models. See [`docs/AI_FEATURES.md`](docs/AI_FEATURES.md).
-- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. Per-pipeline **🧪 sampling** (head / tail / random / systematic) controls how the live preview draws rows — see [`docs/SAMPLING.md`](docs/SAMPLING.md). **Transparent backend fallback** when DuckDB-WASM can't run the SQL (e.g. spatial GEOMETRY) — preview routes to backend, status badge marks it.
+- **Live editor** with auto-recompute, column-action menu, ⌘+click cell-to-filter, drag-to-reorder pills, undo/redo, multi-session sync via WebSocket + ETag conflicts. Per-pipeline **🧪 sampling** (head / tail / random / systematic) controls how the live preview draws rows — see [`docs/SAMPLING.md`](docs/SAMPLING.md). **Transparent execution** — every step previews the same way whether it runs in the browser or on the backend; DIG routes it for you and the preview just shows up.
 - **💾 Save / 📋 Save As** — explicit labelled checkpoints (kept up to 50) on top of silent autosaves (last 5 only). The history view shows the saves you intended, not every keystroke. ⌘S / ⌘⇧S keyboard shortcuts. See [`docs/SAVE_AND_VERSIONS.md`](docs/SAVE_AND_VERSIONS.md).
 - **🪆 Sub-pipelines** — any pipeline can be **published as a reusable step** that other pipelines install from the regular picker. Pinned-by-default versioning (consumers stay on a known version until they Upgrade), per-param exposure for customisation, automatic cycle detection at save and run-start. See [`docs/SUB_PIPELINES.md`](docs/SUB_PIPELINES.md).
 - **Rule-based hints** in a side panel — deterministic data-preparation suggestions surfaced from the column profile (not ML predictions, not selection-driven, not a ranked card stack). One-click composites for common patterns (e.g. *(LATITUDE, LONGITUDE) → pack & cast to geographic*).

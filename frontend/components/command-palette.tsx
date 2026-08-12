@@ -191,7 +191,7 @@ export function CommandPalette() {
       },
       {
         id: "act:upload-dataset", group: "Create", label: "Upload a dataset", emoji: "📥",
-        run: () => router.push("/datasets/new"),
+        run: () => router.push("/datasets"),
       },
       {
         id: "act:copy-link", group: "Actions",

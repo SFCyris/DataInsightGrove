@@ -73,6 +73,27 @@ export default function RootLayout({
       // deeper.
       suppressHydrationWarning
     >
+      <head>
+        {/* Theme, applied before first paint.
+
+            The theme lives in localStorage and was previously applied by
+            `applyTheme()` after hydration. Server HTML therefore always
+            painted the light `:root` palette first, so every cold load for a
+            dark-mode user flashed white (a ~20:1 luminance jump) before
+            swapping. A blocking inline script in <head> is the standard fix:
+            it runs before the browser paints anything, so the correct palette
+            is in place for the very first frame.
+
+            Kept deliberately tiny and dependency-free — it must not throw
+            (private-mode localStorage access can) or it would block render.
+            `colorScheme` is set too so native controls and scrollbars match
+            on that first frame. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t="system";var raw=localStorage.getItem("dig.settings.v1");if(raw){var v=JSON.parse(raw);if(v&&v.theme)t=v.theme;}var d=t==="dark"||(t==="system"&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.style.colorScheme=d?"dark":"light";}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {/* Keyboard skip-link: first focusable element on every page,
             invisible until tabbed-to, then jumps past nav into content. */}

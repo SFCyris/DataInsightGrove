@@ -664,6 +664,18 @@ def materialize_polars_ancestors(
     return materialized
 
 
+def _is_local_file_uri(uri: str) -> bool:
+    """True when ``uri`` addresses the local filesystem.
+
+    Bare paths and ``file://`` URIs are local; anything carrying another
+    scheme (``postgres://``, ``s3://``, ``https://``, …) is remote and is
+    the connector's own business. Windows drive letters (``C:\\...``) parse
+    as a single-character scheme, so treat those as local too.
+    """
+    scheme = urlparse(uri).scheme
+    return scheme in ("", "file") or len(scheme) == 1
+
+
 def _run_one_output(
     con: duckdb.DuckDBPyConnection,
     p: Pipeline,
@@ -747,6 +759,17 @@ def _run_one_output(
     if o.sink is not None:
         sink_connector = connectors().get(o.sink.connector)
         import polars as pl
+
+        # Guard the write target before the connector opens it. `sink.uri` is
+        # a free-form string carried in the pipeline document, so it arrives
+        # unvalidated from an imported .dig.json or a forked template — and
+        # every file connector's `write` truncates unconditionally. Only
+        # local file targets are checkable here; remote connectors (postgres,
+        # snowflake, …) carry their own credentials and are out of scope.
+        if _is_local_file_uri(o.sink.uri):
+            from dig.engine.uri_safety import assert_write_target_safe
+
+            assert_write_target_safe(o.sink.uri)
 
         df = pl.read_parquet(out_path)
         sink_connector.write(df, o.sink.uri, o.sink.options)

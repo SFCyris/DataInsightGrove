@@ -46,7 +46,7 @@ const WORKFLOW: Array<{
     n: "3",
     emoji: "▶️",
     title: "Run",
-    body: "Preview on a sample in your browser (DuckDB-WASM, instant) — or run on the backend over the full dataset and write Parquet.",
+    body: "See results instantly on a sample as you shape — then run over the full dataset and write Parquet.",
     href: "/pipelines",
     cta: "Run a pipeline",
   },

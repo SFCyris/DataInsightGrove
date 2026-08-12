@@ -72,6 +72,10 @@ export async function previewPipeline(
      *  flipped to show only the unmatched left or right rows (anti-*).
      *  No-op for non-join terminals. */
     terminalViewMode?: "matched" | "unmatched_left" | "unmatched_right";
+    /** The document as it currently stands in the editor. Passed through to
+     *  the compile endpoint so the preview reflects in-flight edits rather
+     *  than the last autosaved version. Omit to compile the stored doc. */
+    document?: unknown;
   } = {},
 ): Promise<PreviewResult> {
   const sampleRows = Math.max(1, Math.floor(Number(opts.sampleRows) || 100_000));
@@ -87,6 +91,7 @@ export async function previewPipeline(
   try {
     compile = await api.fetchCompile(
       pipelineId, sampleRows, opts.terminal, opts.signal, opts.terminalViewMode,
+      opts.document,
     );
   } catch (err) {
     if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");

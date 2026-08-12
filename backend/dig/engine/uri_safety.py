@@ -102,6 +102,93 @@ def assert_local_path_safe(uri_or_path: str) -> Path:
     )
 
 
+def _protected_input_roots() -> list[Path]:
+    """Directories that hold user INPUT data and DIG's own catalog.
+
+    Nothing DIG writes as pipeline output may ever land here. ``uploads/``
+    holds the user's original source files; ``datasets/`` holds the ingested
+    parquet those files were turned into; the sqlite catalog holds every
+    Pipeline, Dataset, and setting.
+    """
+    from dig.storage.files import data_dir
+
+    try:
+        root = data_dir().resolve()
+    except OSError:
+        return []
+    return [root / "uploads", root / "datasets"]
+
+
+def assert_write_target_safe(uri_or_path: str) -> Path:
+    """Resolve a WRITE target and refuse anything that would clobber input
+    data, the ingested dataset cache, or DIG's catalog database.
+
+    Read-safety (``assert_local_path_safe``) is not sufficient for writes:
+    its allow-list is the whole of ``data_dir()``, which *contains*
+    ``uploads/`` — so a sink URI pointing at a user's own source file passes
+    the read check and then truncates the file in place. "Input data is
+    sacred" (docs/ADMINISTRATION.md) has to be enforced where the bytes are
+    written, not only where they're read.
+
+    The protected roots are rejected **unconditionally** — the
+    ``DIG_EXPORT_ALLOW_ABSOLUTE`` hatch widens where output may go, it never
+    licenses destroying an input. Outside those roots the usual write
+    allow-list applies (anything under ``data_dir()``), with the hatch
+    permitting arbitrary absolute destinations on a trusted host.
+
+    Raises:
+        ValueError: if the target is a protected input path, or is outside
+            the allowed roots without the escape hatch.
+    """
+    if uri_or_path.startswith("file://"):
+        raw = urlparse(uri_or_path).path
+    else:
+        raw = uri_or_path
+
+    try:
+        path = Path(raw).expanduser().resolve(strict=False)
+    except OSError as e:
+        raise ValueError(f"unsafe write path {raw!r}: {e}") from e
+
+    # 1. Never write into the sacred input/catalog roots, hatch or not.
+    for protected in _protected_input_roots():
+        try:
+            path.relative_to(protected)
+        except ValueError:
+            continue
+        raise ValueError(
+            f"refusing to write to {raw!r}: {protected} holds source data that DIG "
+            "never overwrites. Point the output at data/outputs/ or a path outside "
+            "the DIG data directory."
+        )
+
+    # 2. Never write over the catalog database (or its WAL/journal sidecars).
+    if path.name.startswith("dig.sqlite") or path.suffix in (".sqlite", ".db"):
+        raise ValueError(
+            f"refusing to write to {raw!r}: that is a database file, not a pipeline output."
+        )
+
+    # 3. Beyond that, writes follow the same allow-list as reads. The write
+    #    hatch is DIG_EXPORT_ALLOW_ABSOLUTE (matching export_to_file), NOT
+    #    the read-oriented DIG_LOCAL_FILE_ALLOW_ABSOLUTE.
+    if os.environ.get("DIG_EXPORT_ALLOW_ABSOLUTE") == "1":
+        return path
+
+    roots = _allowed_roots()
+    for root in roots:
+        try:
+            path.relative_to(root)
+            return path
+        except ValueError:
+            continue
+
+    raise ValueError(
+        f"write path {raw!r} is outside the allowed roots ({', '.join(str(r) for r in roots)}). "
+        "Set DIG_EXPORT_ALLOW_ABSOLUTE=1 to permit writing outside the DIG data directory "
+        "on a trusted single-tenant host."
+    )
+
+
 def assert_uri_scheme_safe(uri: str, *, allowed_schemes: tuple[str, ...] = ("http", "https")) -> None:
     """Reject URIs whose scheme isn't in ``allowed_schemes``. Used by the
     HTTPS / REST connectors to block ``file://`` smuggled into a network

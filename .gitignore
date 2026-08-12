@@ -57,8 +57,13 @@ Thumbs.db
 .env.*.local
 
 # ─── Internal working notes — not part of the public source tree ───────────
-internal/
-Internal/
+# ANCHORED to the repo root on purpose. The unanchored form matched *any*
+# directory named `internal/` at any depth — including `frontend/app/internal/`,
+# a real Next.js route segment. That made the route invisible to git (so no
+# review, hook, or CI diff ever saw it) while `next build` still compiled it
+# from the working tree and served it. Keep the leading slash.
+/internal/
+/Internal/
 
 # ─── FunctionPacks — public pack library (sources + bundled reference data) ───
 !FunctionPacks/

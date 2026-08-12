@@ -20,6 +20,7 @@ import {
 import { subscribe } from "@/lib/api/ws";
 import { previewPipeline, warmDuckDb, type PreviewResult } from "@/lib/engine/dispatcher";
 import { humanizeSqlError } from "@/lib/humanize-sql-error";
+import { confirmAction } from "@/lib/confirm-toast";
 import { SuggestFix } from "@/components/canvas/suggest-fix";
 import { StepImageOrFallback } from "@/components/canvas/step-image-preview";
 import { ChartDensityWarning } from "@/components/canvas/chart-density-warning";
@@ -505,7 +506,34 @@ function isChartFirstStep(manifest: StepManifest | undefined): boolean {
   return manifest.id === "forecast" || manifest.id === "seasonal_decompose";
 }
 
+/** The single upstream ref a deleted node's successors should inherit, or
+ *  null when the node has no unambiguous upstream (a source, or a join with
+ *  several inputs — there we can't pick for the user). */
+function soleUpstreamRef(doc: PipelineDocument, nodeId: string): string | null {
+  const node = doc.nodes.find((n) => n.id === nodeId);
+  if (!node) return null;
+  const refs = Object.values(node.inputs).map((r) => r.ref);
+  const unique = Array.from(new Set(refs));
+  return unique.length === 1 ? unique[0] : null;
+}
+
+/** Remove a node, RE-WIRING its successors to its upstream where that is
+ *  unambiguous.
+ *
+ *  Previously this stripped the reference and left every downstream step with
+ *  `inputs: {}` — disconnected and uncompilable — and silently dropped any
+ *  output bound to the node, then autosaved the broken document 500ms later.
+ *  Deleting step 4 of 12 in a linear chain is a routine edit; it should not
+ *  break the eight steps after it. For the linear case (exactly one upstream)
+ *  we splice the node out. Where the upstream is ambiguous (a source node, or
+ *  a multi-input join) we keep the old disconnect behaviour — the caller
+ *  confirms first in that case.
+ */
 function removeNodeFromDoc(doc: PipelineDocument, nodeId: string): PipelineDocument {
+  const inherit = soleUpstreamRef(doc, nodeId);
+  const rewire = (ref: { ref: string }) =>
+    ref.ref === nodeId && inherit ? { ...ref, ref: inherit } : ref;
+
   return {
     ...doc,
     datasets: doc.datasets.filter((d) => d.id !== nodeId),
@@ -514,10 +542,16 @@ function removeNodeFromDoc(doc: PipelineDocument, nodeId: string): PipelineDocum
       .map((n) => ({
         ...n,
         inputs: Object.fromEntries(
-          Object.entries(n.inputs).filter(([_, ref]) => ref.ref !== nodeId),
+          Object.entries(n.inputs)
+            // Splice the deleted node out of the chain when we can; only drop
+            // the wire outright when there's nothing to inherit.
+            .filter(([_, ref]) => inherit != null || ref.ref !== nodeId)
+            .map(([port, ref]) => [port, rewire(ref)]),
         ),
       })),
-    outputs: doc.outputs.filter((o) => o.from.ref !== nodeId && o.id !== nodeId),
+    outputs: doc.outputs
+      .filter((o) => o.id !== nodeId && (inherit != null || o.from.ref !== nodeId))
+      .map((o) => (o.from.ref === nodeId && inherit ? { ...o, from: rewire(o.from) } : o)),
   };
 }
 
@@ -854,6 +888,46 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     (window as { __DIG_DIRTY__?: boolean }).__DIG_DIRTY__ = true;
   }, []);
 
+  /** Delete a node or dataset, with the safety the operation warrants.
+   *
+   *  Deleting is the most destructive edit in the editor and used to be the
+   *  one with the least recovery affordance — five call sites, no confirm, no
+   *  blast-radius count, and no Undo toast, while *adding* a step offered a
+   *  one-click Undo. `removeNodeFromDoc` now splices linear chains, so the
+   *  common case is safe and silent; we only stop the user when successors
+   *  would genuinely be left disconnected (a source, or a multi-input join,
+   *  where there is no unambiguous upstream to inherit).
+   */
+  const deleteNode = useCallback(
+    async (id: string) => {
+      if (!doc) return;
+      const successors = descendantsOf(doc, id).size;
+      const canRewire = soleUpstreamRef(doc, id) != null;
+      if (successors > 0 && !canRewire) {
+        const label = doc.nodes.find((n) => n.id === id)?.step ?? "this";
+        const ok = await confirmAction({
+          title: `Delete "${label}"?`,
+          description: `${successors} downstream step${successors === 1 ? "" : "s"} depend${
+            successors === 1 ? "s" : ""
+          } on it and will be disconnected — there's no single upstream to reconnect them to.`,
+          confirmLabel: "Delete anyway",
+        });
+        if (!ok) return;
+      }
+      const prevDoc = doc;
+      const next = removeNodeFromDoc(doc, id);
+      updateDoc(next);
+      if (focusedId === id) {
+        const lastNode = next.nodes[next.nodes.length - 1];
+        setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
+      }
+      toast.success("🗑️ Step removed", {
+        action: { label: "Undo", onClick: () => updateDoc(prevDoc) },
+      });
+    },
+    [doc, focusedId, updateDoc],
+  );
+
   const undo = useCallback(() => {
     if (undoStack.current.length === 0) return;
     setDoc((cur) => {
@@ -919,6 +993,14 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   // Both bump etag (so the WS sync still works); they only differ in how
   // the snapshot is *retained* on the server.
   const lastNodeCountRef = useRef<number>(0);
+  // Autosave circuit breaker. `saveBlocked` halts the autosave effect after a
+  // failure that a retry cannot fix; it is only ever cleared by an explicit
+  // user choice. `consecutiveSaveFailures` lets one transient failure retry
+  // before we give up and ask.
+  const [saveBlocked, setSaveBlocked] = useState<
+    { kind: "conflict" | "invalid" | "error"; message: string } | null
+  >(null);
+  const consecutiveSaveFailures = useRef(0);
   const saveMutation = useMutation({
     mutationFn: async (args: {
       next: PipelineDocument;
@@ -934,6 +1016,9 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     onSuccess: (resp, variables) => {
       setEtag(resp.etag);
       setDirty(false);
+      // A save got through — clear the circuit breaker.
+      consecutiveSaveFailures.current = 0;
+      setSaveBlocked(null);
       // Sync the window-scoped dirty flag the beforeunload handler reads.
       (window as { __DIG_DIRTY__?: boolean }).__DIG_DIRTY__ = false;
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
@@ -955,23 +1040,38 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       }
     },
     onError: (e: Error) => {
-      // Cycle errors are 409s with "Cycle detected" or "Self-reference".
-      // Show as a long-duration toast with explicit guidance — these
-      // need user intervention before any further save will succeed.
+      // CIRCUIT BREAKER. Without this the autosave effect re-arms the moment
+      // `isPending` flips false, re-PUTs with the same (still stale) etag,
+      // fails again — a save + error toast every ~500ms, forever, with the
+      // user's edits unrecoverable by any path but a reload that discards
+      // them. A save that failed for a reason the next identical attempt
+      // can't fix must STOP autosaving and hand the user a decision.
       const msg = e.message;
       const isCycle = /cycle detected|self-reference/i.test(msg);
+      const isConflict = /stale etag|conflict/i.test(msg);
+      consecutiveSaveFailures.current += 1;
+
       if (isCycle) {
-        toast.error(
-          `🔁 ${msg}\n\nTip: remove the offending sub-pipeline step or unpublish the source.`,
-          { duration: 12000 },
-        );
+        // Structural — no retry can succeed until the user edits the doc.
+        setSaveBlocked({ kind: "invalid", message: msg });
+      } else if (isConflict) {
+        // Another session advanced the etag. Retrying with ours never wins.
+        setSaveBlocked({ kind: "conflict", message: msg });
+      } else if (consecutiveSaveFailures.current >= 2) {
+        // Transient-looking but persistent (backend down, disk full, …).
+        setSaveBlocked({ kind: "error", message: msg });
       } else {
+        // First transient failure: let the effect retry once.
         toast.error(`Save failed: ${msg}`);
       }
     },
   });
   useEffect(() => {
     if (!doc || !dirty) return;
+    // Autosave is halted while a save is blocked — see the circuit breaker in
+    // onError. `saveBlocked` is cleared by an explicit user choice (keep mine /
+    // take theirs) or by fixing the document, never automatically.
+    if (saveBlocked) return;
     // Don't fire a second autosave while the previous one is still in
     // flight — the etag bump from the first save's onSuccess hasn't run
     // yet, so the second mutate would PUT with a stale etag and 409.
@@ -985,7 +1085,79 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     );
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, dirty, saveMutation.isPending]);
+  }, [doc, dirty, saveMutation.isPending, saveBlocked]);
+
+  // Surface the blocked state persistently and offer the two ways out. A
+  // transient toast is the wrong surface for "your work is not being saved",
+  // so this one never auto-dismisses and carries the actions with it.
+  useEffect(() => {
+    if (!saveBlocked) return;
+    const toastId = `save-blocked-${pipelineId}`;
+    const common = { id: toastId, duration: Infinity, closeButton: false } as const;
+
+    if (saveBlocked.kind === "conflict") {
+      toast.error("⚠️ Not saving — this pipeline changed in another session", {
+        ...common,
+        description:
+          "Your edits are still here, but they are not being saved. Choose which version wins.",
+        action: {
+          label: "Keep mine",
+          onClick: () => {
+            // Refetch bumps `etag` to the server's current value (see the
+            // seed effect's else-branch), so the next save applies our
+            // document on top instead of 409-ing forever.
+            void pipeline.refetch().then(() => {
+              consecutiveSaveFailures.current = 0;
+              setSaveBlocked(null);
+              setDirty(true);
+            });
+          },
+        },
+        cancel: {
+          label: "Take theirs",
+          onClick: () => {
+            // Force a full reseed: drop our document for the server's.
+            seededFor.current = null;
+            void pipeline.refetch().then(() => {
+              consecutiveSaveFailures.current = 0;
+              setSaveBlocked(null);
+            });
+          },
+        },
+      });
+    } else if (saveBlocked.kind === "invalid") {
+      toast.error(`🔁 Not saving — ${saveBlocked.message}`, {
+        ...common,
+        description:
+          "Remove the offending sub-pipeline step (or unpublish the source), then press Save.",
+        action: {
+          label: "Retry save",
+          onClick: () => {
+            consecutiveSaveFailures.current = 0;
+            setSaveBlocked(null);
+            setDirty(true);
+          },
+        },
+      });
+    } else {
+      toast.error("⚠️ Not saving — the server rejected the last save", {
+        ...common,
+        description: saveBlocked.message,
+        action: {
+          label: "Retry save",
+          onClick: () => {
+            consecutiveSaveFailures.current = 0;
+            setSaveBlocked(null);
+            setDirty(true);
+          },
+        },
+      });
+    }
+    return () => {
+      toast.dismiss(toastId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveBlocked, pipelineId]);
 
   // ---- Save / Save-As dialogs (explicit checkpoint + clone) ----
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -1276,6 +1448,12 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           signal: ac.signal,
           sampling: doc.metadata?.sampling as SamplingConfig | undefined,
           terminalStepId: focusedNode?.step,
+          // Compile the document on screen, not the last one saved. The
+          // preview debounce (350ms) fires before the autosave debounce
+          // (500ms), so without this every edit previews the *previous*
+          // state and then recompiles when the save bumps etag — two
+          // compiles per edit, the first one wrong.
+          document: doc,
           // Only meaningful when the focused step is a join — the
           // dispatcher / backend ignore the param otherwise.
           terminalViewMode:
@@ -2782,7 +2960,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             size="sm"
             variant="ghost"
             onClick={() => setSqlViewOpen(true)}
-            title="View compiled SQL (⌘⇧S)"
+            title="View compiled SQL"
             aria-label="View compiled SQL"
           >
             <span aria-hidden className="mr-1">{"{}"}</span> SQL
@@ -3221,21 +3399,8 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                   return out;
                 })()}
                 onSelect={setFocusedId}
-                onDelete={(id) => {
-                  const next = removeNodeFromDoc(doc, id);
-                  updateDoc(next);
-                  if (focusedId === id) {
-                    const lastNode = next.nodes[next.nodes.length - 1];
-                    setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
-                  }
-                }}
-                onRemoveDataset={(id) => {
-                  const next = removeNodeFromDoc(doc, id);
-                  updateDoc(next);
-                  if (focusedId === id) {
-                    setFocusedId(next.datasets[0]?.id ?? null);
-                  }
-                }}
+                onDelete={(id) => void deleteNode(id)}
+                onRemoveDataset={(id) => void deleteNode(id)}
                 onAddStep={handleQuickAddClick}
                 onContextMenu={(id, kind, e) => {
                   setStepCtx({ id, kind, x: e.clientX, y: e.clientY });
@@ -3394,12 +3559,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                       >
                         ✓ OK
                       </Button>
-                      <Button size="xs" variant="ghost" onClick={() => {
-                        const next = removeNodeFromDoc(doc, selectedNode.id);
-                        updateDoc(next);
-                        const lastNode = next.nodes[next.nodes.length - 1];
-                        setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
-                      }}>🗑 Delete</Button>
+                      <Button size="xs" variant="ghost" onClick={() => void deleteNode(selectedNode.id)}>🗑 Delete</Button>
                     </div>
                   </div>
                   <h3 className="text-sm font-semibold mb-1">{selectedManifest.label}</h3>
@@ -3868,12 +4028,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               setFocusedId(newId);
               toast.success(`Duplicated`);
             } else if (act === "delete") {
-              const next = removeNodeFromDoc(doc, id);
-              updateDoc(next);
-              if (focusedId === id) {
-                const lastNode = next.nodes[next.nodes.length - 1];
-                setFocusedId(lastNode?.id ?? next.datasets[0]?.id ?? null);
-              }
+              void deleteNode(id);
             } else if (act === "insert_after") {
               setFocusedId(id);
               // Open the quick-add menu near the strip

@@ -11,7 +11,7 @@ newer one?" a one-command answer.
 ./upgrade.sh --check          # is there a newer release on GitHub?
 ./upgrade.sh                  # interactive upgrade (prompts before applying)
 ./upgrade.sh --yes            # non-interactive upgrade (CI / scripted)
-./upgrade.sh --to v1.0.0     # upgrade to a specific tag
+./upgrade.sh --to v1.0.1     # upgrade to a specific tag
 ```
 
 After the script finishes, restart the backend. On boot, DIG records the
@@ -113,7 +113,7 @@ Exit codes:
 Pin a known-good version in a corporate / disconnected environment:
 
 ```bash
-./upgrade.sh --to v1.0.0 --yes
+./upgrade.sh --to v1.0.1 --yes
 ```
 
 ## Manual upgrade (without the script)
@@ -122,7 +122,7 @@ If you can't or don't want to use `upgrade.sh`:
 
 ```bash
 git fetch --tags origin
-git checkout v1.0.0          # or whichever tag
+git checkout v1.0.1          # or whichever tag
 ./backend/.venv/bin/pip install -e ./backend
 ( cd frontend && pnpm install )
 printf '0.10.0\n' > "${DIG_DATA_DIR:-./data}/.installed_version"  # OLD version — the boot rewrites it after firing the transition event

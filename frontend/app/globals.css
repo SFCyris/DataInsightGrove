@@ -43,6 +43,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Bare `rounded` is the most-used radius in the app (~205 uses). Without a
+     DEFAULT it compiled to Tailwind's hardcoded 0.25rem — outside the token
+     system entirely, immune to `--radius`, and *smaller* than `rounded-sm`,
+     which inverted the scale. Aliasing it to the sm step makes the ramp
+     monotonic and puts those 205 call sites back under `--radius`. */
+  --radius-DEFAULT: calc(var(--radius) * 0.6);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -185,4 +191,38 @@ html[data-dig-mac="true"] body {
 }
 html[data-dig-mac="true"] .dig-mac-titlebar {
   display: flex;
+}
+/* ---------------------------------------------------------------------------
+   Reduced motion — CSS half of the backstop.
+
+   `<MotionConfig reducedMotion="user">` in app/providers.tsx covers every
+   motion/react animation, but it cannot reach CSS keyframe utilities
+   (`animate-pulse`, `animate-ping`, `animate-spin`, tw-animate-css classes).
+   Those were running regardless of the OS preference — ~20 sites, including
+   full-width skeleton shimmers.
+
+   Spinners keep a slow rotation rather than freezing: a motionless spinner
+   reads as "hung". Everything else collapses to a single held state.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Keep progress affordances legible: a still spinner looks broken, so slow
+     it down instead of stopping it. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+  /* Pulses convey "in progress" through opacity only — hold them mid-state. */
+  .animate-pulse,
+  .animate-ping {
+    animation: none !important;
+    opacity: 0.7;
+  }
 }

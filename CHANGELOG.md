@@ -4,6 +4,52 @@ All notable changes to DataInsightGrove are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/) once 1.0.0 ships. Pre-1.0 releases may include breaking changes between minor versions.
 
+## [1.0.1] — 2026-07-17
+
+Correctness and accessibility fixes from a project-wide design, UX, and flow
+review. No breaking changes.
+
+### Fixed
+
+- **Editing a pipeline could stop saving without recovering.** A save that
+  failed for a reason a retry could not fix (a conflicting edit from another
+  session, a cycle in the document) re-armed the autosave immediately and
+  retried on a loop. Autosave now stops on such a failure and offers an
+  explicit choice — keep your version, take the other one, or retry.
+- **Deleting a step no longer disconnects the steps after it.** Removing a
+  step from a chain now reconnects its followers to its input. Where there is
+  no single input to reconnect to (a source, or a join with several inputs)
+  DIG asks first and says how many steps are affected. Every delete can be
+  undone from the confirmation message.
+- **The live preview now reflects the edit you just made** rather than the
+  last saved state, so changing a parameter updates the grid immediately.
+- **Pipeline output can no longer overwrite source data.** Output destinations
+  are refused if they point at uploaded sources, the ingested dataset cache,
+  or DIG's own catalog — regardless of any path-permission override.
+- **Server errors now report what actually happened.** Non-JSON responses (a
+  proxy error page, an empty response, an unreachable backend) previously
+  surfaced an unrelated internal message.
+- Fixed several links and shortcuts that led nowhere: the "upload a dataset"
+  command, the empty-pipeline-list action, and the compiled-SQL button's
+  shortcut hint.
+
+### Accessibility
+
+- The "reduce motion" system setting is now honoured throughout the app,
+  including CSS-driven animations.
+- Focus outlines meet the WCAG 1.4.11 contrast minimum in both themes
+  (previously 1.97:1 in light mode, now 4.16:1).
+- Added error screens so a failure in one view no longer blanks the page.
+
+### Changed
+
+- Dark mode is applied before the first paint, removing the white flash on
+  page load.
+- Preview settings and copy describe what they do rather than which engine
+  runs them.
+- `POST /pipelines/{id}/compile` accepts an optional `document` to compile an
+  unsaved pipeline. Omitting it keeps the previous behaviour.
+
 ## [1.0.0] — 2026-07-17
 
 First stable release of the 1.0 line. Graduates 1.0.0-rc3 with a faster

@@ -628,6 +628,18 @@ class PipelineExportOut(BaseModel):
     document: dict[str, Any]
 
 
+class CompileIn(BaseModel):
+    """Optional body for ``POST /pipelines/{id}/compile``.
+
+    ``document`` lets the editor compile the document it currently has on
+    screen rather than the last one persisted. Omit it (or send no body at
+    all) to compile the stored document — the previous, and still supported,
+    behaviour. Compiling is read-only: nothing here is written back.
+    """
+
+    document: dict[str, Any] | None = None
+
+
 class CompileOut(BaseModel):
     sql: str
     files: list[dict[str, Any]] = Field(default_factory=list)
@@ -1468,6 +1480,7 @@ async def compile_pipeline(
     sample_rows: int | None = 100_000,
     terminal: str | None = None,
     terminalViewMode: str | None = None,
+    body: CompileIn | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Compile the pipeline to SQL + virtual-file bindings for browser execution.
@@ -1488,12 +1501,21 @@ async def compile_pipeline(
     if row is None:
         raise HTTPException(404, "pipeline not found")
     try:
+        # Compile the caller's in-flight document when one is supplied, else
+        # the stored one. The editor previews on a 350ms debounce while
+        # autosave runs on 500ms, so compiling from storage renders the
+        # *previous* edit — every param change showed a stale grid until the
+        # save landed, and showed it with the same "recomputing" badge used
+        # for correct results. Passing the document also decouples preview
+        # correctness from save success entirely.
+        supplied = body.document if body is not None else None
+        source_doc = supplied if supplied is not None else (row.document or {})
         # Sub-pipeline inlining happens BEFORE validation, so the
         # validator + topological sort see a flattened DAG. The inliner
         # is a no-op for pipelines without `pipeline:<id>` steps, which
         # keeps the cost negligible for the common case.
         from dig.engine.pipeline_step_inline import inline_sub_pipelines
-        flat_doc = await inline_sub_pipelines(session, row.document or {})
+        flat_doc = await inline_sub_pipelines(session, source_doc)
         p = Pipeline.model_validate(flat_doc)
         validate(p)
         param_errs = validate_params_against_manifests(p)

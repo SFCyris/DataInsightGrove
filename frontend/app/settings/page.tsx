@@ -47,7 +47,7 @@ type SectionId =
 const NAV: { id: SectionId; emoji: string; label: string; help: string }[] = [
   { id: "appearance",  emoji: "🎨", label: "Appearance",       help: "Theme + motion (per browser)" },
   { id: "expertise",   emoji: "🌱", label: "Expertise mode",   help: "Beginner / Builder / Engineer" },
-  { id: "preview",     emoji: "🦆", label: "Browser preview",  help: "DuckDB-WASM behavior" },
+  { id: "preview",     emoji: "⚡", label: "Live preview",     help: "How the grid recomputes as you edit" },
   { id: "storage",     emoji: "📁", label: "Storage & paths",  help: "Where data lives" },
   { id: "performance", emoji: "⚡", label: "Performance",      help: "Concurrency + threads" },
   { id: "server",      emoji: "🔧", label: "Server & TLS",     help: "Ports, logs, HTTPS — needs restart" },
@@ -289,13 +289,13 @@ function ExpertiseSection() {
 function PreviewSection() {
   const settings = useSettings();
   return (
-    <Page title="🦆 Browser preview" lede="Controls the DuckDB-WASM live grid that recomputes as you edit.">
+    <Page title="⚡ Live preview" lede="Controls the live grid that recomputes as you edit.">
       <Card>
         <Field label="Auto-recompute on every edit"
-          hint="When on, the editor's grid auto-runs DuckDB-WASM on every doc change (debounced 350ms). Turn off for very slow machines.">
+          hint="When on, the editor's grid recomputes on every change (debounced 350ms). Turn off for very slow machines.">
           <Toggle on={settings.livePreview} onChange={(on) => setSettings({ livePreview: on })} />
         </Field>
-        <Field label="Sample size" hint="Rows scanned by the in-browser engine. Lower = snappier; higher = more representative.">
+        <Field label="Sample size" hint="Rows scanned for the live preview. Lower = snappier; higher = more representative.">
           <div className="flex gap-1.5 flex-wrap">
             {SAMPLE_OPTIONS.map((n) => (
               <button
@@ -1301,7 +1301,7 @@ function WebhooksSection() {
                 <option value="always">Always (success + failure)</option>
                 <option value="succeeded">On success only</option>
                 <option value="failed">On failure only</option>
-                <option value="triggered">Triggered (only from inside a flow)</option>
+                <option value="triggered">Triggered (only from inside a pipeline)</option>
               </select>
             </Field>
             <Input label="HMAC secret (optional)" placeholder="leave blank to skip signing" mono

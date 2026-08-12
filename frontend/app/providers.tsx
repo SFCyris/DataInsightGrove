@@ -1,5 +1,6 @@
 "use client";
 
+import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { QueryProvider } from "@/lib/query";
 import { useSettings, useSystemThemeWatcher } from "@/lib/settings";
@@ -19,6 +20,14 @@ function ThemeWatcher() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
+    // `reducedMotion="user"` makes every motion/react animation in the app
+    // honour the OS "reduce motion" setting — transform and layout animations
+    // are skipped to their end state while opacity/colour still cross-fade.
+    // Individual components were opting in inconsistently (roughly half did),
+    // which left full-height drawer slides and simultaneous node spring-scales
+    // running for users who had explicitly asked for less motion. This is the
+    // backstop; per-component `useReducedMotion()` checks still work on top.
+    <MotionConfig reducedMotion="user">
     <QueryProvider>
       <ThemeWatcher />
       {/* Mac-wrapper title-bar band — invisible in regular browsers (CSS
@@ -36,5 +45,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <GlobalShortcuts />
       <Toaster position="bottom-right" richColors closeButton />
     </QueryProvider>
+    </MotionConfig>
   );
 }

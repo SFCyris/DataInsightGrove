@@ -7,9 +7,13 @@ name = "dig"
 #   • frontend display         → reads /health.version (no hardcoded copy)
 # The frontend's package.json carries its own "version" only because npm
 # tooling expects the field; nothing user-facing reads it.
-version = "1.0.0"
+version = "1.0.1"
 description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
-readme = "../README.md"
+# Must resolve INSIDE this project directory — hatchling rejects a path that
+# escapes it ("Readme path must be within the project directory"), which fails
+# metadata generation and so breaks `pip install -e .` outright. Point at the
+# backend's own README rather than the repo-root one.
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Sebastian Cyris" }]

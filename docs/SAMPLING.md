@@ -251,10 +251,10 @@ transformations like `anomaly_zscore`, `rolling`, `changepoint_detection`,
 rows into the same grid. From your perspective the preview just shows
 up; whether it ran in WASM or on the backend doesn't matter.
 
-The grid surfaces a small **"via backend"** badge (`ranLocally: false`)
-so you can see where it ran if you care, but no clicking is required.
-Backend hop is typically <100ms for cached datasets so the difference
-is barely perceptible.
+The grid does not label where a preview ran — routing is an
+implementation detail, not something to act on. The backend hop is
+typically <100ms for cached datasets, so the difference is barely
+perceptible.
 
 **Visualize-category steps** (e.g. `export_to_image`) keep the inline
 **image preview** instead — the rows of `export_to_image` are just
@@ -273,7 +273,7 @@ materialises the upstream as Polars frames, runs the step's
 
 `preview-step-rows` reads `doc.metadata.sampling` and applies the
 same wrapper the browser does — so the rows you see in the grid
-under a "via backend" badge are sampled by the user's chosen method,
+routed to the backend are sampled by the user's chosen method,
 not by a hardcoded `LIMIT N`. Pre-method-parity behaviour was
 "backend always uses head"; that's gone.
 

@@ -125,10 +125,13 @@ must not do this.
    labels to hang in the UI.** Polars-only steps fed by Polars-only
    steps need a recursive ancestor materializer; that's an
    engineering job, not a UX excuse.
-4. **The only time it's OK to surface "ran on backend"** is as a
-   tiny, dismissible badge (`🌐 via backend` chip on the live grid
-   status row) for users who want to know — never as a CTA, never as
-   an error.
+4. **Never surface where a preview ran.** Execution routing is an
+   implementation detail — the system picks the engine, the user does
+   not. An earlier `🌐 via backend` chip on the live-grid status row
+   was removed for exactly this reason; do not reintroduce it, and do
+   not name engines ("DuckDB-WASM", "backend") in user-facing copy.
+   Describe outcomes ("instant preview on a sample", "runs over the
+   full dataset") instead.
 5. **For genuinely-broken states** (bad params, missing source,
    syntax error) the warning UI is correct. But "this needs polars"
    / "this is a chart step" / "this depends on an upstream polars
