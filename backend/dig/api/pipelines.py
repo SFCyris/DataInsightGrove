@@ -12,7 +12,7 @@ from typing import Any
 import polars as pl
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, load_only
 from ulid import ULID
@@ -378,8 +378,34 @@ async def update_pipeline(
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
 
+    # Apply the write ATOMICALLY against the etag we validated.
+    #
+    # The check above is a read-compare-write: two sessions that both read
+    # etag=5 both passed it and both committed etag=6, so one save silently
+    # overwrote the other — the exact lost update the etag exists to prevent.
+    # Fold the expected value into the UPDATE's WHERE clause and treat a
+    # zero rowcount as the conflict, so the database arbitrates instead of
+    # application-level timing. (Same shape as the claim in
+    # api/datasets.py:refresh_dataset.)
+    expected_etag = row.etag
+    new_etag = (expected_etag or 0) + 1
+    claim = await session.execute(
+        sa_update(PipelineRow)
+        .where(PipelineRow.id == pipeline_id, PipelineRow.etag == expected_etag)
+        .values(document=doc, etag=new_etag)
+    )
+    if claim.rowcount == 0:
+        # Someone else advanced it between our read and this write.
+        await session.rollback()
+        fresh = await session.get(PipelineRow, pipeline_id)
+        current = fresh.etag if fresh is not None else "unknown"
+        raise HTTPException(
+            409, f"stale etag (have {req.expectedEtag}, current {current})"
+        )
+    # Keep the in-session object consistent with what we just wrote, so the
+    # snapshot + response below see the new values.
     row.document = doc
-    row.etag = (row.etag or 0) + 1
+    row.etag = new_etag
     # History snapshot (deduped by document hash — UI-coord-only saves no-op).
     # `triggeredBy` defaults to "manual_save" for back-compat; the editor
     # passes "autosave" for incidental keystroke-driven saves so retention
@@ -2637,6 +2663,13 @@ async def cancel_run(
     # Cancel via that handle; the run's ``except CancelledError`` path
     # in ``_run`` flips the status to ``cancelled`` and emits the same
     # webhook + event surface as any other terminal transition.
+    # Ask the worker thread to stop at its next checkpoint. `task.cancel()`
+    # below only unwinds the awaiting coroutine — it cannot interrupt the
+    # thread running `execute`, so without this the run kept going (and kept
+    # writing to its sink) after the UI said "cancelled".
+    from dig.engine.cancellation import request_cancel
+    request_cancel(run_id)
+
     from dig.jobs.manager import jobs as _jobs
     task = _jobs._tasks.get(run_id)
     if task is None:
@@ -3091,6 +3124,27 @@ async def ws_run(ws: WebSocket, run_id: str) -> None:
     await ws.accept()
     topic = f"run:{run_id}"
     await hub.subscribe(topic, ws)
+    # Send the CURRENT state immediately. This socket only ever carried live
+    # transitions, so a client that connected late — or reconnected after a
+    # backend restart or a laptop sleep — never learned about a transition it
+    # missed. The run would finish while the editor sat on "running" forever,
+    # showing a Stop button and hiding Run until a full page reload.
+    try:
+        from dig.storage.db import SessionLocal
+        from dig.storage.models import Run as _Run
+
+        async with SessionLocal() as _s:
+            _row = await _s.get(_Run, run_id)
+        if _row is not None:
+            await ws.send_json({
+                "status": _row.status,
+                "snapshot": True,
+                **({"error": _row.error} if _row.error else {}),
+            })
+    except Exception:
+        # A failed snapshot must not take the socket down — live events still
+        # flow, and the client falls back to its polling refresh.
+        log.debug("ws_run: could not send initial snapshot for %s", run_id, exc_info=True)
     try:
         while True:
             # We accept (and ignore) incoming pings to detect disconnection.

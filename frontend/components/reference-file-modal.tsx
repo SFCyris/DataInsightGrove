@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, ApiError, type Dataset, type FsBrowseResult } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { toastError } from "@/lib/toast-error";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 
 /**
  * "Reference an existing file as a dataset" modal.
@@ -66,6 +67,10 @@ function _basenameNoExt(path: string): string {
 }
 
 export function ReferenceFileModal({ open, onClose, onCreated, initialPath = "" }: Props) {
+  // Escape closes this overlay — it previously had no handler at all,
+  // while the shortcuts cheatsheet advertised "Esc — Close any overlay".
+  // Arbitrated so only the top-most overlay reacts.
+  useEscapeToClose(open, onClose);
   const reduce = useReducedMotion();
   const qc = useQueryClient();
 

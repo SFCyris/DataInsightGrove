@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE, API_TOKEN } from "@/lib/api/client";
+import { API_BASE, getApiToken } from "@/lib/api/client";
 import { PositiveLoader } from "@/components/positive-loader";
 
 /**
@@ -79,7 +79,8 @@ export function StepImagePreview({ pipelineId, nodeId, etag, onLoaded, onError }
       // map output (text/html). The server picks the type based on the
       // step's primary artifact.
       const headers: Record<string, string> = { Accept: "image/*, text/html" };
-      if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+      const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
       const url = `${API_BASE}/pipelines/${pipelineId}/preview-step?terminal=${encodeURIComponent(nodeId)}`;
       const res = await fetch(url, { method: "POST", headers });
       if (!res.ok) {

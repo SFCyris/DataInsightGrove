@@ -68,6 +68,11 @@ export function PipelineCard({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      // The deleted pipeline is still drawn on /catalog (with edges and an
+      // "Open editor →" link that 404s) and /schedules still lists a live
+      // cron for it until these are refreshed.
+      queryClient.invalidateQueries({ queryKey: ["catalog-lineage"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
     },
   });
 

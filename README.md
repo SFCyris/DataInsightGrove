@@ -4,13 +4,13 @@
 
 [![Source](https://img.shields.io/badge/source-github.com%2FSFCyris%2FDataInsightGrove-2ea44f)](https://github.com/SFCyris/DataInsightGrove)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
-[![Version: 1.0.1](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
+[![Version: 1.0.2](https://img.shields.io/badge/version-1.0.2-blue)](https://github.com/SFCyris/DataInsightGrove/releases)
 [![Trademark: DataInsightGrove™](https://img.shields.io/badge/trademark-DataInsightGrove%E2%84%A2-orange)](TRADEMARK.md)
 [![Download](https://img.shields.io/github/v/release/SFCyris/DataInsightGrove?include_prereleases&sort=semver&label=download&color=2ea44f)](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
 > **⬇ [Download the latest release](https://github.com/SFCyris/DataInsightGrove/releases/latest/download/datainsightgrove-latest.zip)** — unzip, then run `./install.sh`. No git clone required. &nbsp;·&nbsp; [Release notes](https://github.com/SFCyris/DataInsightGrove/releases/latest)
 
-> 🎉 **1.0.1.** The architecture, schemas, and protocols are stable. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
+> 🎉 **1.0.2.** The architecture, schemas, and protocols are stable. **Comments, bug reports, and feature requests are very welcome** — open an [issue](https://github.com/SFCyris/DataInsightGrove/issues) or join a [discussion](https://github.com/SFCyris/DataInsightGrove/discussions) on GitHub.
 
 **Self-hosted, plugin-first data preparation — the same visual pipeline runs in your browser (DuckDB-WASM, instant preview) or on the backend (DuckDB, full data). AI-assisted (explain, suggest, fix) with a bring-your-own provider. Reads CSV, Excel, JSON, Parquet, plus scientific binary formats out of the box (HDF5, NumPy, FITS, NetCDF, MATLAB, Feather). ML, time-series, per-row lineage, cron-scheduled runs, and one-click `.py` / `.ipynb` export.**
 

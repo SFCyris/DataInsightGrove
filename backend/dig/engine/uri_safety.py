@@ -102,6 +102,58 @@ def assert_local_path_safe(uri_or_path: str) -> Path:
     )
 
 
+# Database extensions a pipeline output must never target. Matched casefolded.
+_DB_SUFFIXES = frozenset({".sqlite", ".sqlite3", ".db", ".duckdb", ".ddb"})
+# Sidecars — truncating a WAL/journal corrupts the database as surely as
+# truncating the main file.
+_DB_SIDECARS = ("-wal", "-shm", "-journal", ".wal")
+
+
+def _is_within(candidate: Path, root: Path) -> bool:
+    """True when ``candidate`` is inside ``root``, tolerant of the ways a real
+    filesystem differs from a string comparison.
+
+    Three normalisations, because each one alone was bypassable:
+      * the root is ``resolve()``d, so a symlinked ``uploads/`` still matches;
+      * ``samefile`` catches hardlinks/aliases for paths that already exist;
+      * the textual prefix check is casefolded, so ``UPLOADS`` matches
+        ``uploads`` on case-insensitive volumes (macOS ships one by default).
+
+    Erring toward "inside" is intentional — a false positive refuses a write,
+    a false negative destroys user data.
+    """
+    try:
+        root_resolved = root.resolve(strict=False)
+    except OSError:
+        root_resolved = root
+
+    # Exact / symlink-aware containment first.
+    for base in {root, root_resolved}:
+        try:
+            candidate.relative_to(base)
+            return True
+        except ValueError:
+            pass
+
+    # Same directory reached by a different name (alias, hardlink, case).
+    for base in {root, root_resolved}:
+        if base.exists():
+            for parent in (candidate, *candidate.parents):
+                try:
+                    if parent.exists() and parent.samefile(base):
+                        return True
+                except OSError:
+                    break
+
+    # Casefolded prefix — the case-insensitive-volume case.
+    cand_s = os.path.normcase(str(candidate)).casefold()
+    for base in {root, root_resolved}:
+        base_s = os.path.normcase(str(base)).casefold().rstrip(os.sep)
+        if cand_s == base_s or cand_s.startswith(base_s + os.sep):
+            return True
+    return False
+
+
 def _protected_input_roots() -> list[Path]:
     """Directories that hold user INPUT data and DIG's own catalog.
 
@@ -119,7 +171,7 @@ def _protected_input_roots() -> list[Path]:
     return [root / "uploads", root / "datasets"]
 
 
-def assert_write_target_safe(uri_or_path: str) -> Path:
+def assert_write_target_safe(uri_or_path: str, *, allow_database: bool = False) -> Path:
     """Resolve a WRITE target and refuse anything that would clobber input
     data, the ingested dataset cache, or DIG's catalog database.
 
@@ -145,25 +197,57 @@ def assert_write_target_safe(uri_or_path: str) -> Path:
     else:
         raw = uri_or_path
 
+    # Embedded-engine JDBC URLs name a local file: `jdbc:sqlite:/path/to.db`.
+    # Strip the prefix so the containment checks below see a real path rather
+    # than treating the whole string as a relative filename.
+    low = raw.lower()
+    for prefix in ("jdbc:sqlite:", "jdbc:duckdb:", "jdbc:h2:file:", "jdbc:h2:", "jdbc:derby:"):
+        if low.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+
     try:
         path = Path(raw).expanduser().resolve(strict=False)
     except OSError as e:
         raise ValueError(f"unsafe write path {raw!r}: {e}") from e
 
     # 1. Never write into the sacred input/catalog roots, hatch or not.
+    #
+    #    Compare CASE-INSENSITIVELY and against RESOLVED roots. `relative_to`
+    #    is an exact, case-sensitive, symlink-unaware string comparison, while
+    #    the candidate has already been `resolve()`d — so guard and filesystem
+    #    normalised differently. On a case-insensitive volume (APFS/macOS by
+    #    default, NTFS) `data/UPLOADS/x.csv` slipped past the check and the
+    #    write then landed on the real `data/uploads/x.csv`; likewise a
+    #    symlinked `uploads/` resolved to a path the unresolved root no longer
+    #    prefixed. Casefolding is deliberately over-broad: refusing a
+    #    genuinely distinct `UPLOADS/` on a case-sensitive volume costs
+    #    nothing, while allowing one destroys the user's source data.
     for protected in _protected_input_roots():
-        try:
-            path.relative_to(protected)
-        except ValueError:
-            continue
-        raise ValueError(
-            f"refusing to write to {raw!r}: {protected} holds source data that DIG "
-            "never overwrites. Point the output at data/outputs/ or a path outside "
-            "the DIG data directory."
-        )
+        if _is_within(path, protected):
+            raise ValueError(
+                f"refusing to write to {raw!r}: {protected} holds source data that DIG "
+                "never overwrites. Point the output at data/outputs/ or a path outside "
+                "the DIG data directory."
+            )
 
-    # 2. Never write over the catalog database (or its WAL/journal sidecars).
-    if path.name.startswith("dig.sqlite") or path.suffix in (".sqlite", ".db"):
+    # 2. Never write over a database file — the catalog or any other. Matched
+    #    case-insensitively, and covering the sidecars SQLite/DuckDB create
+    #    (`-wal`, `-shm`, `-journal`), since truncating those corrupts the
+    #    database just as effectively as truncating the main file.
+    name = path.name.casefold()
+    suffix = path.suffix.casefold()
+    # DIG's own catalog is never a valid write target, not even for a step
+    # whose whole job is writing databases.
+    if name.startswith("dig.sqlite"):
+        raise ValueError(
+            f"refusing to write to {raw!r}: that is DIG's own catalog database."
+        )
+    # `allow_database=True` is for export_to_db, which legitimately creates
+    # SQLite/DuckDB files. Everything else writing a .db is a mistake.
+    if not allow_database and (
+        suffix in _DB_SUFFIXES or any(name.endswith(sidecar) for sidecar in _DB_SIDECARS)
+    ):
         raise ValueError(
             f"refusing to write to {raw!r}: that is a database file, not a pipeline output."
         )

@@ -109,7 +109,7 @@ export function PipelineDoctorDialog({
             aria-modal="true"
             aria-labelledby="pipeline-doctor-title"
             ref={dialogRef}
-            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[600px] max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
+            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] w-[600px] max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
           >
             <header className="flex items-start gap-3 mb-4">
               <span className="text-3xl select-none mt-1" aria-hidden>🩺</span>

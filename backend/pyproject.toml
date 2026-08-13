@@ -7,7 +7,7 @@ name = "dig"
 #   • frontend display         → reads /health.version (no hardcoded copy)
 # The frontend's package.json carries its own "version" only because npm
 # tooling expects the field; nothing user-facing reads it.
-version = "1.0.1"
+version = "1.0.2"
 description = "DataInsightGrove™ — self-hosted, plugin-first data preparation. Backend (FastAPI + DuckDB + Polars)."
 # Must resolve INSIDE this project directory — hatchling rejects a path that
 # escapes it ("Readme path must be within the project directory"), which fails

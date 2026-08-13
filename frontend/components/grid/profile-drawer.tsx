@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import * as Plot from "@observablehq/plot";
 import { fmtInt } from "@/lib/format-number";
 
@@ -78,6 +78,7 @@ export function ProfileDrawer({
   open, onClose, columnName, columnType, columnStorage, rows, columns, annotation, onSaveAnnotation,
   onValueFilter, onRangeFilter, nanOrigins,
 }: Props) {
+  const reduce = useReducedMotion();
   const [draftNote, setDraftNote] = useState<string>("");
   const [savingNote, setSavingNote] = useState(false);
   // Reset the draft whenever a different column or annotation is loaded.
@@ -190,8 +191,15 @@ export function ProfileDrawer({
     let plot: HTMLElement | SVGElement | undefined;
     try {
       if ((t === "integer" || t === "double") && profile.min != null && profile.max != null) {
+        // Exclude nulls BEFORE coercing: `Number(null)` is 0 and
+        // `Number.isFinite(0)` is true, so every null used to land in the
+        // bucket containing zero — a phantom spike whose bar, when clicked,
+        // emitted a range filter that matched none of those rows. The stats
+        // block above already does this correctly via `nonNull`.
         const nums = rows
-          .map((r) => Number(r[columnName]))
+          .map((r) => r[columnName])
+          .filter((v) => v !== null && v !== undefined && v !== "")
+          .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
         // Hand-bin into 20 equal-width buckets so we don't fight Plot's binX types.
         const lo = profile.min!;
@@ -329,11 +337,16 @@ export function ProfileDrawer({
             role="dialog"
             aria-modal="true"
             aria-labelledby="profile-drawer-title"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
+            // Under reduced motion, motion/react skips positional keys
+            // outright, so a transform-only drawer SNAPS while its backdrop
+            // keeps fading — the panel appears/vanishes against a still-
+            // animating scrim. Cross-fade instead, matching
+            // components/lineage-panel.tsx.
+            initial={reduce ? { opacity: 0 } : { x: "100%" }}
+            animate={reduce ? { opacity: 1 } : { x: 0 }}
+            exit={reduce ? { opacity: 0 } : { x: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 36 }}
-            className="fixed top-0 right-0 bottom-0 z-50 w-[380px] bg-card border-l border-border shadow-2xl flex flex-col"
+            className="fixed top-0 right-0 bottom-0 z-50 max-w-[92vw] w-[380px] bg-card border-l border-border shadow-2xl flex flex-col"
           >
             <header className="px-4 py-3 border-b border-border flex items-center gap-3 shrink-0">
               <span className="text-2xl" aria-hidden>{TYPE_EMOJI[logical(columnType ?? "")] ?? "❔"}</span>

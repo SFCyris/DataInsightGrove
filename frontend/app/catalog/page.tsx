@@ -21,6 +21,7 @@ import "@xyflow/react/dist/style.css";
 import { motion } from "motion/react";
 
 import { catalogApi, searchApi, type CatalogNodeOut, type CatalogEdgeOut } from "@/lib/api/client";
+import { QueryError } from "@/components/query-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { PositiveLoader } from "@/components/positive-loader";
 
@@ -340,6 +341,7 @@ export default function CatalogPage() {
               <PositiveLoader variant="rendering" primary="Loading catalog…" size="md" showTimer={false} />
             </div>
           )}
+          {q.isError && <QueryError query={q} />}
           {!q.isLoading && q.data && q.data.nodes.length === 0 && (
             <div className="absolute inset-0 grid place-items-center text-center text-sm text-muted-foreground">
               <div className="flex flex-col items-center gap-3">

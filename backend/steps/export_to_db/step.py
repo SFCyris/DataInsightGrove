@@ -119,6 +119,20 @@ def _assert_db_uri_safe(uri: str, *, ctx: PolarsContext | None) -> None:
             absolute = True
         else:
             absolute = False
+        # Protected-root + catalog check runs ALWAYS, hatch or not: with
+        # `if_table_exists="replace"` this step drops and recreates the target
+        # table, so a URI pointing at DIG's own catalog would destroy every
+        # pipeline and dataset record. The previous check used
+        # `assert_local_path_safe`, whose allow-list is the whole data dir —
+        # which *contains* dig.sqlite — and it was skipped entirely when the
+        # hatch was set. `allow_database=True` keeps legitimate SQLite exports
+        # working while still refusing the catalog and the input roots.
+        if absolute:
+            from dig.engine.uri_safety import assert_write_target_safe
+            try:
+                assert_write_target_safe("/" + path_str, allow_database=True)
+            except ValueError as e:
+                raise ValueError(f"export_to_db: {e}") from e
         if absolute and _os.environ.get("DIG_EXPORT_ALLOW_ABSOLUTE") != "1":
             from dig.engine.uri_safety import assert_local_path_safe
             try:

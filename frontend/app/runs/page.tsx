@@ -21,6 +21,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 
 import { api, searchApi, type RunListItem } from "@/lib/api/client";
+import { QueryError } from "@/components/query-state";
 import { fmtDuration, fmtInt } from "@/lib/format-number";
 import { useURLState } from "@/lib/use-url-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -296,6 +297,8 @@ export default function RunsPage() {
               </tbody>
             </table>
           </div>
+        ) : runsQ.isError ? (
+          <QueryError query={runsQ} />
         ) : items.length === 0 ? (
           <div className="h-full grid place-items-center text-center text-muted-foreground">
             <div>

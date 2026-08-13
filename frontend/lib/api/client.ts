@@ -81,20 +81,68 @@ export const SSR_SAFE_API_BASE: string =
  * Bearer token for the DIG API.
  *
  * Pulled in priority order from:
- *   1. window.__DIG_TOKEN__   (runtime override — set by an enclosing app or
- *      operator, takes precedence so config can roll forward without a rebuild)
- *   2. NEXT_PUBLIC_DIG_AUTH_TOKEN  (build-time env, embedded in the bundle)
+ *   1. window.__DIG_TOKEN__          (runtime override, set by an enclosing app)
+ *   2. sessionStorage["dig.token"]   (entered by the user in this tab)
+ *   3. NEXT_PUBLIC_DIG_AUTH_TOKEN    (build-time env — DISCOURAGED, see below)
  *
  * When unset, no Authorization header is sent — fine for the default loopback
  * deployment where the backend doesn't enforce auth. When set, every fetch +
  * every WebSocket carries the token; the backend BearerAuthMiddleware checks
  * `Authorization: Bearer <token>` for fetches and `?token=<token>` for WS.
+ *
+ * SECURITY — why (3) is discouraged. `NEXT_PUBLIC_*` values are inlined as
+ * string literals into the JavaScript bundle, which is served to *anyone* who
+ * can reach the web port and is cached as an immutable static asset. In the
+ * LAN (`--global`) deployment that is precisely the population the token is
+ * meant to exclude: an unauthenticated visitor loads the page, reads the
+ * chunk, and calls the API directly. The web tier has no login of its own, so
+ * it cannot decide who deserves the token — which means it must not hand it
+ * out at all. The token now comes from the person using the browser instead
+ * (see `setApiToken`), and `scripts/dig-start.sh` no longer bakes it in.
  */
-export const API_TOKEN: string =
-  ((typeof window !== "undefined" &&
-    (window as { __DIG_TOKEN__?: string }).__DIG_TOKEN__) ||
-    process.env.NEXT_PUBLIC_DIG_AUTH_TOKEN ||
-    "").trim();
+const TOKEN_STORAGE_KEY = "dig.token";
+
+function _readToken(): string {
+  if (typeof window === "undefined") {
+    return (process.env.NEXT_PUBLIC_DIG_AUTH_TOKEN || "").trim();
+  }
+  const injected = (window as { __DIG_TOKEN__?: string }).__DIG_TOKEN__;
+  if (injected) return injected.trim();
+  try {
+    const stored = window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (stored) return stored.trim();
+  } catch {
+    /* private mode / storage denied — fall through */
+  }
+  return (process.env.NEXT_PUBLIC_DIG_AUTH_TOKEN || "").trim();
+}
+
+/** Current token. Not a module constant any more — it can be supplied at
+ *  runtime, so read it per request via `getApiToken()`. */
+let _apiToken: string = _readToken();
+
+export function getApiToken(): string {
+  return _apiToken;
+}
+
+/** Store a token for this tab and use it for subsequent requests.
+ *  `sessionStorage` (not `localStorage`) so it dies with the tab rather than
+ *  lingering on a shared machine. */
+export function setApiToken(token: string): void {
+  _apiToken = token.trim();
+  try {
+    if (typeof window !== "undefined") {
+      if (_apiToken) window.sessionStorage.setItem(TOKEN_STORAGE_KEY, _apiToken);
+      else window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    /* storage denied — the in-memory value still applies for this session */
+  }
+}
+
+// NOTE: deliberately no `export const API_TOKEN`. A module constant would
+// snapshot the token at import time and go stale the moment the user supplies
+// one — call `getApiToken()` at request time instead.
 
 export type Dataset = components["schemas"]["DatasetOut"];
 export type DatasetProfile = components["schemas"]["DatasetProfile"];
@@ -470,7 +518,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     Accept: "application/json",
     ...((init?.headers as Record<string, string>) || {}),
   };
-  if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+  const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
@@ -493,6 +542,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // this, the editor's preview-error box reads "400 Bad Request" and
     // humanizeSqlError has nothing to pattern-match.
     const msg = _extractErrorMessage(detail) ?? `${res.status} ${res.statusText}`;
+    // The backend is enforcing a token we don't have (or ours is wrong). Since
+    // the token is no longer baked into the bundle, ask the person at the
+    // browser for it. Broadcast rather than import UI here — this module is
+    // imported by non-React code too.
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dig:auth-required"));
+    }
     throw new ApiError(res.status, msg, detail);
   }
   if (res.status === 204) return undefined as T;
@@ -596,7 +652,8 @@ export const api = {
     // Multipart upload bypasses request() (which would set the wrong
      // Content-Type), so we hand-build the auth header here.
     const headers: Record<string, string> = {};
-    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
     const res = await fetch(`${API_BASE}/datasets`, {
       method: "POST", body: fd, headers,
     });
@@ -628,7 +685,8 @@ export const api = {
     const fd = new FormData();
     fd.append("file", file);
     const headers: Record<string, string> = {};
-    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
     const res = await fetch(`${API_BASE}/packs/upload`, {
       method: "POST", body: fd, headers,
     });
@@ -1034,7 +1092,8 @@ export const api = {
     if (meta.urlTemplate) fd.append("urlTemplate", meta.urlTemplate);
     if (meta.notes) fd.append("notes", meta.notes);
     const headers: Record<string, string> = {};
-    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
     const res = await fetch(`${API_BASE}/jdbc-drivers/upload`, { method: "POST", body: fd, headers });
     if (!res.ok) {
       let detail: unknown;

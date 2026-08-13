@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useDropzone } from "react-dropzone";
 import { api } from "@/lib/api/client";
+import { QueryError } from "@/components/query-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { TemplatesDialog } from "@/components/templates-dialog";
 import { HelpLink } from "@/components/help-link";
@@ -196,6 +197,7 @@ export default function PipelinesPage() {
             📚 Library
           </h2>
         </div>
+        {list.isError && <QueryError query={list} />}
         {list.data && list.data.length > 0 && (
           <LibraryToolbar
             view={libView}

@@ -148,6 +148,10 @@ class ExportToImageStep(Step):
                     f"(got {out_path}). Set DIG_EXPORT_ALLOW_ABSOLUTE=1 to override on a "
                     f"trusted host."
                 ) from e
+        # As in export_to_file: the hatch widens the destination, it does not
+        # permit destroying an input.
+        from dig.engine.uri_safety import assert_write_target_safe
+        assert_write_target_safe(str(out_path))
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Figure setup

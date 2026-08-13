@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { api, ApiError } from "@/lib/api/client";
 import { PositiveLoader } from "@/components/positive-loader";
 
@@ -32,6 +32,7 @@ interface Props {
  * a friendly hint pointing the user at the docs.
  */
 export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Props) {
+  const reduce = useReducedMotion();
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState<LineageSource[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -91,11 +92,16 @@ export function LineageDrawer({ open, onClose, runId, rowIndex, outputId }: Prop
             role="dialog"
             aria-modal="true"
             aria-label="Row lineage"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
+            // Under reduced motion, motion/react skips positional keys
+            // outright, so a transform-only drawer SNAPS while its backdrop
+            // keeps fading — the panel appears/vanishes against a still-
+            // animating scrim. Cross-fade instead, matching
+            // components/lineage-panel.tsx.
+            initial={reduce ? { opacity: 0 } : { x: "100%" }}
+            animate={reduce ? { opacity: 1 } : { x: 0 }}
+            exit={reduce ? { opacity: 0 } : { x: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 36 }}
-            className="fixed top-0 right-0 bottom-0 z-50 w-[480px] bg-card border-l border-border shadow-2xl flex flex-col"
+            className="fixed top-0 right-0 bottom-0 z-50 max-w-[92vw] w-[480px] bg-card border-l border-border shadow-2xl flex flex-col"
           >
             <header className="px-4 py-3 border-b border-border flex items-center gap-3 shrink-0">
               <span className="text-2xl" aria-hidden>🔍</span>

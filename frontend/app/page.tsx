@@ -7,7 +7,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api, API_BASE, API_TOKEN } from "@/lib/api/client";
+import { api, API_BASE, getApiToken } from "@/lib/api/client";
 import { useApiBase } from "@/lib/use-api-base";
 import { fmtVersion } from "@/lib/format-version";
 import { buttonVariants, Button } from "@/components/ui/button";
@@ -173,7 +173,8 @@ export default function Home() {
       // 401 and the user sees a generic "NetworkError" toast. Caught the
       // hard way during Pop!_OS LAN testing.
       const headers: Record<string, string> = { Accept: "application/json" };
-      if (API_TOKEN) headers.Authorization = `Bearer ${API_TOKEN}`;
+      const _tok = getApiToken();
+      if (_tok) headers.Authorization = `Bearer ${_tok}`;
 
       const url = `${API_BASE}/pipelines/seed-demo${overwrite ? "?overwrite=true" : ""}`;
       const res = await fetch(url, { method: "POST", headers });
@@ -556,7 +557,11 @@ export default function Home() {
                   aria-label={`${runningRuns.data!.items.length} ${runningRuns.data!.items.length === 1 ? "run" : "runs"} in flight, open run history`}
                 >
                   <span className="relative inline-flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75 animate-ping" />
+                    {/* Halo is decorative — under reduced motion it parks at
+                        scale(1), where the opaque dot in front of it hides it
+                        completely. Drop it and let the solid dot carry the
+                        signal, matching components/pipeline-card.tsx. */}
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75 animate-ping motion-reduce:hidden" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                   </span>
                   ▶ {runningRuns.data!.items.length} running

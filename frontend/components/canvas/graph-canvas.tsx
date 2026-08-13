@@ -74,6 +74,10 @@ interface Props {
   ) => void;
   onSelect: (id: string | null) => void;
   onUpdateDoc: (next: PipelineDocument) => void;
+  /** Delete a node/dataset by id. Routed to the editor's guarded delete so the
+   *  canvas gets the same confirm / auto-rewire / Undo behaviour as the strip
+   *  and the context menu, instead of a second, weaker implementation. */
+  onDeleteNode?: (id: string) => void;
   onContextMenu?: (id: string, kind: "node" | "dataset", e: React.MouseEvent) => void;
 }
 
@@ -91,7 +95,7 @@ interface Props {
 export function GraphCanvas({
   doc, manifests, selectedId, rowCounts, nodeMetrics, nodeFreshness,
   groupFreshness, tracedNodeIds, onSelectionChange, onGroupClick,
-  onGroupBboxesChanged, onSelect, onUpdateDoc, onContextMenu,
+  onGroupBboxesChanged, onSelect, onUpdateDoc, onDeleteNode, onContextMenu,
 }: Props) {
   // ReactFlowInstance is generic over the actual Node/Edge data shapes; we
   // store it loosely-typed via `any` because the inferred generic from our
@@ -130,6 +134,18 @@ export function GraphCanvas({
       // Apply changes locally to RF state? No — we don't keep separate state;
       // RF treats `nodes` as controlled when we're driving it from `doc`.
       // For drag we need to update the doc.
+      // Backspace/Delete arrives here as `type: "remove"`. This handler only
+      // ever looked at "position", so the keypress was silently dropped —
+      // xyflow treats `nodes` as controlled, so nothing changed on screen and
+      // the user got no feedback at all.
+      const removals = changes.filter(
+        (c): c is Extract<NodeChange, { type: "remove" }> => c.type === "remove",
+      );
+      if (removals.length && onDeleteNode) {
+        for (const r of removals) onDeleteNode(r.id);
+        return;
+      }
+
       const dragEnded = changes.find(
         (c): c is Extract<NodeChange, { type: "position" }> =>
           c.type === "position" && c.dragging === false && c.position != null,
@@ -238,11 +254,15 @@ export function GraphCanvas({
         }
       }
     },
-    [doc, onUpdateDoc, groupBboxes],
+    [doc, onUpdateDoc, onDeleteNode, groupBboxes],
   );
 
   // Edges are derived; deletions on the canvas would amount to deleting the
   // input link on a node — for now we ignore edge changes (no inline editing).
+  // Edge removal is intentionally not handled: an edge here represents a
+  // step's input wiring, and dropping one would leave the target
+  // uncompilable with no way to re-attach it from the canvas. Deleting the
+  // NODE (below) is the supported operation and re-wires the chain.
   const onEdgesChange = useCallback((_changes: EdgeChange[]) => { /* noop */ }, []);
 
   // Round-6 UX#2 + Round-8 hardening: drag-to-connect was visually
@@ -429,11 +449,11 @@ export function GraphCanvas({
         // selects a region. The page mirrors the selection so its
         // floating GroupActionBar knows what to group.
         onSelectionChange={onSelectionChangeStable}
-        // Round-4 UX#2: wire Backspace/Delete so keyboard users can
-        // remove a selected node/edge. ReactFlow translates these
-        // keycodes into the same change events `onNodesChange` /
-        // `onEdgesChange` already handle, so the page's onUpdateDoc
-        // path is exercised through the existing wiring.
+        // Backspace/Delete removes a selected NODE. xyflow turns the keypress
+        // into a `remove` change, which `onNodesChange` forwards to the
+        // editor's guarded delete (confirm when it would orphan, auto-rewire
+        // otherwise, Undo toast either way). Edges are not removable — see
+        // `onEdgesChange`.
         deleteKeyCode={["Backspace", "Delete"]}
         // Default: drag selects a region (xyflow rubber-band). Hold
         // space (or use the trackpad two-finger pan) to pan the canvas.

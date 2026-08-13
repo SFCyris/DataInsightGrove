@@ -19,23 +19,39 @@ export function usePersistedState<T>(
   const [val, setVal] = useState<T>(initial);
   const initRead = useRef(false);
 
-  // Read once on mount.
+  // Read on mount AND whenever the key changes.
+  //
+  // `initRead` used to latch true forever, so a key change skipped the read
+  // while the write effect below still fired — persisting the OLD key's value
+  // under the NEW key. Switching between two pipelines silently copied one's
+  // run-sample preference onto the other. Track which key we've read instead
+  // of whether we've read at all.
+  const readForKey = useRef<string | null>(null);
   useEffect(() => {
-    if (initRead.current) return;
+    if (readForKey.current === key) return;
+    readForKey.current = key;
     initRead.current = true;
     if (typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(key);
-      if (raw !== null) setVal(JSON.parse(raw) as T);
+      // Reset to `initial` when the new key has nothing stored, so the previous
+      // key's value can't linger in state and get written out.
+      setVal(raw !== null ? (JSON.parse(raw) as T) : initial);
     } catch {
-      /* malformed entry → keep initial */
+      setVal(initial);
     }
+    // `initial` is intentionally omitted — callers pass object literals, and
+    // depending on it would re-run this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   // Debounced write.
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!initRead.current) return;
+    // Never write before this key has been read — otherwise the outgoing
+    // value is flushed into the incoming key.
+    if (readForKey.current !== key) return;
     if (typeof window === "undefined") return;
     if (writeTimer.current) clearTimeout(writeTimer.current);
     writeTimer.current = setTimeout(() => {

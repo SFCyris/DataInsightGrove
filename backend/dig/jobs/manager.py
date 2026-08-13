@@ -16,6 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ulid import ULID
 
+from dig.engine.cancellation import RunCancelled
+from dig.engine.cancellation import clear as _clear_cancel
 from dig.engine.executor import execute
 from dig.engine.pipeline import Pipeline
 from dig.jobs.hub import hub
@@ -107,7 +109,14 @@ class JobManager:
             await session.commit()
         task = asyncio.create_task(self._run(run_id, pipeline, sample_rows))
         self._tasks[run_id] = task
-        task.add_done_callback(lambda _: self._tasks.pop(run_id, None))
+        def _cleanup(_: object, _rid: str = run_id) -> None:
+            self._tasks.pop(_rid, None)
+            # Drop any cancellation flag with the task. Left behind, the set
+            # would grow for the process lifetime and a recycled run id could
+            # inherit a stale cancellation.
+            _clear_cancel(_rid)
+
+        task.add_done_callback(_cleanup)
         return run_id
 
     async def _run(self, run_id: str, pipeline: Pipeline, sample_rows: int | None) -> None:
@@ -182,6 +191,39 @@ class JobManager:
                 "outputs": result.outputs,
                 "rowCounts": result.rowCounts,
                 "artifacts": result.artifacts,
+            })
+        except RunCancelled:
+            # The worker thread reached a checkpoint after the user asked to
+            # cancel. Same terminal state as the coroutine-level cancel below,
+            # but it does NOT re-raise — nothing is unwinding here, the thread
+            # simply stopped where we told it to.
+            log.info("run %s cancelled at executor checkpoint", run_id)
+            finished_at = _utcnow()
+            await self._set_status(
+                run_id, "cancelled", finished_at=finished_at, error="cancelled by user",
+            )
+            try:
+                inc("dig_runs_total", labels={"status": "cancelled"})
+            except Exception:
+                pass
+            await hub.publish(f"run:{run_id}", {
+                "status": "cancelled", "progress": None, "error": "cancelled by user",
+            })
+            # Same external surface as the coroutine-level cancel below, so a
+            # checkpoint cancel isn't silent to notification rules/webhooks.
+            from dig.api.events import EventKinds as _EK
+            from dig.api.events import emit_event as _emit
+            await _emit(
+                _EK.RUN_CANCELLED,
+                run_id=run_id,
+                pipeline_id=pipeline.id,
+                pipeline_name=pipeline.name,
+            )
+            await self._fire_webhooks(pipeline, {
+                "runId": run_id,
+                "pipelineId": pipeline.id,
+                "pipelineName": pipeline.name,
+                "status": "cancelled",
             })
         except asyncio.CancelledError:
             # Round-5 W4: a user-triggered cancel arrives as a

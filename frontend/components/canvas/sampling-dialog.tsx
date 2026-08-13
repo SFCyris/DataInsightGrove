@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 import {
   METHODS_NEEDING_COLUMN,
   METHODS_NEEDING_TIME_COLUMN,
@@ -101,6 +102,10 @@ function pickSmartTimeColumn(cols: ColumnInfo[]): string | undefined {
 export function SamplingDialog({
   open, value, onChange, onClose, availableColumns = [],
 }: Props) {
+  // Escape closes this overlay — it previously had no handler at all,
+  // while the shortcuts cheatsheet advertised "Esc — Close any overlay".
+  // Arbitrated so only the top-most overlay reacts.
+  useEscapeToClose(open, onClose);
   const [draft, setDraft] = useState<SamplingConfig>(value);
 
   // Reset the draft to the persisted value whenever the dialog opens.
@@ -203,7 +208,7 @@ export function SamplingDialog({
             transition={{ type: "spring", stiffness: 360, damping: 32 }}
             role="dialog"
             aria-label="Sampling settings"
-            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[520px] max-h-[88vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
+            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] w-[520px] max-h-[88vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
           >
             <header className="flex items-center gap-3 mb-4">
               <span className="text-2xl select-none" aria-hidden>🧪</span>

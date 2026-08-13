@@ -4,6 +4,91 @@ All notable changes to DataInsightGrove are recorded here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/) once 1.0.0 ships. Pre-1.0 releases may include breaking changes between minor versions.
 
+## [1.0.2] — 2026-08-12
+
+Hardens the output-safety checks added in 1.0.1, closes a set of editor and
+reliability defects found in a project-wide review, and starts a shared UI
+component layer. **Recommended for anyone on 1.0.1.**
+
+### Security
+
+- **The access token is no longer embedded in the web page's code.** When a
+  server was started with `--global`, its token was compiled into JavaScript
+  served to every visitor — the people it was meant to keep out. DIG now asks
+  the person at the browser for it and keeps it for that tab only.
+
+### Fixed
+
+- **Output-destination protection now holds on macOS.** The 1.0.1 check
+  compared paths exactly, so on a case-insensitive volume a destination
+  spelled `UPLOADS/` slipped past it and the write still landed on the real
+  `uploads/` file. Source files, the ingested dataset cache, DIG's catalog,
+  and their database sidecars are now refused regardless of spelling, and
+  through symlinked directories.
+- **The same protection now covers every export.** It previously guarded only
+  pipeline output sinks; `export_to_file`, `export_to_image`, and
+  `export_to_db` could still reach protected locations when the
+  absolute-path override was enabled. Writing databases with `export_to_db`
+  still works — DIG's own catalog is the one target always refused.
+- **DIG's access token is no longer sent to third-party hosts.** A dataset
+  address travels inside the pipeline document, so an imported or shared
+  pipeline could point a file at an outside server and receive the token.
+  It is now only ever sent to DIG's own address.
+- **"Reduce motion" is fully honoured.** Some animations still ran, and the
+  fix for others stopped the in-progress indicators entirely — the "Saving…"
+  and run-status dots now keep signalling, and the running-runs badge stays
+  visible.
+- Panels that slide in from the right now cross-fade under reduced motion
+  instead of snapping while their backdrop fades.
+- Focus outlines no longer clip against adjacent controls or show a mismatched
+  edge on dark surfaces.
+- The welcome and closing tour cards are centred again instead of hanging off
+  the middle of the screen.
+- Error screens keep their palette in dark mode, announce themselves to screen
+  readers, and survive a future framework rename of their retry action.
+- Corrected the Geospatial Pack version shown in the manual (it is 1.0.0; the
+  1.0.1 release note bumped it by mistake).
+- **Stopping a run now actually stops it.** Cancel only ended the waiting, not
+  the work: the pipeline kept running and could still write its output after
+  the screen said "cancelled". Runs now stop at the next step boundary and
+  write nothing further.
+- **A finished run no longer shows as still running.** If the connection
+  dropped mid-run (a restart, a sleeping laptop), the editor stayed on
+  "running" — hiding the Run button — until a page reload.
+- **Two people editing one pipeline can no longer overwrite each other
+  silently.** Simultaneous saves are now settled by the database; the second
+  one is told its copy is out of date instead of quietly winning.
+- **Run now uses what's on screen.** Pressing Run within half a second of
+  changing a setting used to run the previous values.
+- **Deleting a dataset or pipeline updates the rest of the app.** Lists no
+  longer show a broken pipeline as ready, the workspace map no longer draws
+  deleted pipelines, and schedules for them are cleared.
+- **Delete on the canvas works.** Selecting a step and pressing Delete did
+  nothing at all; it now removes the step with the same confirmation and undo
+  as everywhere else.
+- **Switching between pipelines no longer carries settings across.** One
+  pipeline's run-sample choice could silently become another's — so a run
+  could quietly process a sample when the user expected the full dataset.
+- **Column distribution charts no longer count blanks as zero**, which created
+  a false spike and a filter that matched nothing when clicked.
+- **Row counts say what they mean.** The grid distinguishes "rows in sample"
+  from a total, and data-quality warnings say how many rows they checked
+  instead of implying they scanned the column.
+- **Pages say when they couldn't load.** Runs, Pipelines, Datasets, Schedules,
+  and the workspace map showed "nothing here" when the server was unreachable;
+  they now say so and offer to retry.
+- **The editor works on smaller screens.** Below roughly a laptop width the
+  data grid could collapse to nothing with no way to scroll to it, and the Run
+  button could be pushed off-screen.
+- **Every dialog closes with Escape** and keeps keyboard focus inside it, and
+  none can open wider than the screen.
+
+### Added
+
+- Shared UI components (dialog, input, select, card, badge) with consistent
+  keyboard and screen-reader behaviour, so dialogs across the app stop
+  differing in how they close, trap focus, and stack.
+
 ## [1.0.1] — 2026-07-17
 
 Correctness and accessibility fixes from a project-wide design, UX, and flow

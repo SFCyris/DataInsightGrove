@@ -322,8 +322,21 @@ if is_global_bind "$API_HOST"; then
     info "[dig start] auth token persisted to $AUTH_FILE (chmod 600)"
   fi
   export DIG_AUTH_TOKEN
-  # Frontend client reads this at build/runtime to attach Bearer header.
-  export NEXT_PUBLIC_DIG_AUTH_TOKEN="$DIG_AUTH_TOKEN"
+  # NOTE: we deliberately do NOT export NEXT_PUBLIC_DIG_AUTH_TOKEN here.
+  #
+  # Next inlines every NEXT_PUBLIC_* value as a string literal into the
+  # JavaScript bundle, which is served to anyone who can reach the web port
+  # and cached as an immutable static asset. In `--global` (LAN) mode that is
+  # exactly the population the token exists to keep out: an unauthenticated
+  # visitor loads the page, reads the chunk, and calls the API directly — so
+  # baking it in defeated the gate it was meant to enforce.
+  #
+  # The web tier has no login of its own, so it cannot decide who deserves the
+  # token; the person at the browser supplies it instead (the UI prompts on the
+  # first 401 and keeps it in sessionStorage). An operator embedding DIG in
+  # another app can still set `window.__DIG_TOKEN__`, and
+  # NEXT_PUBLIC_DIG_AUTH_TOKEN remains honoured if someone sets it
+  # deliberately for a trusted single-user build.
 
   # CORS allow-list. The backend defaults to `localhost:3100,127.0.0.1:3100`,
   # which means a remote browser hitting `http://<lan-ip>:3100` triggers

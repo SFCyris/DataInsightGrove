@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { aiApi, ApiError, API_BASE, API_TOKEN } from "@/lib/api/client";
+import { aiApi, ApiError, API_BASE, getApiToken } from "@/lib/api/client";
 import { PositiveLoader } from "@/components/positive-loader";
 
 /**
@@ -58,7 +58,8 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
    */
   const streamExplanation = async (req: number, signal: AbortSignal) => {
     const headers: Record<string, string> = { Accept: "text/event-stream" };
-    if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`;
+    const _tok = getApiToken();
+    if (_tok) headers["Authorization"] = `Bearer ${_tok}`;
     const res = await fetch(
       `${API_BASE}/ai/explain-pipeline/${pipelineId}/stream`,
       { method: "POST", headers, signal },
@@ -192,7 +193,7 @@ export function ExplainPipelineButton({ pipelineId }: { pipelineId: string }) {
               animate={reduce ? { opacity: 1 } : { x: 0 }}
               exit={reduce ? { opacity: 0 } : { x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 36 }}
-              className="fixed top-0 right-0 bottom-0 z-50 w-[460px] bg-card border-l border-border shadow-2xl flex flex-col"
+              className="fixed top-0 right-0 bottom-0 z-50 max-w-[92vw] w-[460px] bg-card border-l border-border shadow-2xl flex flex-col"
             >
               <header className="px-4 py-3 border-b border-border flex items-center gap-3 shrink-0">
                 <span className="text-2xl" aria-hidden>✨</span>

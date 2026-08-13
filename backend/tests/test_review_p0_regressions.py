@@ -47,8 +47,79 @@ def test_write_guard_blocks_dataset_cache_and_catalog(tmp_db: Path) -> None:
     """The ingested parquet cache and the sqlite catalog are equally off-limits."""
     with pytest.raises(ValueError, match="source data"):
         assert_write_target_safe(str(data_dir() / "datasets" / "ds_123.parquet"))
-    with pytest.raises(ValueError, match="database file"):
+    with pytest.raises(ValueError, match="catalog database"):
         assert_write_target_safe(str(data_dir() / "dig.sqlite"))
+
+
+@pytest.mark.parametrize("variant", ["uploads", "UPLOADS", "UpLoAdS", "Uploads"])
+def test_write_guard_is_case_insensitive_for_inputs(tmp_db: Path, variant: str) -> None:
+    """Case variants must be refused too.
+
+    The first version of this guard compared with ``Path.relative_to``, which
+    is exact and case-sensitive, while the candidate path had already been
+    ``resolve()``d. On a case-insensitive volume — APFS/macOS by default, and
+    this project ships a Mac wrapper — ``data/UPLOADS/x.csv`` slipped past the
+    check and the write then landed on the real ``data/uploads/x.csv``,
+    destroying the user's source file. Refusing a genuinely distinct
+    ``UPLOADS/`` on a case-sensitive volume is the safe direction to err.
+    """
+    with pytest.raises(ValueError, match="source data"):
+        assert_write_target_safe(str(data_dir() / variant / "source.csv"))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "dig.sqlite", "DIG.SQLITE", "Dig.SqLite",     # the catalog, any casing
+        "catalog.db", "catalog.DB",
+        "other.sqlite3", "warehouse.duckdb", "WAREHOUSE.DuckDB",
+        "dig.sqlite-wal", "foo.sqlite-shm", "bar.db-journal",  # sidecars
+    ],
+)
+def test_write_guard_blocks_database_files_any_casing(tmp_db: Path, name: str) -> None:
+    """Database files and their sidecars are never valid pipeline output.
+
+    Truncating a ``-wal``/``-shm``/``-journal`` corrupts the database as
+    surely as truncating the main file, and the original check missed both
+    those and every non-lowercase spelling.
+    """
+    # The catalog gets its own message — it is refused even for export_to_db,
+    # which is otherwise allowed to create database files.
+    expected = "catalog database" if name.casefold().startswith("dig.sqlite") else "database file"
+    with pytest.raises(ValueError, match=expected):
+        assert_write_target_safe(str(data_dir() / name))
+
+
+def test_write_guard_follows_symlinked_input_roots(tmp_db: Path) -> None:
+    """A symlinked ``uploads/`` must still be protected, from either path.
+
+    With unresolved protected roots, a candidate that resolved *through* the
+    symlink no longer matched the root prefix and was allowed through.
+    """
+    d = data_dir()
+    real = d / "store" / "uploads"
+    real.mkdir(parents=True, exist_ok=True)
+    link = d / "uploads"
+    if link.exists() and not link.is_symlink():
+        import shutil
+        shutil.rmtree(link)
+    if not link.exists():
+        link.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="source data"):
+        assert_write_target_safe(str(link / "source.csv"))
+    with pytest.raises(ValueError, match="source data"):
+        assert_write_target_safe(str(real / "source.csv"))
+
+
+def test_write_guard_does_not_overmatch_on_name_prefix(tmp_db: Path) -> None:
+    """`outputs/uploadsX/` merely *starts with* a protected name — allow it.
+
+    Guards against fixing the case bypass by switching to a naive string
+    prefix test, which would refuse legitimate destinations.
+    """
+    ok = data_dir() / "outputs" / "uploadsX" / "result.csv"
+    assert assert_write_target_safe(str(ok)) == ok.resolve()
 
 
 def test_write_guard_allows_run_outputs(tmp_db: Path) -> None:
@@ -177,3 +248,22 @@ def test_compile_does_not_persist_the_supplied_document(client, tmp_path) -> Non
     )
     stored = client.get(f"/pipelines/{pid}").json()["document"]
     assert stored["nodes"][0]["params"]["predicate"] == "val > 80"
+
+
+def test_allow_database_permits_real_db_exports_but_never_the_catalog(tmp_db: Path) -> None:
+    """`export_to_db` legitimately creates SQLite/DuckDB files.
+
+    `allow_database=True` lifts the blanket database-file rule for that step
+    while keeping the two things that must never be writable: DIG's own
+    catalog, and the input roots. Without the carve-out the guard would have
+    broken every legitimate database export.
+    """
+    ok = data_dir() / "outputs" / "run1" / "results.db"
+    assert assert_write_target_safe(str(ok), allow_database=True) == ok.resolve()
+
+    with pytest.raises(ValueError, match="catalog database"):
+        assert_write_target_safe(str(data_dir() / "dig.sqlite"), allow_database=True)
+    with pytest.raises(ValueError, match="source data"):
+        assert_write_target_safe(
+            str(data_dir() / "uploads" / "x.db"), allow_database=True
+        )

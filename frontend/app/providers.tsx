@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { ShortcutsCheatsheet } from "@/components/shortcuts-cheatsheet";
 import { GlobalShortcuts } from "@/components/global-shortcuts";
 import { ServerStatusOverlay } from "@/components/server-status-overlay";
+import { TokenGate } from "@/components/token-gate";
 import { MacTitlebar } from "@/components/mac-titlebar";
 import { AiKeepalive } from "@/components/ai-keepalive";
 
@@ -38,6 +39,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           below the band. */}
       <MacTitlebar />
       <ServerStatusOverlay />
+      <TokenGate />
       <AiKeepalive />
       {children}
       <CommandPalette />

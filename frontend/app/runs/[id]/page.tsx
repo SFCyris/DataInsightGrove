@@ -24,11 +24,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
-import { api, type RunOut, API_BASE, API_TOKEN } from "@/lib/api/client";
+import { api, type RunOut, API_BASE, getApiToken } from "@/lib/api/client";
 import { fmtDuration, fmtInt } from "@/lib/format-number";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { PositiveLoader } from "@/components/positive-loader";
@@ -83,6 +84,18 @@ export default function RunDetailPage() {
   // Fetch the pipeline document so we can render dataset (input)
   // references + group node ids → labels in the timeline.
   const pipelineId = runQ.data?.pipelineId;
+
+  // Re-run this pipeline and follow the new run. Previously the button was a
+  // link into the editor, which started nothing.
+  const router = useRouter();
+  const rerun = useMutation({
+    mutationFn: () => api.startRun(pipelineId!),
+    onSuccess: (r) => {
+      toast.success("▶️ Run started");
+      router.push(`/runs/${r.id}`);
+    },
+    onError: (e: Error) => toast.error(`Couldn't start the run: ${e.message}`),
+  });
   const pipelineQ = useQuery({
     queryKey: ["pipeline", pipelineId],
     queryFn: () => api.getPipeline(pipelineId!),
@@ -247,12 +260,16 @@ export default function RunDetailPage() {
                         🔍 Open {failedNodeLabel} in editor
                       </Link>
                     )}
-                    <Link
-                      href={`/pipelines/${run.pipelineId}`}
-                      className="text-[11px] px-2 py-1 rounded border border-rose-300/60 dark:border-rose-700/60 text-rose-800 dark:text-rose-200 hover:bg-rose-100/60 dark:hover:bg-rose-950/40"
+                    {/* Was a <Link> to the editor — it navigated and ran
+                        nothing, while the page's own copy promised a "Re-run
+                        pipeline action". Actually start the run. */}
+                    <button
+                      onClick={() => rerun.mutate()}
+                      disabled={rerun.isPending}
+                      className="text-[11px] px-2 py-1 rounded border border-rose-300/60 dark:border-rose-700/60 text-rose-800 dark:text-rose-200 hover:bg-rose-100/60 dark:hover:bg-rose-950/40 disabled:opacity-50"
                     >
-                      ▶ Re-run pipeline
-                    </Link>
+                      {rerun.isPending ? "Starting…" : "▶ Re-run pipeline"}
+                    </button>
                   </div>
                 </div>
                 <p className="text-sm font-medium text-rose-900 dark:text-rose-100 mb-2">{headline}</p>
@@ -747,8 +764,9 @@ function ArtifactItem({
 
   // Image / map artifact — render inline.
   if (kind === "image" && path) {
-    const headers: Record<string, string> = API_TOKEN
-      ? { Authorization: `Bearer ${API_TOKEN}` }
+    const _tok = getApiToken();
+    const headers: Record<string, string> = _tok
+      ? { Authorization: `Bearer ${_tok}` }
       : {};
     const url = `${API_BASE}/runs/${runId}/artifact?path=${encodeURIComponent(path)}`;
     if (format === "html" || format === "htm") {

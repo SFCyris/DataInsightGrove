@@ -5,6 +5,7 @@ import { useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
+import { QueryError } from "@/components/query-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { ReferenceFileModal } from "@/components/reference-file-modal";
@@ -101,6 +102,7 @@ export default function DatasetsPage() {
           <span className="mr-1">📚</span> Library
         </h2>
 
+        {datasets.isError && <QueryError query={datasets} />}
         {datasets.data && datasets.data.length > 0 && (
           <LibraryToolbar
             view={libView}

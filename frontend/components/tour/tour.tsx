@@ -1,22 +1,16 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "@/components/ui/button";
 
-/** Track prefers-reduced-motion at runtime — OS settings can flip mid-session. */
-function useReducedMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduce(mq.matches);
-    const onChange = () => setReduce(mq.matches);
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-  return reduce;
-}
+// This file used to define its own `useReducedMotion`, which shadowed the
+// motion/react import of the same name — two sources of truth for one
+// preference, and a trap for any future codemod over that symbol. motion's
+// hook is the right one to use: it also listens for `change` (so a mid-session
+// OS flip is picked up), and it is the same value `<MotionConfig
+// reducedMotion="user">` in app/providers.tsx keys off, so the tour and the
+// global backstop can no longer disagree.
 
 export interface TourStep {
   /** Short title shown at the top of the tooltip. */
@@ -145,11 +139,18 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
   };
 
   // Position the tooltip
+  // Centre with the standalone `translate` property, NOT `transform`.
+  // This element is a motion.div animating `y`/`scale`, and motion composes
+  // its own `transform` from those values — clobbering a `transform` set here.
+  // The result was that every untargeted step (the welcome and final cards)
+  // rendered with its top-left corner at the viewport centre instead of being
+  // centred on it. `translate` is a separate CSS property, so motion leaves it
+  // alone and the two compose correctly.
   let tooltipStyle: React.CSSProperties = {
     position: "fixed",
     left: "50%",
     top: "50%",
-    transform: "translate(-50%, -50%)",
+    translate: "-50% -50%",
     maxWidth: 360,
   };
   if (rect) {
@@ -163,7 +164,10 @@ export function Tour({ steps, open, onClose, storageKey }: Props) {
     }
     left = Math.max(16, Math.min(window.innerWidth - w - 16, left));
     top = Math.max(16, top);
-    tooltipStyle = { position: "fixed", left, top, width: w, transform: "none" };
+    // Pixel-positioned against the target — explicitly clear the centring
+    // `translate` so it doesn't carry over from a previous untargeted step.
+    // (`transform` is not ours to set here; motion owns it.)
+    tooltipStyle = { position: "fixed", left, top, width: w, translate: "none" };
   }
 
   return (

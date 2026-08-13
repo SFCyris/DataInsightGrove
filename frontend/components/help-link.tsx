@@ -9,7 +9,7 @@
  * a quick reference; we'll add a markdown renderer in a future iteration).
  */
 
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useApiBase } from "@/lib/use-api-base";
 
 interface Props {
@@ -28,6 +28,7 @@ export function HelpLink({ anchor, topic, doc = "getting_started.md", size = "sm
   const href = anchor
     ? `${apiBase}/docs-files/${doc}#${anchor}`
     : `${apiBase}/docs-files/${doc}`;
+  const reduce = useReducedMotion();
   const label = `Help: ${topic}`;
   return (
     <motion.a
@@ -36,8 +37,12 @@ export function HelpLink({ anchor, topic, doc = "getting_started.md", size = "sm
       rel="noreferrer"
       title={label}
       aria-label={label}
-      whileHover={{ scale: 1.06 }}
-      whileTap={{ scale: 0.94 }}
+      // 1-2% per docs/UI_GUIDELINES.md — 6% read as a pop, not a nudge.
+      // Skipped entirely under reduced motion: motion drops positional keys
+      // there, so the scale would SNAP rather than ease, which is a worse
+      // experience than simply not scaling.
+      whileHover={reduce ? undefined : { scale: 1.02 }}
+      whileTap={reduce ? undefined : { scale: 0.98 }}
       suppressHydrationWarning
       className={
         size === "sm"

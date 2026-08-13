@@ -43,12 +43,13 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* Bare `rounded` is the most-used radius in the app (~205 uses). Without a
-     DEFAULT it compiled to Tailwind's hardcoded 0.25rem — outside the token
-     system entirely, immune to `--radius`, and *smaller* than `rounded-sm`,
-     which inverted the scale. Aliasing it to the sm step makes the ramp
-     monotonic and puts those 205 call sites back under `--radius`. */
-  --radius-DEFAULT: calc(var(--radius) * 0.6);
+  /* KNOWN GAP: bare `rounded` (~150 uses) compiles to Tailwind's hardcoded
+     0.25rem — outside this token system and *smaller* than `rounded-sm`, so
+     the ramp is not monotonic. `--radius-DEFAULT` is NOT a Tailwind v4 theme
+     key and has no effect (the bare utility reads the namespace root,
+     `--radius`), so it was removed rather than left in place looking like a
+     fix. Overriding `--radius` here would also move `rounded-lg`, and
+     changing ~150 call sites is a visual change that wants its own pass. */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -196,33 +197,40 @@ html[data-dig-mac="true"] .dig-mac-titlebar {
    Reduced motion — CSS half of the backstop.
 
    `<MotionConfig reducedMotion="user">` in app/providers.tsx covers every
-   motion/react animation, but it cannot reach CSS keyframe utilities
-   (`animate-pulse`, `animate-ping`, `animate-spin`, tw-animate-css classes).
-   Those were running regardless of the OS preference — ~20 sites, including
-   full-width skeleton shimmers.
+   motion/react animation, but it cannot reach CSS keyframe/transition
+   utilities. Those ran regardless of the OS preference.
 
-   Spinners keep a slow rotation rather than freezing: a motionless spinner
-   reads as "hung". Everything else collapses to a single held state.
+   MUST live inside `@layer utilities`. An unlayered `!important` is the
+   LOWEST-priority author `!important` in the cascade, so a layered
+   `!important` utility beats it — `!transition-all` on the canvas node
+   handles (components/canvas/nodes.tsx) kept its full eased `scale-150`
+   hover under "Reduce motion" when this block sat outside the layer.
    --------------------------------------------------------------------------- */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-  /* Keep progress affordances legible: a still spinner looks broken, so slow
-     it down instead of stopping it. */
-  .animate-spin {
-    animation-duration: 1.5s !important;
-    animation-iteration-count: infinite !important;
-  }
-  /* Pulses convey "in progress" through opacity only — hold them mid-state. */
-  .animate-pulse,
-  .animate-ping {
-    animation: none !important;
-    opacity: 0.7;
+@layer utilities {
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* Status indicators must keep signalling. `animate-pulse` is the app's
+       "working right now" affordance (the Saving… dot, the run-status dot);
+       freezing it turns a live signal into what looks like a stalled one.
+       Opacity pulsing is not a vestibular trigger, so slow it rather than
+       stop it, and do NOT set a fixed `opacity` here — an unlayered opacity
+       silently overrode every `opacity-*` utility on these elements. */
+    .animate-pulse {
+      animation-duration: 2.5s !important;
+      animation-iteration-count: infinite !important;
+    }
+    /* `animate-ping` expands a halo outward — that IS motion, so stop it.
+       Call sites that rely on the halo for meaning pair it with
+       `motion-reduce:hidden` and fall back to the solid dot underneath. */
+    .animate-ping {
+      animation: none !important;
+    }
   }
 }

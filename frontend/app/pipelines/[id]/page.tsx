@@ -80,7 +80,11 @@ type PageProps = { params: Promise<{ id: string }> };
 
 export default function PipelineEditorPage({ params }: PageProps) {
   const { id } = use(params);
-  return <Editor pipelineId={id} />;
+  // `key` forces a fresh Editor instance per pipeline. Without it React reuses
+  // the mounted component across a dynamic-param change (there are ~20 in-app
+  // routes to /pipelines/<id>), so refs, persisted-state keys, and the undo
+  // stack carry over from the previously-open pipeline.
+  return <Editor key={id} pipelineId={id} />;
 }
 
 // ----- helpers -----
@@ -701,6 +705,12 @@ function Editor({ pipelineId }: { pipelineId: string }) {
 
   // Local doc state
   const [doc, setDoc] = useState<PipelineDocument | null>(null);
+  // Mirror of `doc` for callbacks that resume after an `await` (the delete
+  // confirmation can sit open for up to 30s). Reading the closed-over `doc`
+  // there would apply an edit computed against a stale document and silently
+  // revert anything the user changed while the prompt was up.
+  const docRef = useRef<PipelineDocument | null>(null);
+  docRef.current = doc;
   const [etag, setEtag] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   // Persist focused step + tab per pipeline so re-opening a 30-step pipeline
@@ -914,8 +924,19 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         });
         if (!ok) return;
       }
-      const prevDoc = doc;
-      const next = removeNodeFromDoc(doc, id);
+      // Re-read the document AFTER the confirmation resolves. The prompt is
+      // non-modal — the canvas stays live underneath it — so `doc` captured
+      // by this closure may be several edits out of date by now, and applying
+      // it would revert them (and the Undo toast would restore the stale one,
+      // compounding the loss).
+      const current = docRef.current;
+      if (!current) return;
+      // The node may have been removed by another action while we waited.
+      if (!current.nodes.some((n) => n.id === id) && !current.datasets.some((d) => d.id === id)) {
+        return;
+      }
+      const prevDoc = current;
+      const next = removeNodeFromDoc(current, id);
       updateDoc(next);
       if (focusedId === id) {
         const lastNode = next.nodes[next.nodes.length - 1];
@@ -998,9 +1019,25 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   // user choice. `consecutiveSaveFailures` lets one transient failure retry
   // before we give up and ask.
   const [saveBlocked, setSaveBlocked] = useState<
-    { kind: "conflict" | "invalid" | "error"; message: string } | null
+    { kind: "conflict" | "invalid" | "error"; message: string; attempt: number } | null
   >(null);
   const consecutiveSaveFailures = useRef(0);
+  const blockAttempt = useRef(0);
+  /** Re-raise the blocked state after a recovery attempt fails.
+   *
+   *  Sonner dismisses a toast as soon as its action is clicked, and the
+   *  toast effect keys on the `saveBlocked` value — so re-setting an equal
+   *  object would leave the user with no toast and no indication that
+   *  nothing is being saved (the precise failure this whole mechanism
+   *  exists to prevent). The bumped `attempt` guarantees a fresh identity
+   *  so the effect re-runs and the toast comes back. */
+  const reblock = useCallback(
+    (kind: "conflict" | "invalid" | "error", message: string) => {
+      blockAttempt.current += 1;
+      setSaveBlocked({ kind, message, attempt: blockAttempt.current });
+    },
+    [],
+  );
   const saveMutation = useMutation({
     mutationFn: async (args: {
       next: PipelineDocument;
@@ -1053,13 +1090,13 @@ function Editor({ pipelineId }: { pipelineId: string }) {
 
       if (isCycle) {
         // Structural — no retry can succeed until the user edits the doc.
-        setSaveBlocked({ kind: "invalid", message: msg });
+        reblock("invalid", msg);
       } else if (isConflict) {
         // Another session advanced the etag. Retrying with ours never wins.
-        setSaveBlocked({ kind: "conflict", message: msg });
+        reblock("conflict", msg);
       } else if (consecutiveSaveFailures.current >= 2) {
         // Transient-looking but persistent (backend down, disk full, …).
-        setSaveBlocked({ kind: "error", message: msg });
+        reblock("error", msg);
       } else {
         // First transient failure: let the effect retry once.
         toast.error(`Save failed: ${msg}`);
@@ -1106,11 +1143,14 @@ function Editor({ pipelineId }: { pipelineId: string }) {
             // Refetch bumps `etag` to the server's current value (see the
             // seed effect's else-branch), so the next save applies our
             // document on top instead of 409-ing forever.
-            void pipeline.refetch().then(() => {
-              consecutiveSaveFailures.current = 0;
-              setSaveBlocked(null);
-              setDirty(true);
-            });
+            void pipeline
+              .refetch()
+              .then(() => {
+                consecutiveSaveFailures.current = 0;
+                setSaveBlocked(null);
+                setDirty(true);
+              })
+              .catch(() => reblock("conflict", saveBlocked.message));
           },
         },
         cancel: {
@@ -1118,10 +1158,19 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           onClick: () => {
             // Force a full reseed: drop our document for the server's.
             seededFor.current = null;
-            void pipeline.refetch().then(() => {
-              consecutiveSaveFailures.current = 0;
-              setSaveBlocked(null);
-            });
+            void pipeline
+              .refetch()
+              .then(() => {
+                consecutiveSaveFailures.current = 0;
+                setSaveBlocked(null);
+              })
+              .catch(() => {
+                // The reseed never happened — don't leave `seededFor` cleared,
+                // or the next successful refetch would silently discard the
+                // user's document without them choosing that.
+                seededFor.current = pipelineId;
+                reblock("conflict", saveBlocked.message);
+              });
           },
         },
       });
@@ -2137,8 +2186,22 @@ function Editor({ pipelineId }: { pipelineId: string }) {
   );
 
   const runMutation = useMutation({
-    mutationFn: async () =>
-      api.startRun(pipelineId, runSampleRows ?? undefined),
+    mutationFn: async () => {
+      // Flush pending edits FIRST. The backend loads the document from
+      // storage, and autosave is debounced 500ms — so clicking Run right
+      // after changing a parameter executed the *previous* params while the
+      // screen showed the new ones. The clone path already does this; Run and
+      // Export did not. Best-effort: if the flush fails we surface it rather
+      // than silently running stale.
+      if (dirty && doc && etag != null && !saveBlocked) {
+        const saved = await api.updatePipeline(pipelineId, doc, etag, {
+          triggeredBy: "autosave",
+        });
+        setEtag(saved.etag);
+        setDirty(false);
+      }
+      return api.startRun(pipelineId, runSampleRows ?? undefined);
+    },
     onSuccess: (r) => {
       setRun(r);
       setRunProgress({ status: r.status });
@@ -2606,7 +2669,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       // real editor lands with zero layout shift. The pulse is a pure-CSS
       // opacity animation (same style as the list-page skeletons), which
       // is gentle enough under prefers-reduced-motion.
-      <main id="main" className="flex flex-col h-screen overflow-hidden" aria-busy="true">
+      <main id="main" className="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden" aria-busy="true">
         <span className="sr-only">Loading pipeline…</span>
         {/* Top bar strip */}
         <header className="border-b border-border px-4 py-2 flex items-center gap-3 shrink-0" aria-hidden>
@@ -2645,7 +2708,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
     // bottom strip / graph stays glued to the bottom of the browser
     // window. Without overflow-hidden, a tall data grid would push the
     // strip below the visible area (it'd be there, just not on screen).
-    <main className="flex flex-col h-screen overflow-hidden">
+    <main className="flex flex-col min-h-screen lg:h-screen lg:overflow-hidden">
       {/* Top bar */}
       {/* `relative z-30` so the toolbar's stacking context sits above the
           workspace below. Without it, `backdrop-blur` traps the Add-dataset
@@ -2653,7 +2716,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
           renders visually but LiveGrid's transparent empty-state overlay
           (later in document order, same z=auto in root) silently swallows
           clicks on the part of the dropdown that overflows past the toolbar. */}
-      <header className="relative z-30 border-b border-border bg-background/80 backdrop-blur px-4 py-2 flex items-center gap-3 shrink-0">
+      <header className="relative z-30 border-b border-border bg-background/80 backdrop-blur px-4 py-2 flex flex-wrap items-center gap-3 shrink-0">
         <Link
           href="/pipelines"
           className={buttonVariants({ variant: "ghost", size: "sm" })}
@@ -2980,7 +3043,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
       </header>
 
       {/* Workspace: top = grid, right = side panel, bottom = strip */}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* Left/main column: grid + diff strip + pipeline strip */}
         <section className="flex-1 flex flex-col min-h-0 min-w-0">
           {diff && (
@@ -3042,7 +3105,11 @@ function Editor({ pipelineId }: { pipelineId: string }) {
               columns={gridData.columns}
               rows={gridData.rows}
               totalRows={gridData.totalRows}
-              sampleRows={preview?.sampleRows ?? 100_000}
+              // Fall back to what we actually have, not a hardcoded 100,000.
+              // Focusing a dataset node clears `preview` and fetches ~200 rows,
+              // yet the chip still claimed "sample · 100,000 rows" — a 500x
+              // overstatement that contradicted the profile drawer beside it.
+              sampleRows={preview?.sampleRows ?? gridData.totalRows ?? gridData.rows.length}
               loading={gridData.loading}
               elapsedMs={gridData.elapsedMs}
               ranLocally={preview ? preview.ranLocally : true}
@@ -3422,6 +3489,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
                   onGroupBboxesChanged={handleGroupBboxesChanged}
                   onSelect={setFocusedId}
                   onUpdateDoc={updateDoc}
+                  onDeleteNode={(id) => void deleteNode(id)}
                   onContextMenu={(id, kind, e) => {
                     setStepCtx({ id, kind, x: e.clientX, y: e.clientY });
                   }}
@@ -3500,7 +3568,7 @@ function Editor({ pipelineId }: { pipelineId: string }) {
         </section>
 
         {/* Right side panel */}
-        <aside className="w-[340px] shrink-0 border-l border-border bg-background/40 backdrop-blur flex flex-col min-h-0">
+        <aside className="w-full lg:w-[340px] lg:shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-background/40 backdrop-blur flex flex-col min-h-0">
           <div className="flex border-b border-border shrink-0">
             {(["params", "hints", "lineage"] as const).map((t) => (
               <button

@@ -1,4 +1,4 @@
-import { API_BASE, API_TOKEN } from "./client";
+import { API_BASE, getApiToken } from "./client";
 import { markDown, markRecovered } from "@/lib/server-status";
 
 export type WsMessage = { topic: string; payload: Record<string, unknown> };
@@ -24,8 +24,9 @@ export function wsUrl(path: string): string {
   // Browsers can't set custom headers on WS handshakes, so we pass the auth
   // token via query string. Backend BearerAuthMiddleware reads `?token=…` for
   // any /ws/* path. Empty token → no param; auth disabled deployments unaffected.
-  if (API_TOKEN) {
-    u.searchParams.set("token", API_TOKEN);
+  const _tok = getApiToken();
+  if (_tok) {
+    u.searchParams.set("token", _tok);
   }
   return u.toString();
 }

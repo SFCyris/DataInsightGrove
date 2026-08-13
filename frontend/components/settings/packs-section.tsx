@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError, type InstalledPack, type StagedPack } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 
 /**
  * Settings → Step Packs.
@@ -28,6 +29,8 @@ export function PacksSection() {
   });
 
   const [staged, setStaged] = useState<StagedPack | null>(null);
+  // The staged-pack review dialog had no Escape handler.
+  useEscapeToClose(staged != null, () => setStaged(null));
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { aiApi, ApiError, type AiFixExpressionOut } from "@/lib/api/client";
 import { ThinkingLabel } from "@/components/positive-loader";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 
 interface Props {
   /** Current value of the expression field. */
@@ -32,6 +33,8 @@ interface Props {
  */
 export function FixExpressionButton({ expression, columns, kind, error, onApply }: Props) {
   const [open, setOpen] = useState(false);
+  // Escape closes the panel — previously unhandled here.
+  useEscapeToClose(open, () => setOpen(false));
   const [intent, setIntent] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AiFixExpressionOut | null>(null);

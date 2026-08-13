@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
 import type { PipelineDocument } from "@/lib/api/client";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 
 /**
  * 🪆 Publish as reusable step — turns the current pipeline into a
@@ -48,6 +49,10 @@ const CATEGORIES = [
 ];
 
 export function PublishAsStepDialog({ open, doc, onClose, onPublish, onUnpublish }: Props) {
+  // Escape closes this overlay — it previously had no handler at all,
+  // while the shortcuts cheatsheet advertised "Esc — Close any overlay".
+  // Arbitrated so only the top-most overlay reacts.
+  useEscapeToClose(open, onClose);
   const existing =
     (doc.metadata?.publishedAsStep as PublishedAsStepConfig | undefined) ?? null;
   const [draft, setDraft] = useState<PublishedAsStepConfig>(
@@ -96,7 +101,7 @@ export function PublishAsStepDialog({ open, doc, onClose, onPublish, onUnpublish
             transition={{ type: "spring", stiffness: 360, damping: 32 }}
             role="dialog"
             aria-label="Publish as reusable step"
-            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[560px] max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
+            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] w-[560px] max-h-[80vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl p-5"
           >
             <header className="flex items-center gap-3 mb-4">
               <span className="text-2xl select-none" aria-hidden>🪆</span>

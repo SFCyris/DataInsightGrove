@@ -75,7 +75,7 @@ export function LabelPromptDialog({
             transition={{ type: "spring", stiffness: 360, damping: 32 }}
             role="dialog"
             aria-label={title}
-            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[460px] rounded-xl border border-border bg-card shadow-2xl p-5"
+            className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 max-w-[92vw] w-[460px] rounded-xl border border-border bg-card shadow-2xl p-5"
           >
             <header className="mb-3">
               <h2 className="text-base font-semibold leading-tight">{title}</h2>

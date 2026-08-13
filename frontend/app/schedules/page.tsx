@@ -16,6 +16,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, schedulesApi, ApiError } from "@/lib/api/client";
+import { QueryError } from "@/components/query-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { explainCron, nextFireTime, describeRelative } from "@/lib/cron-explain";
@@ -216,6 +217,7 @@ export default function SchedulesPage() {
         {schedules.isLoading && (
           <PositiveLoaderInline variant="rendering" text="Loading schedules…" />
         )}
+        {schedules.isError && <QueryError query={schedules} />}
         {schedules.data && schedules.data.length === 0 && (
           <div className="rounded-md border border-dashed border-border bg-card p-6 text-center text-sm text-muted-foreground space-y-2">
             <div className="text-3xl" aria-hidden>⏰</div>

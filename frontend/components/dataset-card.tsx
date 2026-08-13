@@ -68,6 +68,13 @@ export function DatasetCard({ d, index }: { d: Dataset; index: number }) {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["datasets"] });
+      // A deleted dataset breaks every pipeline that referenced it. Without
+      // this, /pipelines kept showing "✅ ready" for pipelines that can no
+      // longer run — the ⚠ Missing data badge exists for exactly this case
+      // but never appeared, because nothing refetched (staleTime 30s +
+      // refetchOnWindowFocus:false means the list never self-heals).
+      queryClient.invalidateQueries({ queryKey: ["pipelines"] });
+      queryClient.invalidateQueries({ queryKey: ["catalog-lineage"] });
     },
   });
 

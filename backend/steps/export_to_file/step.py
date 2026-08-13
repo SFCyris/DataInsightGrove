@@ -60,6 +60,12 @@ class ExportToFileStep(Step):
         if path.suffix == "":
             path = path.with_suffix(ext)
 
+        # The hatch above widens WHERE output may go; it never licenses
+        # overwriting an input. `uploads/`, the ingested dataset cache, and any
+        # database file stay refused even with DIG_EXPORT_ALLOW_ABSOLUTE=1.
+        from dig.engine.uri_safety import assert_write_target_safe
+        assert_write_target_safe(str(path))
+
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if fmt == "parquet":

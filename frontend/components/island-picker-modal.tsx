@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api, ApiError, type Dataset } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { fmtInt } from "@/lib/format-number";
+import { useEscapeToClose } from "@/components/ui/use-dialog-behavior";
 
 /**
  * Island shape produced by `dig.engine.data_islands`. The OpenAPI emits this
@@ -41,6 +42,9 @@ interface Props {
  * then pick an island (if multi-island). One-island sheets skip both.
  */
 export function IslandPickerModal({ dataset, onPicked, onCancel }: Props) {
+  // This modal is mounted only while it is open, so `true` is the open
+  // state. Escape had no handler here at all.
+  useEscapeToClose(true, onCancel);
   const reduce = useReducedMotion();
   const islands = (dataset.availableIslands ?? []) as unknown as IslandPreview[];
   const [picked, setPicked] = useState<string>(islands[0]?.range_a1 ?? "");

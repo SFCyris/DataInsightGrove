@@ -32,6 +32,7 @@ from urllib.parse import urlparse
 
 import duckdb
 
+from dig.engine.cancellation import raise_if_cancelled
 from dig.engine.dag import infer_schemas, topo_sort, validate
 from dig.engine.pipeline import Node, OutputSpec, Pipeline, Reference, effective_connector
 from dig.engine.registry import connectors, steps
@@ -671,7 +672,14 @@ def _is_local_file_uri(uri: str) -> bool:
     scheme (``postgres://``, ``s3://``, ``https://``, …) is remote and is
     the connector's own business. Windows drive letters (``C:\\...``) parse
     as a single-character scheme, so treat those as local too.
+
+    JDBC URLs for embedded engines are local despite the ``jdbc`` scheme —
+    ``jdbc:sqlite:/…/data/dig.sqlite`` names a file on this host, and
+    skipping the write guard for it left the catalog reachable.
     """
+    lowered = uri.lower()
+    if lowered.startswith(("jdbc:sqlite:", "jdbc:duckdb:", "jdbc:h2:", "jdbc:derby:")):
+        return True
     scheme = urlparse(uri).scheme
     return scheme in ("", "file") or len(scheme) == 1
 
@@ -949,6 +957,9 @@ def execute(
                 pipeline_id=p.id, pipeline_name=p.name,
                 pipeline_variables=dict(((p.metadata or {}).get("variables")) or {}),
             )
+            # Cancellation checkpoint — between nodes, never mid-query, so a
+            # cancelled run stops at a consistent boundary.
+            raise_if_cancelled(run_id)
             node_started = time.perf_counter()
             try:
                 res = step.execute_polars(input_frames, node.params, ctx)
@@ -988,6 +999,10 @@ def execute(
                 artifacts.setdefault(f"_intermediate:{node.id}", []).extend(res.artifacts)
 
         for o in pipeline_outputs:
+            # Checkpoint BEFORE the output runs: `_run_one_output` is what
+            # performs the sink write, so this is the check that stops a
+            # cancelled run from still writing to its destination.
+            raise_if_cancelled(run_id)
             term_started = time.perf_counter()
             path, rc, arts, cols, nan_origins = _run_one_output(
                 con, p, o,

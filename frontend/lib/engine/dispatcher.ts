@@ -1,13 +1,32 @@
 "use client";
 
 import type { Table } from "apache-arrow";
-import { API_BASE, API_TOKEN, api } from "@/lib/api/client";
+import { API_BASE, getApiToken, api } from "@/lib/api/client";
 import { wrapWithSampling, type SamplingConfig } from "@/lib/sampling";
 
 // @duckdb/duckdb-wasm and ./duckdb are loaded via dynamic import() inside
 // the functions that need them, so the editor route's initial chunk doesn't
 // carry the multi-MB wasm engine. Type-only imports above stay static —
 // they're erased at compile time and cost nothing.
+
+/** True only when `url` targets DIG's own API origin.
+ *
+ *  Gate for attaching `?token=…`: dataset URIs ride inside the pipeline
+ *  document, so a shared template can name any host and it would otherwise
+ *  receive DIG's auth token. Fails closed — anything unparseable is treated
+ *  as foreign. A relative `API_BASE` (same-origin deployment) means every
+ *  absolute URL with a different origin is foreign by definition.
+ */
+function _isSameOriginAsApi(url: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const target = new URL(url, window.location.href);
+    const apiOrigin = new URL(API_BASE || "/", window.location.href).origin;
+    return target.origin === apiOrigin;
+  } catch {
+    return false;
+  }
+}
 
 export interface PreviewResult {
   columns: Array<{ name: string; type: string }>;
@@ -157,10 +176,19 @@ export async function previewPipeline(
     // header is present. Without this, the parquet fetch returns 401 and
     // DuckDB-WASM silently shows an empty grid for non-chart steps.
     for (const f of compile.files) {
-      let url = f.url.startsWith("http") ? f.url : `${API_BASE}${f.url}`;
-      if (API_TOKEN) {
+      const isAbsolute = f.url.startsWith("http");
+      let url = isAbsolute ? f.url : `${API_BASE}${f.url}`;
+      // ONLY ever send the token to DIG's own API. A dataset URI travels
+      // inside the pipeline document, so an imported `.dig.json` or a forked
+      // template can point a "file" at an arbitrary host — and the connector
+      // is inferred from the extension, so `https://evil.example/x.csv` is
+      // treated as a perfectly ordinary csv binding. Appending `?token=` to
+      // that hands DIG's auth token to a third party. Compare against the
+      // API origin rather than trusting the URL's shape.
+      const _tok = getApiToken();
+      if (_tok && _isSameOriginAsApi(url)) {
         const sep = url.includes("?") ? "&" : "?";
-        url = `${url}${sep}token=${encodeURIComponent(API_TOKEN)}`;
+        url = `${url}${sep}token=${encodeURIComponent(_tok)}`;
       }
       // Always (re)register — DuckDB-WASM dedupes by name.
       await db.registerFileURL(f.name, url, DuckDBDataProtocol.HTTP, false);

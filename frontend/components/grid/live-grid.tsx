@@ -465,7 +465,13 @@ export function LiveGrid({
           <span className="font-medium text-foreground">
             {fmtInt(totalRows)}
           </span>
-          <span className="text-muted-foreground">rows</span>
+          {/* `rowCount` is the count WITHIN the sample (see
+              lib/engine/dispatcher.ts), not the population. Rendering it as a
+              bare "N rows" told a user with a 10M-row source that they had
+              100,000 rows. Qualify it whenever the sample could be capping. */}
+          <span className="text-muted-foreground">
+            {totalRows >= sampleRows ? "rows in sample" : "rows"}
+          </span>
         </span>
         <span className="text-muted-foreground">·</span>
         <span className="text-muted-foreground">
@@ -678,7 +684,11 @@ export function LiveGrid({
                           const reason =
                             t === "index"
                               ? `${bad} duplicate value(s) — click for details`
-                              : `${bad} cell(s) don't match the ${t} format — click for details`;
+                              // Scanned over the rendered slice only (RENDER_CAP
+                              // rows), so state it that way. "150 cells don't
+                              // match" on a 2M-row column invited the user to
+                              // fix 150 and ship the rest.
+                              : `${bad} of the first ${fmtInt(Math.min(rows.length, RENDER_CAP))} rows don't match the ${t} format — click for details`;
                           return (
                             <button
                               type="button"

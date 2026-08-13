@@ -57,18 +57,29 @@ Thumbs.db
 .env.*.local
 
 # ─── Internal working notes — not part of the public source tree ───────────
-# ANCHORED to the repo root on purpose. The unanchored form matched *any*
-# directory named `internal/` at any depth — including `frontend/app/internal/`,
-# a real Next.js route segment. That made the route invisible to git (so no
-# review, hook, or CI diff ever saw it) while `next build` still compiled it
-# from the working tree and served it. Keep the leading slash.
-/internal/
-/Internal/
+# Unanchored on purpose: an `internal/` folder is private wherever it appears
+# (docs/internal/, backend/internal/, FunctionPacks/**/internal/ …), matching
+# the project's "internal stays internal" posture.
+#
+# The one carve-out is `frontend/app/internal/`. That is a Next.js ROUTE
+# SEGMENT, not a notes folder — the ignore rule hid it from git, so no review,
+# hook, or CI diff ever saw it, while `next build` compiled it from the working
+# tree and served it publicly. Re-including it needs both lines: git cannot
+# re-include a file whose parent directory is excluded, so the directory has to
+# be un-ignored before its contents can be.
+internal/
+Internal/
+!frontend/app/internal/
+!frontend/app/internal/**
 
 # ─── FunctionPacks — public pack library (sources + bundled reference data) ───
 !FunctionPacks/
 !FunctionPacks/**
 FunctionPacks/**/INTERNAL_NOTES.md
+# `!FunctionPacks/**` above re-includes everything under this tree, which
+# would defeat the global `internal/` rule — re-assert it here.
+FunctionPacks/**/internal/
+FunctionPacks/**/Internal/
 FunctionPacks/dist/
 FunctionPacks/**/__pycache__/
 FunctionPacks/**/*.pyc
